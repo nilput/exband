@@ -11,6 +11,7 @@
     CPBEF(CPB_READ_ERR) \
     CPBEF(CPB_ACCEPT_ERR) \
     CPBEF(CPB_BIND_ERR) \
+    CPBEF(CPB_OUT_OF_RANGE_ERR) \
     CPBEF(CPB_LISTEN_ERR) \
     CPBEF(CPB_NOMEM_ERR) 
 #undef CPBEF
@@ -29,7 +30,6 @@ static struct cpb_error_str cpb_error_str_list[] = {
     CPB_ERR_LIST
 };
 #define CPB_ERROR_LIST_COUNT (sizeof(cpb_error_str_list)/sizeof(struct cpb_error_str))
-
 
 struct cpb_error {
     int error_code;

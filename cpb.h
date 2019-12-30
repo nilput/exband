@@ -2,14 +2,16 @@
 #ifndef CPB_H
 #define CPB_H
 #include "cpb_assert.h"
+#include "errors.h"
 struct cpb {
     //this can be used for custom allocators in the future
+    //and semi global state, (GOD OBJECT)
     int e;
 };
-int cpb_init(struct cpb *cpb) {
+static int cpb_init(struct cpb *cpb) {
     return 0;
 }
-int cpb_deinit(struct cpb *cpb) {
+static int cpb_deinit(struct cpb *cpb) {
     return 0;
 }
 static void *cpb_malloc(struct cpb *cpb, size_t sz){
