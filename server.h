@@ -6,7 +6,7 @@
 #define LISTEN_BACKLOG 16
 #define HTTP_INPUT_BUFFER_SIZE 8192
 #define HTTP_OUTPUT_BUFFER_SIZE 8192
-#define CPB_SOCKET_MAX 1024
+#define CPB_SOCKET_MAX 8
 
 define_cpb_or(int, struct cpb_or_socket);
 

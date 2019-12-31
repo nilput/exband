@@ -1,4 +1,5 @@
 #include "eloop.h"
+#include "server.h"
 #include <stdio.h>
 #include <unistd.h>
 
@@ -27,6 +28,11 @@ struct cpb_error read_from_client(int socket) {
 }
 
 static void handle_http(struct cpb_event ev) {
+    int socket_fd = ev.msg.arg1;
+    int cmd  = ev.msg.arg2;
+    struct cpb_request_state *rstate = ev.msg.argp;
+    read_from_client(socket_fd);
+    return;
 }
 static void destroy_http(struct cpb_event ev) {
 }

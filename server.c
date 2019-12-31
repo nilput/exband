@@ -103,10 +103,13 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
                 fcntl(new_socket, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state	*/
                 cpb_request_state_init(s, new_socket, clientname);
                 fprintf(stderr,
-                        "Server: connect from host %s, port %hd.\n",
+                        "Server: connect from host %s, port %hu.\n",
                         inet_ntoa (clientname.sin_addr),
                         ntohs (clientname.sin_port));
                 FD_SET(new_socket, &s->active_fd_set);
+                struct cpb_event ev;
+                cpb_event_http_init(&ev, new_socket, CPB_HTTP_INIT, s->requests+i);
+                cpb_eloop_append(s->eloop, ev);
             }
             else {
                 /* Data arriving on an already-connected socket. */
@@ -124,8 +127,8 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
 }
 
 struct cpb_event_handler_itable cpb_server_event_handler;
-void cpb_server_ev_listen_loop(struct cpb_event *ev) {
-    struct cpb_server *s = ev->msg.argp;
+void cpb_server_ev_listen_loop(struct cpb_event ev) {
+    struct cpb_server *s = ev.msg.argp;
     cpb_server_listen_once(s);
     struct cpb_event new_ev = {.itable = &cpb_server_event_handler,
                            .msg = {
@@ -140,11 +143,12 @@ struct cpb_error cpb_server_listen(struct cpb_server *s) {
                            .msg = {
                             .argp = s
                            }};
-    cpb_server_ev_listen_loop(&new_ev);
+    cpb_server_ev_listen_loop(new_ev);
+    return cpb_make_error(CPB_OK);
 }
 
-void cpb_server_ev_destroy(struct cpb_event *ev) {
-    struct cpb_server *s = ev->msg.argp;
+void cpb_server_ev_destroy(struct cpb_event ev) {
+    struct cpb_server *s = ev.msg.argp;
 }
 
 struct cpb_event_handler_itable cpb_server_event_handler = {
