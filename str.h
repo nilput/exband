@@ -1,7 +1,11 @@
+#ifndef CPB_STR_H
+#define CPB_STR_H
+
 #include "cpb.h"
 #include "errors.h"
 #include <string.h>
 #include <stdlib.h>
+#define CPB_CRV(code)
 
 /*
 * valid states:
@@ -14,6 +18,29 @@ struct cpb_str {
     int len;
     int cap; //negative values mean memory is not owned by us (const char * passed to us)
 };
+struct cpb_str_slice {
+    int index;
+    int len;
+};
+
+//returned str is not null terminated!
+static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, const char *base) {
+    struct cpb_str s;
+    s.str = (char *)base;
+    s.len = slice.len;
+    s.cap = -1;
+    return s;
+}
+
+//returned str is not null terminated!
+static int cpb_str_slice_to_copies_str(struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
+    struct cpb_str s;
+    s.str = (char *)base;
+    s.len = slice.len;
+    s.cap = -1;
+    *out = s;
+    return CPB_OK;
+}
 
 //see str valid states at kdata.h
 static int cpb_str_init(struct cpb *cpb, struct cpb_str *str) {
@@ -44,24 +71,35 @@ static int cpb_str_deinit(struct cpb *cpb, struct cpb_str *str) {
     str->len = 0;
     return CPB_OK;
 }
+static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen);
+static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len) {
+    int rv = cpb_str_init(cpb, str);
+    if (rv != CPB_OK)
+        return rv;
+    rv = cpb_str_strlcpy(cpb, str, src, src_len);
+    if (rv != CPB_OK) {
+        cpb_str_deinit(cpb, str);
+        return rv;
+    }
+    return CPB_OK;
+}
 
 static int cpb_str_new(struct cpb *cpb, struct cpb_str **strp) {
     void *p = NULL;
-    int rv = cpb_malloc(cpb, sizeof(struct cpb_str), &p);
-    if (rv != CPB_OK) {
+    p = cpb_malloc(cpb, sizeof(struct cpb_str));
+    if (!p) {
         *strp = NULL;
-        return rv;
+        return CPB_NOMEM_ERR;
     }
-    rv = cpb_str_init(cpb, p);
+    int rv = cpb_str_init(cpb, p);
     *strp = p;
     return rv;
 }
 static int cpb_str_destroy(struct cpb *cpb, struct cpb_str *strp) {
     int rv = cpb_str_deinit(cpb, strp);
-    int rv2 = cpb_free(cpb, strp);
-    if (rv != CPB_OK)
-        return rv;
-    return rv2;
+    cpb_free(cpb, strp);
+
+    return rv;
 }
 static int cpb_str_strcpy(struct cpb *cpb, struct cpb_str *str, const char *src0);
 static int cpb_str_new_strcpy(struct cpb *cpb, struct cpb_str **strp, const char *src0) {
@@ -95,9 +133,9 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
     }
     if (str->cap < 0) {
         void *p;
-        int rv  = cpb_malloc(cpb, capacity, &p);
-        if (rv != CPB_OK) {
-            return rv;
+        p  = cpb_malloc(cpb, capacity);
+        if (!p) {
+            return CPB_NOMEM_ERR;
         }
         memcpy(p, str->str, str->len);
         str->str = p;
@@ -105,9 +143,9 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
     }
     else {
         void *p = NULL;
-        int rv = cpb_realloc(cpb, str->str, capacity, &p);
-        if (rv != CPB_OK) {
-            return rv;
+        p = cpb_realloc(cpb, str->str, capacity);
+        if (!p) {
+            return CPB_NOMEM_ERR;
         }
         str->str = p;
     }
@@ -172,7 +210,9 @@ static int cpb_str_mutsubstr(struct cpb *cpb, struct cpb_str *str, int begin, in
     cpb_assert_h((begin <= end) && (begin <= str->len) && (end <= str->len), "invalid arguments to mutsubstr()");
     void *p = NULL;
     int len = end - begin;
-    int rv  = cpb_malloc(cpb, len + 1, &p); CPB_CRV(rv);
+    p = cpb_malloc(cpb, len + 1);
+    if (!p)
+        return CPB_NOMEM_ERR;
     memcpy(p, str->str + begin, len);
     cpb_free(cpb, str->str);
     str->str = p;
@@ -203,9 +243,14 @@ static int cpb_str_mutstrip(struct cpb *cpb, struct cpb_str *str, const char *st
         return CPB_OK;
     return cpb_str_mutsubstr(cpb, str, begin, end);
 }
-//assumes the length of both was checked and it was equal!
-static int cpb_strl_eq(const char *a, const char *b, size_t len) {
-    return memcmp(a, b, len) == 0;
+
+static int cpb_strl_eq(const char *a, size_t alen, const char *b, size_t blen) {
+    return alen == blen && (memcmp(a, b, alen) == 0);
+}
+
+//doesnt work on binary strings
+static int cpb_strcasel_eq(const char *a, size_t alen, const char *b, size_t blen) {
+    return alen == blen && (strcasecmp(a, b) == 0);
 }
 //boolean
 static int cpb_str_streqc(struct cpb *cpb, struct cpb_str *str, const char *src0) {
@@ -223,7 +268,7 @@ static int cpb_str_streq(struct cpb *cpb, struct cpb_str *str_a, struct cpb_str 
         return 0;
     else if (str_a->len == 0)
         return 1;
-    return cpb_strl_eq(str_a->str, str_b->str, str_a->len);
+    return cpb_strl_eq(str_a->str, str_a->len, str_b->str, str_a->len);
 }
 
 
@@ -238,3 +283,5 @@ static int cpb_str_init_strcpy(struct cpb *cpb, struct cpb_str *str, const char 
     }
     return CPB_OK;
 }
+
+#endif //CPB_STR_H

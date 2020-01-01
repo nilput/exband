@@ -1,0 +1,7 @@
+Our current way of handling requests:
+    Server listens on port using 1 socket
+    Server accepts connections and creates a request state which has its own socket
+    Server calls handlers whenever rstate's socket can read/write
+
+To handle pipelined GET requests, and keep-alive connections, we can do the following:
+    

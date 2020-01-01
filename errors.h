@@ -13,6 +13,7 @@
     CPBEF(CPB_BIND_ERR) \
     CPBEF(CPB_OUT_OF_RANGE_ERR) \
     CPBEF(CPB_LISTEN_ERR) \
+    CPBEF(CPB_HTTP_ERROR) \
     CPBEF(CPB_NOMEM_ERR) 
 #undef CPBEF
 #define CPBEF(error_name) error_name,

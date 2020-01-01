@@ -14,27 +14,114 @@ struct cpb_msg {
     int arg2;
     void *argp;
 };
+
 struct cpb_event {
     struct cpb_event_handler_itable *itable;
     struct cpb_msg msg;
 };
+struct cpb_delayed_event {
+    double due; //unix time + delay
+    struct cpb_event event;
+};
+struct cpb_delayed_event_node {
+    struct cpb_delayed_event cur;
+    struct cpb_delayed_event_node *next;
+};
+
+
 struct cpb_eloop {
-    struct cpb_event* events;
     struct cpb *cpb; //not owned, must outlive
+    
     unsigned ev_id; //counter
+
+    struct cpb_delayed_event_node* devents;
+    int devents_len;
+
+    struct cpb_event* events;
     int head;
     int tail; //tail == head means full, tail == head - 1 means full
     int cap;
 };
-static int cpb_eloop_len(struct cpb_eloop *eloop) {
+
+//_d_ functions are for delayed events which are kept in a linked list
+//_q_ functions are for regular events which are kept in an array as a queue
+
+static int cpb_eloop_d_push(struct cpb_eloop *eloop, struct cpb_event event, double due) {
+    void *p = cpb_malloc(eloop->cpb, sizeof(struct cpb_delayed_event_node));
+    if (!p)
+        return CPB_NOMEM_ERR;
+    struct cpb_delayed_event_node *node = p;
+    node->cur.event = event;
+    node->cur.due = due;
+    if (eloop->devents == NULL || (eloop->devents->cur.due > node->cur.due)) {
+        node->next = eloop->devents;
+        eloop->devents = node;
+    }
+    else {
+        struct cpb_delayed_event_node *at = eloop->devents;
+        while (at->next && at->next->cur.due < node->cur.due)
+            at = at->next;
+        node->next = at->next;
+        at->next = node;
+    }
+    eloop->devents_len++;
+    return CPB_OK;
+}
+
+
+static int cpb_eloop_q_len(struct cpb_eloop *eloop) {
     if (eloop->tail > eloop->head) {
         return eloop->tail - eloop->head;
     }
     return eloop->head - eloop->tail;
 }
+
+static int cpb_eloop_q_pop_next(struct cpb_eloop *eloop, struct cpb_event *ev_out) {
+    if (cpb_eloop_q_len(eloop) == 0)
+        return CPB_OUT_OF_RANGE_ERR;
+    struct cpb_event ev = eloop->events[eloop->head];
+    eloop->head++;
+    if (eloop->head >= eloop->cap) //eloop->head %= eloop->cap;
+        eloop->head = 0;
+    *ev_out = ev;
+    return CPB_OK;
+}
+static int cpb_eloop_d_pop_next(struct cpb_eloop *eloop, struct cpb_event *ev_out) {
+    if (eloop->devents_len < 1)
+        return CPB_OUT_OF_RANGE_ERR;
+    
+    struct cpb_delayed_event_node *next = eloop->devents->next;
+    struct cpb_delayed_event_node *head = eloop->devents;
+    *ev_out = head->cur.event;
+    cpb_free(eloop->cpb, head);
+    eloop->devents = next;
+    eloop->devents_len--;
+    return CPB_OK;
+}
+
+static int cpb_eloop_d_len(struct cpb_eloop *eloop) {
+    return eloop->devents_len;
+}
+static struct cpb_delayed_event *cpb_eloop_d_peek_next(struct cpb_eloop *eloop) {
+    if (cpb_eloop_d_len(eloop) == 0)
+        return NULL;
+    return &eloop->devents->cur;
+}
+static int cpb_eloop_pop_next(struct cpb_eloop *eloop, double cpb_cur_time, struct cpb_event *ev_out) {
+    struct cpb_delayed_event *dev = cpb_eloop_d_peek_next(eloop);
+    if (dev != NULL && dev->due <= cpb_cur_time) {
+        return cpb_eloop_d_pop_next(eloop, ev_out);
+    }
+    return cpb_eloop_q_pop_next(eloop, ev_out);
+}
+static int cpb_eloop_len(struct cpb_eloop *eloop) {
+    return cpb_eloop_q_len(eloop) + cpb_eloop_d_len(eloop);
+}
+
 static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz);
 static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, int sz) {
     memset(eloop, 0, sizeof *eloop);
+    eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
     if (sz != 0) {
         return cpb_eloop_resize(eloop, sz);
@@ -82,7 +169,7 @@ static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz) {
 //copies event, [eventually calls ev->destroy()]
 static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
     eloop->ev_id++;
-    if (cpb_eloop_len(eloop) == eloop->cap - 1) {
+    if (cpb_eloop_q_len(eloop) == eloop->cap - 1) {
         int nsz = eloop->cap * 2;
         int rv = cpb_eloop_resize(eloop, nsz > 0 ? nsz : 4);
         if (rv != CPB_OK)
@@ -94,20 +181,17 @@ static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
         eloop->tail = 0;
     return CPB_OK;
 }
-static int cpb_eloop_pop_next(struct cpb_eloop *eloop, struct cpb_event *ev_out) {
-    if (cpb_eloop_len(eloop) == 0)
-        return CPB_OUT_OF_RANGE_ERR;
-    struct cpb_event ev = eloop->events[eloop->head];
-    eloop->head++;
-    if (eloop->head >= eloop->cap) //eloop->head %= eloop->cap;
-        eloop->head = 0;
-    *ev_out = ev;
-    return CPB_OK;
+//copies event, [eventually calls ev->destroy()]
+static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev, int ms) {
+    return cpb_eloop_d_push(eloop, ev, cpb_time() + (ms / 1000.0));
 }
+
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
     while (1) {
         struct cpb_event ev;
-        int rv = cpb_eloop_pop_next(eloop, &ev);
+        double cur_time = cpb_time();
+         //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
+        int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
         if (rv != CPB_OK) {
             if (rv != CPB_OUT_OF_RANGE_ERR) {
                 //serious error

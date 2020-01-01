@@ -1,12 +1,15 @@
-#include "errors.h"
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+
+#include "errors.h"
+#include "http_request.h"
+
 
 #define LISTEN_BACKLOG 16
-#define HTTP_INPUT_BUFFER_SIZE 8192
-#define HTTP_OUTPUT_BUFFER_SIZE 8192
 #define CPB_SOCKET_MAX 8
+#define CPB_HTTP_MIN_DELAY 10 //ms
+
+
 
 define_cpb_or(int, struct cpb_or_socket);
 
@@ -24,15 +27,6 @@ define_cpb_or(int, struct cpb_or_socket);
 
 */
 
-struct cpb_request_state {
-    struct cpb_server *server; //not owned, must outlive
-    int socket_fd;
-    struct sockaddr_in clientname;
-    int input_buffer_len;
-    int output_buffer_len;
-    char input_buffer[HTTP_OUTPUT_BUFFER_SIZE];
-    char output_buffer[HTTP_INPUT_BUFFER_SIZE];
-};
 
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
@@ -40,8 +34,7 @@ struct cpb_server {
     int port;
     int listen_socket_fd;
     fd_set active_fd_set;
-    fd_set read_fd_set;
-    
+    fd_set read_fd_set;    
     
     int nrequests;
     struct cpb_request_state requests[CPB_SOCKET_MAX];

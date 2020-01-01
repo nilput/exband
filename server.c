@@ -11,6 +11,7 @@
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
 #include "server_events.h"
+#include "http_parse.h"
 
 
 
@@ -21,6 +22,8 @@ static void cpb_request_state_init(struct cpb_server *s, int socket_fd, struct s
     rstate->server = s;
     rstate->input_buffer_len = 0;
     rstate->output_buffer_len = 0;
+    rstate->istate = CPB_HTTP_I_ST_INIT;
+    rstate->pstate = CPB_HTTP_P_ST_INIT;
 }
 
 static struct cpb_or_socket make_socket (uint16_t port)
@@ -31,6 +34,8 @@ static struct cpb_or_socket make_socket (uint16_t port)
         rv.error = cpb_make_error(CPB_SOCKET_ERR);
         return rv;
     }
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
+        ;//handle err
 
     /* Give the socket a name. */
     struct sockaddr_in name;
@@ -108,7 +113,7 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
                         ntohs (clientname.sin_port));
                 FD_SET(new_socket, &s->active_fd_set);
                 struct cpb_event ev;
-                cpb_event_http_init(&ev, new_socket, CPB_HTTP_INIT, s->requests+i);
+                cpb_event_http_init(&ev, new_socket, CPB_HTTP_INIT, s->requests+new_socket);
                 cpb_eloop_append(s->eloop, ev);
             }
             else {
@@ -134,7 +139,7 @@ void cpb_server_ev_listen_loop(struct cpb_event ev) {
                            .msg = {
                             .argp = s
                            }};
-    cpb_eloop_append(s->eloop, new_ev);
+    cpb_eloop_append_delayed(s->eloop, new_ev, CPB_HTTP_MIN_DELAY);
     
 }
 
