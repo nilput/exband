@@ -1,7 +1,23 @@
 Our current way of handling requests:
     Server listens on port using 1 socket
     Server accepts connections and creates a request state which has its own socket
-    Server calls handlers whenever rstate's socket can read/write
+    Server calls handlers whenever rqstate's socket can read/write
 
 To handle pipelined GET requests, and keep-alive connections, we can do the following:
-    
+    Whenever a request's body [POST] / headers [GET] ends
+    We clone the current request and detatch it from the socket
+    The next thing recieved on the socket is another request
+    But the responses have to be in order
+
+    Socket Manager (can be the server):
+        -> Request #1   [ Keep alive ]
+           Response #1  [            ]
+        -> Request #2   [            ]
+           Response #2  [            ]
+
+        -> Request #3   [ Pipelining ]
+        -> Request #4   [            ]
+           Response #3  [            ]
+           Response #4  [            ]
+    Socket manager needs to have a queue of requests, whenever a response is ready it notifies it
+    then in turn it sends responses (Response #4 can be ready before Response #3 but we wait for Response #3)

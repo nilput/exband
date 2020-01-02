@@ -12,19 +12,10 @@
 
 #include "server_events.h"
 #include "http_parse.h"
+#include "http_request.h"
 
 
 
-static void cpb_request_state_init(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
-    struct cpb_request_state *rstate = &s->requests[socket_fd];
-    rstate->clientname = clientname;
-    rstate->socket_fd = socket_fd;
-    rstate->server = s;
-    rstate->input_buffer_len = 0;
-    rstate->output_buffer_len = 0;
-    rstate->istate = CPB_HTTP_I_ST_INIT;
-    rstate->pstate = CPB_HTTP_P_ST_INIT;
-}
 
 static struct cpb_or_socket make_socket (uint16_t port)
 {
@@ -62,9 +53,21 @@ struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, stru
     if (or_socket.value >= CPB_SOCKET_MAX) {
         return cpb_make_error(CPB_OUT_OF_RANGE_ERR);
     }
+    
+
     int socket_fd = or_socket.value;
     s->listen_socket_fd = socket_fd;
+
+    /* Initialize the set of active sockets. */
+    FD_ZERO(&s->active_fd_set);
+    FD_SET(s->listen_socket_fd, &s->active_fd_set);
+
     return err;
+}
+
+void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
+    close(socket_fd);
+    FD_CLR(socket_fd, &s->active_fd_set);
 }
 
 struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
@@ -74,14 +77,11 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         return err;
     }
 
-    /* Initialize the set of active sockets. */
-    FD_ZERO(&s->active_fd_set);
-    FD_SET(s->listen_socket_fd, &s->active_fd_set);
-
     /* Block until input arrives on one or more active sockets. */
     s->read_fd_set = s->active_fd_set;
+    s->write_fd_set = s->active_fd_set;
     struct timeval timeout = {0, 0}; //poll
-    if (select(FD_SETSIZE, &s->read_fd_set, NULL, NULL, &timeout) < 0) {
+    if (select(FD_SETSIZE, &s->read_fd_set, &s->write_fd_set, NULL, &timeout) < 0) {
         err = cpb_make_error(CPB_SELECT_ERR);
         return err;
     }
@@ -106,7 +106,8 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
                     return err;
                 }
                 fcntl(new_socket, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state	*/
-                cpb_request_state_init(s, new_socket, clientname);
+                struct cpb_request_state *rqstate = &s->requests[new_socket];
+                cpb_request_state_init(rqstate, s, new_socket, clientname);
                 fprintf(stderr,
                         "Server: connect from host %s, port %hu.\n",
                         inet_ntoa (clientname.sin_addr),
@@ -121,11 +122,12 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
                 struct cpb_event ev;
                 cpb_event_http_init(&ev, i, CPB_HTTP_READ, s->requests+i);
                 cpb_eloop_append(s->eloop, ev);
-                //if (err.error_code != 0) {
-                //    close(i);
-                //    FD_CLR(i, &s->active_fd_set);
-                //}
             }
+        }
+        if (FD_ISSET(i, &s->write_fd_set) && s->requests[i].resp.state == CPB_HTTP_R_ST_SENDING) {
+            struct cpb_event ev;
+            cpb_event_http_init(&ev, i, CPB_HTTP_SEND, s->requests+i);
+            cpb_eloop_append(s->eloop, ev);
         }
     }
     return err;

@@ -1,7 +1,10 @@
 #include "utils.h"
+#include "errors.h"
+#include "str.h"
 #include <unistd.h>
 #include <sys/time.h>
 #include <string.h>
+#include <stdio.h>
 int cpb_sleep(int ms) {
     return usleep(ms * 1000);
 }
@@ -15,19 +18,37 @@ double cpb_time() {
 }
 int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen) {
     if (nlen == 0)
-        return 0;
-    if ((hlen - hidx) <= 0)
+        return hidx;
+    int end = hidx + hlen;
+    if (hidx + nlen > end)
         return -1;
-    char *f = memchr(haystack + hidx, needle[0], hlen - hidx);
+    char *f = memchr(haystack + hidx, needle[0], end - hidx);
     while (f != NULL) {
         int f_idx = f - haystack;
-        if (hlen - f_idx < nlen)
+        if (f_idx + nlen > end)
             return -1;
         if (memcmp(f, needle, nlen) == 0) {
             return f_idx;
         }
         hidx = f_idx + 1;
-        f = memchr(haystack + hidx, needle[0], hlen - hidx);
+        f = memchr(haystack + hidx, needle[0], end - hidx);
     }
     return -1;
+}
+
+int cpb_itoa(char *dest, int dest_size, int *written, int num) {
+    int rv = snprintf(dest, dest_size, "%d", num);
+    if (rv >= dest_size) {
+        return CPB_OUT_OF_RANGE_ERR;
+    }
+    *written = rv;
+    return CPB_OK;
+}
+int cpb_str_itoa(struct cpb *cpb, struct cpb_str *str, int num) {
+    if (str->cap < 32) {
+        int rv = cpb_str_set_cap(cpb, str, 32);
+        if (rv != CPB_OK)
+            return rv;
+    }
+    return cpb_itoa(str->str, str->cap, &str->len, num);
 }

@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h> //fdset
 
 #include "errors.h"
 #include "http_request.h"
@@ -34,7 +35,8 @@ struct cpb_server {
     int port;
     int listen_socket_fd;
     fd_set active_fd_set;
-    fd_set read_fd_set;    
+    fd_set read_fd_set;
+    fd_set write_fd_set;
     
     int nrequests;
     struct cpb_request_state requests[CPB_SOCKET_MAX];
@@ -42,4 +44,5 @@ struct cpb_server {
 
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
+void cpb_server_close_connection(struct cpb_server *s, int socket_fd);
 void cpb_server_deinit(struct cpb_server *s);

@@ -14,12 +14,12 @@ struct cpb_event_handler_itable cpb_event_handler_http_itable = {
     .destroy = destroy_http,
 };
 
-struct cpb_error read_from_client(struct cpb_request_state *rstate, int socket) {
-    int avbytes = HTTP_INPUT_BUFFER_SIZE - rstate->input_buffer_len - 1;
+struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket) {
+    int avbytes = HTTP_INPUT_BUFFER_SIZE - rqstate->input_buffer_len - 1;
     int nbytes;
     struct cpb_error err = {0};
     again:
-    nbytes = read(socket, rstate->input_buffer + rstate->input_buffer_len, avbytes);
+    nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
     if (nbytes < 0) {
         if (!(errno == EWOULDBLOCK || errno == EAGAIN)) {
             err = cpb_make_error(CPB_READ_ERR);
@@ -28,41 +28,75 @@ struct cpb_error read_from_client(struct cpb_request_state *rstate, int socket) 
     }
     else if (nbytes == 0) {
         struct cpb_event ev;
-        
-        cpb_event_http_init(&ev, socket, CPB_HTTP_CLOSE, rstate);
+        cpb_event_http_init(&ev, socket, CPB_HTTP_CLOSE, rqstate);
         //TODO error handling, also we can directly deal with the event because cache is hot
-        cpb_eloop_append(rstate->server->eloop, ev); 
+        cpb_eloop_append(rqstate->server->eloop, ev); 
         fprintf(stderr, "EOF");
     }
     else {
         {
-            int scan_idx = rstate->input_buffer_len - 3;
+            int scan_idx = rqstate->input_buffer_len - 3;
             scan_idx = scan_idx < 0 ? 0 : scan_idx;
-            int scan_len = rstate->input_buffer_len + nbytes;
-            if (cpb_str_has_crlfcrlf(rstate->input_buffer, scan_idx, scan_len)) {
-                rstate->istate = CPB_HTTP_I_ST_GOT_HEADERS;
+            int scan_len = rqstate->input_buffer_len + nbytes;
+            if (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
+                rqstate->istate = CPB_HTTP_I_ST_GOT_HEADERS;
                 struct cpb_event ev;
-                cpb_event_http_init(&ev, socket, CPB_HTTP_HANDLE_HEADERS, rstate);
+                cpb_event_http_init(&ev, socket, CPB_HTTP_HANDLE_HEADERS, rqstate);
                 //TODO error handling, also we can directly deal with the event because cache is hot
-                cpb_eloop_append(rstate->server->eloop, ev); 
+                cpb_eloop_append(rqstate->server->eloop, ev); 
             }
         }
-        rstate->input_buffer_len += nbytes;
-        fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rstate->input_buffer_len);
+        rqstate->input_buffer_len += nbytes;
+        fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
         avbytes -= nbytes;
         goto again;
     }
     return err;
 }
 
+
+static void cpb_request_handle_http_error(struct cpb_request_state *rqstate) {
+    //TODO should terminate connection not whole server
+    abort();
+}
+static void cpb_request_handle_fatal_error(struct cpb_request_state *rqstate) {
+    //TODO should terminate connection not whole server
+    abort();
+}
+static void cpb_request_call_handler(struct cpb_request_state *rqstate) {
+    struct cpb_str key,value;
+    cpb_str_init_const_str(rqstate->server->cpb, &key, "Content-Type");
+    cpb_str_init_const_str(rqstate->server->cpb, &value, "text/plain");
+    cpb_response_set_header(&rqstate->resp, &key, &value);
+    cpb_response_append_body(&rqstate->resp, "Hello World!\r\n", 14);
+    
+    cpb_response_end(&rqstate->resp);
+}
+
 static void handle_http(struct cpb_event ev) {
     int socket_fd = ev.msg.arg1;
     int cmd  = ev.msg.arg2;
-    struct cpb_request_state *rstate = ev.msg.argp;
+    struct cpb_request_state *rqstate = ev.msg.argp;
     if (cmd == CPB_HTTP_INIT || cmd == CPB_HTTP_READ)
-        read_from_client(rstate, socket_fd);
-    if (cmd == CPB_HTTP_CLOSE || cmd == CPB_HTTP_HANDLE_HEADERS) {
-        cpb_request_http_parse(rstate);
+        read_from_client(rqstate, socket_fd);
+    else if (cmd == CPB_HTTP_CLOSE) {
+        //Socket reached EOF
+        cpb_server_close_connection(rqstate->server, socket_fd);
+    }
+    else if (cmd == CPB_HTTP_SEND) {
+        int rv = cpb_response_send(&rqstate->resp);
+        if (rv != CPB_OK) {
+            cpb_request_handle_fatal_error(rqstate);
+            return;
+        }
+    }
+    else if (cmd == CPB_HTTP_HANDLE_HEADERS) {
+        int rv = cpb_request_http_parse(rqstate);
+        if (rv != CPB_OK) {
+            cpb_request_handle_http_error(rqstate);
+            return;
+        }
+        cpb_request_call_handler(rqstate);
     }
     return;
 }

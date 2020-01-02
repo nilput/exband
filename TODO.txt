@@ -1,0 +1,8 @@
+Chunked requests (POST/PUT)            [ ]
+Chunked response                       [ ]
+HTTP/1.0 compatibility                 [ ]
+HTTP/1.1 basic functionality (GET)     [x]
+Pipelined GET                          [ ]
+Header/Method/Version parsing          [x]
+Response                               [ ]
+Infinite Request/Response/No.Headers   [ ]

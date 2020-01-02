@@ -31,13 +31,18 @@ static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, con
     s.cap = -1;
     return s;
 }
+static int cpb_str_is_const(struct cpb_str *str) {
+    return str->cap == -1;
+}
+
+static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len);
 
 //returned str is not null terminated!
-static int cpb_str_slice_to_copies_str(struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
+static int cpb_str_slice_to_copied_str(struct cpb *cpb, struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
     struct cpb_str s;
-    s.str = (char *)base;
-    s.len = slice.len;
-    s.cap = -1;
+    int rv = cpb_str_init_strlcpy(cpb, &s, base + slice.index, slice.len);
+    if (rv != CPB_OK)
+        return rv;
     *out = s;
     return CPB_OK;
 }

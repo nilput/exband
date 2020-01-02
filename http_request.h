@@ -1,11 +1,14 @@
 #ifndef CPB_HTTP_REQUEST_H
 #define CPB_HTTP_REQUEST_H
 #include "str.h"
+#include "http_response.h"
+#include <stdbool.h>
 #include <netinet/in.h>
+
 
 #define CPB_HTTP_HEADER_MAX 32
 #define HTTP_INPUT_BUFFER_SIZE 8192
-#define HTTP_OUTPUT_BUFFER_SIZE 8192
+
 
 enum CPB_HTTP_METHOD {
     CPB_HTTP_M_HEAD,
@@ -29,17 +32,12 @@ enum cpb_http_parse_state {
 
 
 struct cpb_http_header {
-    int key_idx;
-    int key_len;
-    int value_idx;
-    int value_len;
+    struct cpb_str_slice key;
+    struct cpb_str_slice value;
 };
 struct cpb_http_header_map {
     struct cpb_http_header headers[CPB_HTTP_HEADER_MAX];
     int len;
-};
-
-struct cpb_response_state {
 };
 
 struct cpb_request_state {
@@ -47,6 +45,7 @@ struct cpb_request_state {
     int socket_fd;
     struct sockaddr_in clientname;
     int input_buffer_len;
+    bool is_chunked;
     
     enum cpb_http_input_state istate; //what portion did we recieve yet
     enum cpb_http_parse_state pstate; //what portion did we parse
@@ -59,11 +58,21 @@ struct cpb_request_state {
     struct cpb_str_slice headers_s; //excluding status's crlf and excluding final crlfcrlf
     struct cpb_str_slice body_s; //beginning after crlfcrlf
 
-    
-    char input_buffer[HTTP_OUTPUT_BUFFER_SIZE];
+    char input_buffer[HTTP_INPUT_BUFFER_SIZE];
+    struct cpb_response_state resp;
 };
 
-void cpb_request_repr(struct cpb_request_state *rstate);
+void cpb_request_repr(struct cpb_request_state *rqstate);
+
+static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
+    rqstate->clientname = clientname;
+    rqstate->socket_fd = socket_fd;
+    rqstate->server = s;
+    rqstate->input_buffer_len = 0;
+    rqstate->istate = CPB_HTTP_I_ST_INIT;
+    rqstate->pstate = CPB_HTTP_P_ST_INIT;
+    cpb_response_state_init(&rqstate->resp, rqstate);
+}
 
 
 #endif// CPB_HTTP_REQUEST_H
