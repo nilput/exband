@@ -76,7 +76,15 @@ int cpb_response_end(struct cpb_response_state *rsp) {
     struct cpb_str body_len_str;
     cpb_str_init(rsp->req_state->server->cpb, &body_len_str);
     cpb_str_itoa(rsp->req_state->server->cpb, &body_len_str, body_len);
-    rv = cpb_response_set_header(rsp, &name, &body_len_str);
+    rv = cpb_response_set_header(rsp, &name, &body_len_str); //owns body_len_str
+    if (rv != CPB_OK) {
+        return rv;
+    }
+
+    //TODO: Support persistent connections
+    cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+    cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
+    rv = cpb_response_set_header(rsp, &name, &value);
     if (rv != CPB_OK) {
         return rv;
     }

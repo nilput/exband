@@ -76,7 +76,7 @@ static int cpb_response_append_body(struct cpb_response_state *rsp, char *s, int
     if (len > available_bytes) {
         return CPB_OUT_OF_RANGE_ERR;
     }
-    memcpy(rsp->output_buff, s, len);
+    memcpy(rsp->output_buff + rsp->output_buff_len, s, len);
     rsp->output_buff_len += len;
     return CPB_OK;
 }

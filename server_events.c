@@ -69,6 +69,16 @@ static void cpb_request_call_handler(struct cpb_request_state *rqstate) {
     cpb_str_init_const_str(rqstate->server->cpb, &value, "text/plain");
     cpb_response_set_header(&rqstate->resp, &key, &value);
     cpb_response_append_body(&rqstate->resp, "Hello World!\r\n", 14);
+    struct cpb_str str;
+    struct cpb_str path;
+    cpb_str_init(rqstate->server->cpb, &str);
+    cpb_str_init(rqstate->server->cpb, &path);
+    cpb_str_slice_to_copied_str(rqstate->server->cpb, rqstate->path_s, rqstate->input_buffer, &path);
+    cpb_sprintf(rqstate->server->cpb, &str, "Requested URL: '%s'", path.str);
+    
+    cpb_response_append_body(&rqstate->resp, str.str, str.len);
+    cpb_str_deinit(rqstate->server->cpb, &str);
+    cpb_str_deinit(rqstate->server->cpb, &path);
     
     cpb_response_end(&rqstate->resp);
 }
@@ -83,7 +93,7 @@ static void handle_http(struct cpb_event ev) {
         //Socket reached EOF
         cpb_server_close_connection(rqstate->server, socket_fd);
     }
-    else if (cmd == CPB_HTTP_SEND) {
+    else if (cmd == CPB_HTTP_SEND && rqstate->resp.state != CPB_HTTP_R_ST_DONE) {
         int rv = cpb_response_send(&rqstate->resp);
         if (rv != CPB_OK) {
             cpb_request_handle_fatal_error(rqstate);

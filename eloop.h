@@ -70,10 +70,10 @@ static int cpb_eloop_d_push(struct cpb_eloop *eloop, struct cpb_event event, dou
 
 
 static int cpb_eloop_q_len(struct cpb_eloop *eloop) {
-    if (eloop->tail > eloop->head) {
+    if (eloop->tail >= eloop->head) {
         return eloop->tail - eloop->head;
     }
-    return eloop->head - eloop->tail;
+    return eloop->cap - eloop->head + eloop->tail;
 }
 
 static int cpb_eloop_q_pop_next(struct cpb_eloop *eloop, struct cpb_event *ev_out) {

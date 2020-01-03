@@ -1,10 +1,11 @@
 #ifndef CPB_STR_H
 #define CPB_STR_H
-
+#include <stdlib.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 #include "cpb.h"
 #include "errors.h"
-#include <string.h>
-#include <stdlib.h>
 #define CPB_CRV(code)
 
 /*
@@ -22,6 +23,7 @@ struct cpb_str_slice {
     int index;
     int len;
 };
+
 
 //returned str is not null terminated!
 static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, const char *base) {
@@ -76,7 +78,9 @@ static int cpb_str_deinit(struct cpb *cpb, struct cpb_str *str) {
     str->len = 0;
     return CPB_OK;
 }
+
 static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen);
+
 static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len) {
     int rv = cpb_str_init(cpb, str);
     if (rv != CPB_OK)
@@ -288,5 +292,42 @@ static int cpb_str_init_strcpy(struct cpb *cpb, struct cpb_str *str, const char 
     }
     return CPB_OK;
 }
+
+
+static int cpb_vsprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, va_list ap_in) {
+    int fmtlen = strlen(fmt);
+    int rv;
+    va_list ap;
+    if (str->cap < 2) {
+        rv = cpb_str_set_cap(cpb, str, 2);
+        if (rv != CPB_OK) {
+            return rv;
+        }
+    }
+    va_copy(ap, ap_in);
+    int needed = vsnprintf(str->str, str->cap, fmt, ap);
+    va_end(ap);
+    if (needed >= str->cap) {
+        rv = cpb_str_set_cap(cpb, str, needed + 1);
+        if (rv != CPB_OK) {
+            return rv;
+        }
+        cpb_assert_s(needed < str->cap, "str grow failed");
+        va_copy(ap, ap_in);
+        needed = vsnprintf(str->str, str->cap, fmt, ap);
+        cpb_assert_s(needed < str->cap, "str grow failed");
+        va_end(ap);
+    }
+    str->len = needed;
+    return CPB_OK;
+}
+static int cpb_sprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = cpb_vsprintf(cpb, str, fmt, ap);
+    va_end(ap);
+    return rv;
+}
+
 
 #endif //CPB_STR_H

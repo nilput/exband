@@ -31,13 +31,13 @@ static int cpb_str_next_lws(char *s, int idx, int len) {
     return -1;
 }
 static int cpb_str_next_nonws(char *s, int idx, int len, int do_stay_in_crlf_line) {
-    for (int i=idx; i<len; i++) {
+    for (int i=idx; i<(idx+len); i++) {
         if (s[i] != ' ' && s[i] != '\t') {
             return i;
         }
         else if (s[i] == '\n')
             continue;
-        else if (do_stay_in_crlf_line && (i != len - 1) && s[i] == '\r' && s[i+1] == '\n')
+        else if (do_stay_in_crlf_line && (i <= (idx+len - 2)) && s[i] == '\r' && s[i+1] == '\n')
             return -1;
     }
     return -1;

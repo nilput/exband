@@ -46,6 +46,8 @@ struct cpb_request_state {
     struct sockaddr_in clientname;
     int input_buffer_len;
     bool is_chunked;
+    bool is_persistent; //Not persistent when: 
+                        //HTTP1.0 (with no keepalive) OR HTTP1.1 and "Connection: close"
     
     enum cpb_http_input_state istate; //what portion did we recieve yet
     enum cpb_http_parse_state pstate; //what portion did we parse
