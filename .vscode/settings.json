@@ -1,6 +1,6 @@
 {
     "files.associations": {
         "unistd.h": "c",
-        "server.h": "c"
+        "http_server.h": "c"
     }
 }

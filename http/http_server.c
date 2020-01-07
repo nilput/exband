@@ -1,7 +1,5 @@
 #include <sys/select.h>
 #include <unistd.h>
-#include "errors.h"
-#include "server.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -10,7 +8,9 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-#include "server_events.h"
+#include "../cpb_errors.h"
+#include "http_server.h"
+#include "http_server_events.h"
 #include "http_parse.h"
 #include "http_request.h"
 
@@ -41,10 +41,17 @@ static struct cpb_or_socket make_socket (uint16_t port)
     rv.value = sock;
     return rv;
 }
+
+static void default_handler(struct cpb_request_state *rqstate) {
+    cpb_response_append_body(&rqstate->resp, "Not found\r\n", 11);
+    cpb_response_end(&rqstate->resp);
+}
+
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port) {
     struct cpb_error err = {0};
     s->cpb = cpb_ref;
     s->eloop = eloop;
+    s->request_handler = default_handler;
     /* Create the socket and set it up to accept connections. */
     struct cpb_or_socket or_socket = make_socket(port);
     if (or_socket.error.error_code) {
@@ -165,4 +172,9 @@ struct cpb_event_handler_itable cpb_server_event_handler = {
 
 void cpb_server_deinit(struct cpb_server *s) {
 
+}
+
+int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate)) {
+    s->request_handler = handler;
+    return CPB_OK;
 }

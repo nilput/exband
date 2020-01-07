@@ -2,7 +2,7 @@
 #ifndef CPB_H
 #define CPB_H
 #include "cpb_assert.h"
-#include "errors.h"
+#include "cpb_errors.h"
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

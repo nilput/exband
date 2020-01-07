@@ -1,6 +1,6 @@
 #include "http_response.h"
 #include "http_request.h"
-#include "server.h"
+#include "http_server.h"
 #include <unistd.h>
 #include <errno.h>
 int cpb_response_send(struct cpb_response_state *rsp) {
@@ -82,9 +82,10 @@ int cpb_response_end(struct cpb_response_state *rsp) {
     }
 
     //TODO: Support persistent connections
-    cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-    cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
-    rv = cpb_response_set_header(rsp, &name, &value);
+    //
+    //cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+    //cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
+    //rv = cpb_response_set_header(rsp, &name, &value);
     if (rv != CPB_OK) {
         return rv;
     }

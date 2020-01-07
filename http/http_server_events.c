@@ -1,10 +1,10 @@
-#include "eloop.h"
-#include "server.h"
-#include "server_events.h"
-#include "http_parse.h"
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
+#include "../eloop.h"
+#include "http_server.h"
+#include "http_server_events.h"
+#include "http_parse.h"
 
 static void handle_http(struct cpb_event ev);
 static void destroy_http(struct cpb_event ev);
@@ -64,23 +64,7 @@ static void cpb_request_handle_fatal_error(struct cpb_request_state *rqstate) {
     abort();
 }
 static void cpb_request_call_handler(struct cpb_request_state *rqstate) {
-    struct cpb_str key,value;
-    cpb_str_init_const_str(rqstate->server->cpb, &key, "Content-Type");
-    cpb_str_init_const_str(rqstate->server->cpb, &value, "text/plain");
-    cpb_response_set_header(&rqstate->resp, &key, &value);
-    cpb_response_append_body(&rqstate->resp, "Hello World!\r\n", 14);
-    struct cpb_str str;
-    struct cpb_str path;
-    cpb_str_init(rqstate->server->cpb, &str);
-    cpb_str_init(rqstate->server->cpb, &path);
-    cpb_str_slice_to_copied_str(rqstate->server->cpb, rqstate->path_s, rqstate->input_buffer, &path);
-    cpb_sprintf(rqstate->server->cpb, &str, "Requested URL: '%s'", path.str);
-    
-    cpb_response_append_body(&rqstate->resp, str.str, str.len);
-    cpb_str_deinit(rqstate->server->cpb, &str);
-    cpb_str_deinit(rqstate->server->cpb, &path);
-    
-    cpb_response_end(&rqstate->resp);
+    rqstate->server->request_handler(rqstate);
 }
 
 static void handle_http(struct cpb_event ev) {

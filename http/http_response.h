@@ -2,7 +2,7 @@
 #define CPB_HTTP_RESPONSE_H
 
 #include <stdbool.h>
-#include "cpb_str.h"
+#include "../cpb_str.h"
 #include "http_server_events.h"
 #include "http_status.h"
 #define HTTP_HEADERS_BUFFER_SIZE 2048

@@ -1,8 +1,8 @@
 #ifndef CPB_HTTP_STATUS_H
 #define CPB_HTTP_STATUS_H
 
-#include "cpb_assert.h"
-#include "errors.h"
+#include "../cpb_assert.h"
+#include "../cpb_errors.h"
 #include <string.h>
 //doesnt add a null terminator
 static int cpb_write_status_code(char *dest,

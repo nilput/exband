@@ -1,6 +1,6 @@
 #ifndef CPB_HTTP_EVENTS_H
 #define CPB_HTTP_EVENTS_H
-#include "eloop.h"
+#include "../eloop.h"
 
 
 extern struct cpb_event_handler_itable cpb_event_handler_http_itable;

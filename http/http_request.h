@@ -1,6 +1,6 @@
 #ifndef CPB_HTTP_REQUEST_H
 #define CPB_HTTP_REQUEST_H
-#include "str.h"
+#include "../cpb_str.h"
 #include "http_response.h"
 #include <stdbool.h>
 #include <netinet/in.h>

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "cpb.h"
-#include "errors.h"
+#include "cpb_errors.h"
 #define CPB_CRV(code)
 
 /*

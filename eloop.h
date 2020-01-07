@@ -2,7 +2,7 @@
 #define ELOOP_H
 #include "cpb.h"
 #include "string.h"
-#include "utils.h"
+#include "cpb_utils.h"
 #define ELOOP_SLEEP_TIME 50
 struct cpb_event; //fwd
 struct cpb_event_handler_itable {
