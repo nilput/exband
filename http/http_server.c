@@ -4,16 +4,17 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
-#include <fcntl.h> /* Added for the nonblocking socket */
-//https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
-//http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
+#include <fcntl.h> /* nonblocking sockets */
 
 #include "../cpb_errors.h"
 #include "http_server.h"
 #include "http_server_events.h"
 #include "http_parse.h"
 #include "http_request.h"
+#include "http_socket_multiplexer.h"
 
+//https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
+//http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
 
 
@@ -52,6 +53,9 @@ struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, stru
     s->cpb = cpb_ref;
     s->eloop = eloop;
     s->request_handler = default_handler;
+    for (int i=0; i<CPB_SOCKET_MAX; i++) {
+        cpb_http_multiplexer_init(&s->mp[i]);
+    }
     /* Create the socket and set it up to accept connections. */
     struct cpb_or_socket or_socket = make_socket(port);
     if (or_socket.error.error_code) {
@@ -72,10 +76,56 @@ struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, stru
     return err;
 }
 
+
+static struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd) 
+{
+    if (socket_fd > CPB_SOCKET_MAX)
+        return NULL;
+    cpb_assert_h(socket_fd >= 0, ""), "invalid socket no";
+    return s->mp + socket_fd;
+}
+
+struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, int socket_fd) {
+    void *p = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
+    if (!p) {
+        return NULL;
+    }
+    struct cpb_request_state *st = p;
+    cpb_request_state_init(st, server, socket_fd);
+    return st;
+}
+void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate) {
+    cpb_request_state_deinit(rqstate);
+}
+
+static int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
+    
+    fcntl(socket_fd, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state */
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
+    cpb_http_multiplexer_init(mp);
+    mp->state = CPB_MP_ACTIVE;
+    if (mp == NULL)
+        return CPB_SOCKET_ERR;
+    mp->clientname = clientname;
+    struct cpb_request_state *rqstate = cpb_server_new_rqstate(s, socket_fd);
+    fprintf(stderr,
+            "Server: connect from host %s, port %hu.\n",
+            inet_ntoa (clientname.sin_addr),
+            ntohs (clientname.sin_port));
+    
+    FD_SET(socket_fd, &s->active_fd_set);
+    struct cpb_event ev;
+    mp->creading = rqstate;
+    cpb_event_http_init(&ev, socket_fd, CPB_HTTP_INIT, rqstate);
+    cpb_eloop_append(s->eloop, ev);
+}
+
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
     close(socket_fd);
     FD_CLR(socket_fd, &s->active_fd_set);
+    cpb_http_multiplexer_deinit(s->mp + socket_fd);
 }
+
 
 struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
     struct cpb_error err = {0};
@@ -84,7 +134,7 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         return err;
     }
 
-    /* Block until input arrives on one or more active sockets. */
+    
     s->read_fd_set = s->active_fd_set;
     s->write_fd_set = s->active_fd_set;
     struct timeval timeout = {0, 0}; //poll
@@ -93,47 +143,48 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         return err;
     }
 
+    /* Service Connection requests. */
+    if (FD_ISSET(s->listen_socket_fd, &s->read_fd_set)) {
+        //TOOD: this should accept in a loop
+        int new_socket;
+        struct sockaddr_in clientname;
+        socklen_t size = sizeof(&clientname);
+        new_socket = accept(s->listen_socket_fd,
+                    (struct sockaddr *) &clientname,
+                    &size);
+        if (new_socket < 0) {
+            err = cpb_make_error(CPB_ACCEPT_ERR);
+            return err;
+        }
+        if (new_socket >= CPB_SOCKET_MAX) {
+            err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+            return err;
+        }
+        struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
+        cpb_assert_h(nm && nm->state == CPB_MP_EMPTY, "");
+        int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
+    }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {
-        if (FD_ISSET(i, &s->read_fd_set)) {
-            if (i == s->listen_socket_fd) {
-                /* Connection request on original socket. */
-                int new_socket;
-                struct sockaddr_in clientname;
-                socklen_t size = sizeof(&clientname);
-                new_socket = accept(s->listen_socket_fd,
-                            (struct sockaddr *) &clientname,
-                            &size);
-                if (new_socket < 0) {
-                    err = cpb_make_error(CPB_ACCEPT_ERR);
-                    return err;
-                }
-                if (new_socket >= CPB_SOCKET_MAX) {
-                    err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-                    return err;
-                }
-                fcntl(new_socket, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state	*/
-                struct cpb_request_state *rqstate = &s->requests[new_socket];
-                cpb_request_state_init(rqstate, s, new_socket, clientname);
-                fprintf(stderr,
-                        "Server: connect from host %s, port %hu.\n",
-                        inet_ntoa (clientname.sin_addr),
-                        ntohs (clientname.sin_port));
-                FD_SET(new_socket, &s->active_fd_set);
-                struct cpb_event ev;
-                cpb_event_http_init(&ev, new_socket, CPB_HTTP_INIT, s->requests+new_socket);
-                cpb_eloop_append(s->eloop, ev);
-            }
-            else {
-                /* Data arriving on an already-connected socket. */
-                struct cpb_event ev;
-                cpb_event_http_init(&ev, i, CPB_HTTP_READ, s->requests+i);
-                cpb_eloop_append(s->eloop, ev);
-            }
-        }
-        if (FD_ISSET(i, &s->write_fd_set) && s->requests[i].resp.state == CPB_HTTP_R_ST_SENDING) {
+        if (i == s->listen_socket_fd)
+            continue;
+        struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, i);
+        if (FD_ISSET(i, &s->read_fd_set)) 
+        {
+            /* Data arriving on an already-connected socket. */
             struct cpb_event ev;
-            cpb_event_http_init(&ev, i, CPB_HTTP_SEND, s->requests+i);
+            cpb_assert_h(m && m->state == CPB_MP_ACTIVE, "");
+            cpb_assert_h(m->creading, "");
+            cpb_event_http_init(&ev, i, CPB_HTTP_READ, m->creading);
+            cpb_eloop_append(s->eloop, ev);
+        
+        }
+        if (FD_ISSET(i, &s->write_fd_set)                       &&
+            m->next_response                                    &&
+            m->next_response->resp.state == CPB_HTTP_R_ST_SENDING ) 
+        {
+            struct cpb_event ev;
+            cpb_event_http_init(&ev, i, CPB_HTTP_SEND, m->next_response);
             cpb_eloop_append(s->eloop, ev);
         }
     }
@@ -168,7 +219,7 @@ void cpb_server_ev_destroy(struct cpb_event ev) {
 struct cpb_event_handler_itable cpb_server_event_handler = {
     .handle = cpb_server_ev_listen_loop,
     .destroy = cpb_server_ev_destroy,
-} ;
+};
 
 void cpb_server_deinit(struct cpb_server *s) {
 

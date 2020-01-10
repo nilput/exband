@@ -8,8 +8,6 @@ enum cpb_event_http_cmd {
     CPB_HTTP_INIT,
     CPB_HTTP_READ,
     CPB_HTTP_SEND,
-    CPB_HTTP_HANDLE_HEADERS,
-    CPB_HTTP_HANDLE_BODY,
     CPB_HTTP_CLOSE,
 };
 

@@ -27,6 +27,7 @@ struct cpb_response_headers {
     int len;
 };
 struct cpb_response_state {
+    
     struct cpb_request_state *req_state; //not owned, must outlive
     enum cpb_http_response_state state;
     int status_code;
@@ -37,6 +38,7 @@ struct cpb_response_state {
     int headers_buff_len;
     int output_buff_len;
     char output_buff[HTTP_OUTPUT_BUFFER_SIZE];
+
 };
 
 static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req) {
@@ -50,6 +52,8 @@ static int cpb_response_state_init(struct cpb_response_state *resp_state, struct
     resp_state->headers_buff_len = 0;
     resp_state->written_bytes = 0;
     return CPB_OK;
+}
+static void cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb_request_state *req) {
 }
 //doesnt own name
 static int cpb_response_get_header_index(struct cpb_response_state *rsp, const char *s, int len) {

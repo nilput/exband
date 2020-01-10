@@ -21,3 +21,20 @@ To handle pipelined GET requests, and keep-alive connections, we can do the foll
            Response #4  [            ]
     Socket manager needs to have a queue of requests, whenever a response is ready it notifies it
     then in turn it sends responses (Response #4 can be ready before Response #3 but we wait for Response #3)
+
+on connection:
+   multiplexer = get_http_multiplexer(server, socket)
+   first_rqstate = new_request_state
+   multiplexer.add(first_rqstate)
+on connection closed:
+   destroy_http_multiplexer(server, socket)
+
+on request parsed and beginning of new request:
+   multiplexer = get_http_multiplexer(server, socket)
+   rqstate = fork_request_state(old_request_state)
+
+then stuff go on with the request, it's handled in
+the event loop, eventually being destroyed after response
+
+
+destroy_rqstate(rqstate)

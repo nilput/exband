@@ -3,7 +3,7 @@
 #include "../cpb_str.h"
 #include "http_response.h"
 #include <stdbool.h>
-#include <netinet/in.h>
+
 
 
 #define CPB_HTTP_HEADER_MAX 32
@@ -43,7 +43,6 @@ struct cpb_http_header_map {
 struct cpb_request_state {
     struct cpb_server *server; //not owned, must outlive
     int socket_fd;
-    struct sockaddr_in clientname;
     int input_buffer_len;
     bool is_chunked;
     bool is_persistent; //Not persistent when: 
@@ -62,18 +61,23 @@ struct cpb_request_state {
 
     char input_buffer[HTTP_INPUT_BUFFER_SIZE];
     struct cpb_response_state resp;
+
+    //only relevant when used as a linked list
+    struct cpb_request_state * next_rqstate;
 };
 
 void cpb_request_repr(struct cpb_request_state *rqstate);
 
-static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
-    rqstate->clientname = clientname;
+static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_server *s, int socket_fd) {
     rqstate->socket_fd = socket_fd;
     rqstate->server = s;
     rqstate->input_buffer_len = 0;
     rqstate->istate = CPB_HTTP_I_ST_INIT;
     rqstate->pstate = CPB_HTTP_P_ST_INIT;
     cpb_response_state_init(&rqstate->resp, rqstate);
+}
+static void cpb_request_state_deinit(struct cpb_request_state *rqstate) {
+    cpb_response_state_deinit(&rqstate->resp, rqstate);
 }
 
 

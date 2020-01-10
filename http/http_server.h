@@ -4,6 +4,7 @@
 
 #include "../cpb_errors.h"
 #include "http_request.h"
+#include "http_socket_multiplexer.h"
 
 
 #define LISTEN_BACKLOG 16
@@ -39,12 +40,26 @@ struct cpb_server {
     fd_set read_fd_set;
     fd_set write_fd_set;
     
-    int nrequests;
-    struct cpb_request_state requests[CPB_SOCKET_MAX];
+    struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
 };
+
+/*
+single socket -> multiple concurrent requests
+        #1 [GET] Read and parsed, responded, ended
+        #2 [GET] Read and parsed, not responded         (current writing rqstate)
+        #2 [GET] Read and parsed, not responded         (current writing rqstate + 1)
+        ...
+        ...
+        #N [POST] Reading, wasn't parsed yet, or parsed and is reading [POST] body, not responded (current reading rqstate)
+*/
+struct cpb_request_state *cpb_server_current_reading_rqstate(struct cpb_server *server, int socketfd);
+struct cpb_request_state *cpb_server_current_writing_rqstate(struct cpb_server *server, int socketfd);
+
+struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, int socket_fd);
+void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate);
 
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd);
-int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate));
+int  cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate));
 void cpb_server_deinit(struct cpb_server *s);
