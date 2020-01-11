@@ -63,3 +63,6 @@ struct cpb_error cpb_server_listen(struct cpb_server *s);
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd);
 int  cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate));
 void cpb_server_deinit(struct cpb_server *s);
+
+struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);
+int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname);

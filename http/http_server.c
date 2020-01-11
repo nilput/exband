@@ -77,7 +77,7 @@ struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, stru
 }
 
 
-static struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd) 
+struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd) 
 {
     if (socket_fd > CPB_SOCKET_MAX)
         return NULL;
@@ -98,7 +98,7 @@ void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_st
     cpb_request_state_deinit(rqstate);
 }
 
-static int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
+int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
     
     fcntl(socket_fd, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state */
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
@@ -114,10 +114,13 @@ static int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, stru
             ntohs (clientname.sin_port));
     
     FD_SET(socket_fd, &s->active_fd_set);
-    struct cpb_event ev;
     mp->creading = rqstate;
+    cpb_http_multiplexer_queue_response(mp, rqstate);
+    
+    struct cpb_event ev;
     cpb_event_http_init(&ev, socket_fd, CPB_HTTP_INIT, rqstate);
     cpb_eloop_append(s->eloop, ev);
+    return CPB_OK;
 }
 
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
@@ -169,12 +172,13 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         if (i == s->listen_socket_fd)
             continue;
         struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, i);
+        
         if (FD_ISSET(i, &s->read_fd_set)) 
         {
             /* Data arriving on an already-connected socket. */
             struct cpb_event ev;
             cpb_assert_h(m && m->state == CPB_MP_ACTIVE, "");
-            cpb_assert_h(m->creading, "");
+            cpb_assert_h(!!m->creading, "");
             cpb_event_http_init(&ev, i, CPB_HTTP_READ, m->creading);
             cpb_eloop_append(s->eloop, ev);
         

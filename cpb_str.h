@@ -259,7 +259,7 @@ static int cpb_strl_eq(const char *a, size_t alen, const char *b, size_t blen) {
 
 //doesnt work on binary strings
 static int cpb_strcasel_eq(const char *a, size_t alen, const char *b, size_t blen) {
-    return alen == blen && (strcasecmp(a, b) == 0);
+    return alen == blen && (strncasecmp(a, b, alen) == 0);
 }
 //boolean
 static int cpb_str_streqc(struct cpb *cpb, struct cpb_str *str, const char *src0) {

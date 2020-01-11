@@ -44,6 +44,37 @@ int cpb_itoa(char *dest, int dest_size, int *written, int num) {
     *written = rv;
     return CPB_OK;
 }
+int cpb_atoi(char *str, int len, int *dest) {
+    char *end = NULL;
+    long value = strtol(str, &end, 10);
+    if (end == str) {
+        *dest = 0;
+        return CPB_INVALID_INT_ERR;
+    }
+    *dest = value;
+    return CPB_OK;
+}
+int cpb_atoi_hex(char *str, int len, int *dest) {
+    char *end = NULL;
+    long value = strtol(str, &end, 10);
+    if (end == str) {
+        *dest = 0;
+        return CPB_INVALID_INT_ERR;
+    }
+    *dest = value;
+    return CPB_OK;
+}
+//returns length of read bytes, 0 means error
+int cpb_atoi_hex_rlen(char *str, int len, int *dest) {
+    char *end = NULL;
+    long value = strtol(str, &end, 10);
+    if (end == str) {
+        *dest = 0;
+        return 0;
+    }
+    *dest = value;
+    return end - str;
+}
 int cpb_str_itoa(struct cpb *cpb, struct cpb_str *str, int num) {
     if (str->cap < 32) {
         int rv = cpb_str_set_cap(cpb, str, 32);

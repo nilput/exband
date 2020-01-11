@@ -5,7 +5,8 @@
 
 extern struct cpb_event_handler_itable cpb_event_handler_http_itable;
 enum cpb_event_http_cmd {
-    CPB_HTTP_INIT,
+    CPB_HTTP_INIT, //just initialized with no data
+    CPB_HTTP_CONTINUE, //forked in a perisstent connection
     CPB_HTTP_READ,
     CPB_HTTP_SEND,
     CPB_HTTP_CLOSE,

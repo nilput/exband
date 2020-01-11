@@ -1,5 +1,7 @@
 #include "http_request.h"
 #include "../cpb_utils.h"
+#include "../cpb_str.h"
+#include <ctype.h>
 #include <stdio.h>
 
 //str name is not owned by func
@@ -59,8 +61,67 @@ static int cpb_str_is_just_preceeded_by_crlf(char *s, int idx, int len) {
     return idx >= 2 && s[idx-2] == '\r' && s[idx-1] == '\n';
 }
 
+static void process_relevant_header(struct cpb_request_state *rqstate, char *ibuff, struct cpb_str_slice key, struct cpb_str_slice value, int idx) {
+    if (cpb_strcasel_eq(ibuff + key.index, key.len, "Content-Length", 14)) {
+        rqstate->headers.h_content_length_idx = idx;
+    }
+    else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Transfer-Encoding", 17)) {
+        rqstate->headers.h_transfer_encoding_idx = idx;
+    }
+    else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Connection", 10)) {
+        rqstate->headers.h_connection_idx = idx;
+    }
+}
 
-static int cpb_request_http_parse(struct cpb_request_state *rqstate) {
+static void cpb_unknown_standard_header_value(struct cpb_request_state *rqstate, int header_idx) {
+
+}
+
+static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqstate) {
+    cpb_assert_s(rqstate->is_chunked, "");
+    char *ibuff = rqstate->input_buffer;
+    int ibuff_len = rqstate->input_buffer_len;
+    if (rqstate->pstate != CPB_HTTP_P_ST_IN_CHUNKED_BODY) {
+        return CPB_INVALID_STATE_ERR;
+    }
+    
+    while (rqstate->parse_chunk_cursor < ibuff_len) {
+        
+        int chunk_len;
+        int chunk_digits_len = cpb_atoi_hex_rlen(ibuff     + rqstate->parse_chunk_cursor,
+                                                 ibuff_len - rqstate->parse_chunk_cursor,
+                                                 &chunk_len);
+        if (chunk_digits_len == 0) {
+            return CPB_HTTP_ERROR;
+        }
+        int chunk_begin_idx = rqstate->parse_chunk_cursor + chunk_digits_len + 2; //2 for crlf
+        int chunk_end_idx   = chunk_begin_idx + chunk_len;
+        
+        
+        if ((chunk_end_idx + 2) > ibuff_len)
+            return CPB_OK; //haven't read enough for after-data crlf
+        if (memcmp(ibuff+rqstate->parse_chunk_cursor + chunk_digits_len, "\r\n", 2) != 0) {
+            return CPB_HTTP_ERROR;
+        }
+        if (chunk_len == 0) {
+            if ((chunk_end_idx + 4) > ibuff_len)
+                return CPB_OK; //havent read enough for the final crlfcrlf
+            if (memcmp(ibuff+rqstate->parse_chunk_cursor + chunk_digits_len, "\r\n\r\n", 4) != 0)
+                return CPB_HTTP_ERROR;
+            rqstate->pstate = CPB_HTTP_P_ST_DONE;
+            rqstate->istate = CPB_HTTP_I_ST_DONE;
+            rqstate->next_request_cursor = chunk_end_idx + 4;
+        }
+        rqstate->parse_chunk_cursor = chunk_end_idx + 2;
+
+        //TODO: this data probably shouldn't be stored in the input buffer, ALSO it should be used (streamed to handler or smth.) or discard
+        //Depending on rqstate->body_handling
+        //Currently we're discarding it, but also saving it to the input buffer due to how naive our reads are
+    }
+    return CPB_OK;
+}
+
+static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate) {
     char *ibuff   =  rqstate->input_buffer;
     int ibuff_len =  rqstate->input_buffer_len;
     
@@ -70,20 +131,53 @@ static int cpb_request_http_parse(struct cpb_request_state *rqstate) {
 
     int first_space = cpb_str_next_lws(ibuff, 0, line_len);
     if (first_space == -1)
-        return CPB_HTTP_ERROR;
+        return cpb_make_error(CPB_HTTP_ERROR);
     rqstate->method_s.index = 0;
     rqstate->method_s.len = first_space;
+
+    //TODO: optimize
+    struct method_lookup { int method; char *name; int namelen; };
+    struct method_lookup methods_lookup[] = {
+        {CPB_HTTP_M_HEAD,     "head",    4},
+        {CPB_HTTP_M_GET,      "get",     3},
+        {CPB_HTTP_M_POST,     "post",    4},
+        {CPB_HTTP_M_PUT,      "put",     3},
+        {CPB_HTTP_M_PATCH,    "patch",   5},
+        {CPB_HTTP_M_DELETE,   "delete",  6},
+        {CPB_HTTP_M_TRACE,    "trace",   5},
+        {CPB_HTTP_M_OPTIONS,  "options", 7},
+    };
+    int methods_lookup_len = sizeof(methods_lookup) / sizeof(struct method_lookup);
+    rqstate->method = CPB_HTTP_M_OTHER;
+    for (int i=0; i<methods_lookup_len; i++) {
+        if (cpb_strcasel_eq(ibuff + rqstate->method_s.index, rqstate->method_s.len, methods_lookup[i].name, methods_lookup[i].namelen)) {
+            rqstate->method = methods_lookup[i].method;
+            break;
+        }
+    }
+    
     rqstate->path_s.index = cpb_str_next_nonws(ibuff, first_space, ibuff_len, 1);
     if (rqstate->path_s.index == -1)
-        return CPB_HTTP_ERROR;
+        return cpb_make_error(CPB_HTTP_ERROR);
     int second_space = cpb_str_next_lws(ibuff, rqstate->path_s.index, line_len - rqstate->path_s.index);
     if (second_space == -1)
-        return CPB_HTTP_ERROR;
+        return cpb_make_error(CPB_HTTP_ERROR);
     rqstate->path_s.len = second_space - rqstate->path_s.index;
     rqstate->version_s.index = cpb_str_next_nonws(ibuff, second_space, line_len - second_space, 1);
     if (rqstate->version_s.index == -1)
-        return CPB_HTTP_ERROR;
+        return cpb_make_error(CPB_HTTP_ERROR);
     rqstate->version_s.len = line_len - rqstate->version_s.index;
+    if ( rqstate->version_s.len < 8                                       ||
+        !cpb_strcasel_eq(ibuff + rqstate->version_s.index, 5, "HTTP/", 5) ||
+        !isdigit(ibuff[rqstate->version_s.index + 5])                     ||
+         ibuff[rqstate->version_s.index + 6] != '.'                       ||
+        !isdigit(ibuff[rqstate->version_s.index + 7])                       )
+    {
+        return cpb_make_error(CPB_HTTP_ERROR);
+    }
+    //http/x.x
+    rqstate->http_major = ibuff[rqstate->version_s.index+1] - '0';
+    rqstate->http_minor = ibuff[rqstate->version_s.index+2] - '0';
 
     
 
@@ -96,7 +190,7 @@ static int cpb_request_http_parse(struct cpb_request_state *rqstate) {
         int line_end_idx = cpb_memmem(ibuff, idx, ibuff_len, "\r\n", 2);
         if (line_end_idx == -1) {
             //error
-            return CPB_HTTP_ERROR;
+            return cpb_make_error(CPB_HTTP_ERROR);
         }
         int colon_idx = cpb_memmem(ibuff, idx, line_end_idx - idx, ":", 1);
         if (colon_idx == -1) {
@@ -106,22 +200,64 @@ static int cpb_request_http_parse(struct cpb_request_state *rqstate) {
         struct cpb_str_slice value = {colon_idx+1, line_end_idx - colon_idx - 1};
         idx = line_end_idx + 2; //skip crlf
         if (n_headers > CPB_HTTP_HEADER_MAX) {
-            return CPB_OUT_OF_RANGE_ERR;
+            return cpb_make_error(CPB_HTTP_ERROR);
         }
         rqstate->headers.headers[n_headers].key = key; 
         rqstate->headers.headers[n_headers].value = value;
         n_headers++;
+        process_relevant_header(rqstate, ibuff, key, value, n_headers-1);
     }
     rqstate->headers.len = n_headers;
     cpb_assert_s(cpb_str_is_just_preceeded_by_crlf(ibuff, idx, ibuff_len), "");
     if (cpb_memmem(ibuff, idx, ibuff_len, "\r\n", 2) != idx) //crlfcrlf
-        return CPB_HTTP_ERROR;
+        return cpb_make_error(CPB_HTTP_ERROR);
     rqstate->headers_s.index = headers_begin;
     rqstate->headers_s.len = idx - rqstate->headers_s.index - 2;
+    rqstate->body_s.index = idx + 2; //after the crlf
+
+    if (rqstate->http_minor == 0)
+        rqstate->is_persistent = 0;
+    else if (rqstate->http_minor == 1)
+        rqstate->is_persistent = 1;
+    
+    if (rqstate->headers.h_connection_idx != -1) {
+        struct cpb_str_slice value = rqstate->headers.headers[rqstate->headers.h_connection_idx].value;
+        if (cpb_strcasel_eq(ibuff + value.index, value.len, "close", 5)) {
+            rqstate->is_persistent = 0;
+        }
+        else if (cpb_strcasel_eq(ibuff + value.index, value.len, "keep-alive", 10)) {
+            rqstate->is_persistent = 1;
+        }
+        else {
+            cpb_unknown_standard_header_value(rqstate, rqstate->headers.h_connection_idx);
+        }
+    }
+    if (rqstate->headers.h_content_length_idx != -1) {
+        struct cpb_str_slice value = rqstate->headers.headers[rqstate->headers.h_content_length_idx].value;
+        int len;
+        int err = cpb_atoi(ibuff + value.index, value.len, &len);
+        if (err != CPB_OK || len < 0) {
+            return cpb_make_error(CPB_HTTP_ERROR);
+        }
+        rqstate->content_length = len;
+        rqstate->body_s.len = len;
+    }
+    if (rqstate->headers.h_transfer_encoding_idx != -1) {
+        struct cpb_str_slice value = rqstate->headers.headers[rqstate->headers.h_transfer_encoding_idx].value;
+        if (cpb_strcasel_eq(ibuff + value.index, value.len, "identity", 8)) {
+            rqstate->is_chunked = 0;
+        }
+        else if (cpb_strcasel_eq(ibuff + value.index, value.len, "chunked", 7)) {
+            rqstate->is_chunked = 1;
+        }
+        else {
+            cpb_unknown_standard_header_value(rqstate, rqstate->headers.h_transfer_encoding_idx);
+        }
+    }
     
     rqstate->pstate = CPB_HTTP_P_ST_PARSED_HEADERS;
 
     cpb_request_repr(rqstate);
     
-    return CPB_OK;
+    return cpb_make_error(CPB_OK);
 }

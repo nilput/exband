@@ -70,7 +70,7 @@ int cpb_response_end(struct cpb_response_state *rsp) {
     }
     int rv;
     
-    struct cpb_str name, value;
+    struct cpb_str name;
     cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Content-Length");
     int body_len = rsp->output_buff_len;
     struct cpb_str body_len_str;
@@ -96,8 +96,19 @@ int cpb_response_end(struct cpb_response_state *rsp) {
 
     rsp->state = CPB_HTTP_R_ST_SENDING;
 
-    struct cpb_event ev;
-    cpb_event_http_init(&ev, rsp->req_state->socket_fd, CPB_HTTP_SEND, rsp->req_state);
-    rv = cpb_eloop_append(rsp->req_state->server->eloop, ev);
+    
+    //TODO: Why not do that directly
+    struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(rsp->req_state->server, rsp->req_state->socket_fd);
+    if (m->next_response == rsp->req_state) {
+        //TODO: will it be an issue if this gets scheduled twice? 
+        //  [Whatever event we are on] -> we schedule this here
+        //  [select() event] -> schedules this too
+        //  [First  time scheduled]
+        //  [Second time scheduled]
+        struct cpb_event ev;
+        cpb_event_http_init(&ev, rsp->req_state->socket_fd, CPB_HTTP_SEND, rsp->req_state);
+        rv = cpb_eloop_append(rsp->req_state->server->eloop, ev);
+    }
+
     return rv;
 }

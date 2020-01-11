@@ -14,6 +14,7 @@
     CPBEF(CPB_BIND_ERR) \
     CPBEF(CPB_OUT_OF_RANGE_ERR) \
     CPBEF(CPB_INVALID_STATE_ERR) \
+    CPBEF(CPB_INVALID_INT_ERR) \
     CPBEF(CPB_LISTEN_ERR) \
     CPBEF(CPB_HTTP_ERROR) \
     CPBEF(CPB_INVALID_ARG_ERR) \
@@ -39,8 +40,13 @@ struct cpb_error {
     int error_code;
     void *details;
 };
+static void cpb_error_debug() {
+    return;
+}
 static struct cpb_error cpb_make_error(int error_code) {
     struct cpb_error err;
+    if (error_code != CPB_OK) cpb_error_debug();
+
     err.details = NULL;
     err.error_code = error_code;
     return err;
