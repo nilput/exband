@@ -109,12 +109,13 @@ static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqs
             return CPB_HTTP_ERROR;
         }
         if (chunk_len == 0) {
-            if ((chunk_end_idx + 4) > ibuff_len)
+            if ((chunk_end_idx + 2) > ibuff_len)
                 return CPB_OK; //havent read enough for the final crlfcrlf
-            if (memcmp(ibuff+rqstate->parse_chunk_cursor + chunk_digits_len, "\r\n\r\n", 4) != 0)
+            //here chunk_begin == chunk_end
+            if (memcmp(ibuff+chunk_end_idx, "\r\n", 2) != 0)
                 return CPB_HTTP_ERROR;
             rqstate->pstate = CPB_HTTP_P_ST_DONE;
-            rqstate->next_request_cursor = chunk_end_idx + 4;
+            rqstate->next_request_cursor = chunk_end_idx + 2;
         }
         rqstate->parse_chunk_cursor = chunk_end_idx + 2;
 
@@ -212,12 +213,23 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
         }
         struct cpb_str_slice key = {idx, colon_idx - idx};
         struct cpb_str_slice value = {colon_idx+1, line_end_idx - colon_idx - 1};
+
+        int nonws = cpb_str_next_nonws(ibuff, value.index, value.len, 1);
+        if (nonws != -1) {
+            value.len -= nonws - value.index;
+            value.index = nonws;
+        }
+        
+
         idx = line_end_idx + 2; //skip crlf
         if (n_headers > CPB_HTTP_HEADER_MAX) {
             return cpb_make_error(CPB_HTTP_ERROR);
         }
         rqstate->headers.headers[n_headers].key = key; 
         rqstate->headers.headers[n_headers].value = value;
+
+        
+
         n_headers++;
         process_relevant_header(rqstate, ibuff, key, value, n_headers-1);
     }

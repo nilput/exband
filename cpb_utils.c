@@ -56,7 +56,7 @@ int cpb_atoi(char *str, int len, int *dest) {
 }
 int cpb_atoi_hex(char *str, int len, int *dest) {
     char *end = NULL;
-    long value = strtol(str, &end, 10);
+    long value = strtol(str, &end, 16);
     if (end == str) {
         *dest = 0;
         return CPB_INVALID_INT_ERR;
@@ -67,7 +67,7 @@ int cpb_atoi_hex(char *str, int len, int *dest) {
 //returns length of read bytes, 0 means error
 int cpb_atoi_hex_rlen(char *str, int len, int *dest) {
     char *end = NULL;
-    long value = strtol(str, &end, 10);
+    long value = strtol(str, &end, 16);
     if (end == str) {
         *dest = 0;
         return 0;
