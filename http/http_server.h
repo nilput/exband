@@ -1,3 +1,6 @@
+#ifndef CPB_HTTP_SERVER_H
+#define CPB_HTTP_SERVER_H
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h> //fdset
@@ -29,11 +32,15 @@ define_cpb_or(int, struct cpb_or_socket);
 
 */
 
+enum cpb_request_handler_reason {
+    CPB_HTTP_HANDLER_HEADERS,
+    CPB_HTTP_HANDLER_BODY,
+};
 
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_eloop *eloop; //not owned, must outlive
-    void (*request_handler)(struct cpb_request_state *rqstate);
+    void (*request_handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason);
     int port;
     int listen_socket_fd;
     fd_set active_fd_set;
@@ -61,8 +68,10 @@ void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_st
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd);
-int  cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate));
+int  cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason));
 void cpb_server_deinit(struct cpb_server *s);
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);
 int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname);
+
+#endif //CPB_HTTP_SERVER_H

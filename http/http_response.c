@@ -7,7 +7,7 @@ int cpb_response_send(struct cpb_response_state *rsp) {
     if (rsp->state != CPB_HTTP_R_ST_SENDING)
         return CPB_INVALID_STATE_ERR;
     int header_bytes = rsp->headers_buff_len;
-    int body_bytes   = rsp->headers_buff_len;
+    int body_bytes   = rsp->output_buff_len;
     int total_bytes  = header_bytes + body_bytes;
     if (rsp->written_bytes < total_bytes) {
         if (rsp->written_bytes < header_bytes) {
@@ -83,9 +83,19 @@ int cpb_response_end(struct cpb_response_state *rsp) {
 
     //TODO: Support persistent connections
     //
-    //cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-    //cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
-    //rv = cpb_response_set_header(rsp, &name, &value);
+    
+    if (!rsp->req_state->is_persistent) {
+        struct cpb_str name, value;
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
+        rv = cpb_response_set_header(rsp, &name, &value);
+    }
+    else if (rsp->req_state->http_minor == 0) {
+        struct cpb_str name, value;
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "keep-alive");
+        rv = cpb_response_set_header(rsp, &name, &value);
+    }
     if (rv != CPB_OK) {
         return rv;
     }

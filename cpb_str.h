@@ -54,7 +54,7 @@ static int cpb_str_init(struct cpb *cpb, struct cpb_str *str) {
     (void) cpb;
     str->str = "";
     str->cap = -1;
-    str->len = 1;
+    str->len = 0;
     return CPB_OK;
 }
 

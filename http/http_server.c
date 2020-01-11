@@ -43,7 +43,7 @@ static struct cpb_or_socket make_socket (uint16_t port)
     return rv;
 }
 
-static void default_handler(struct cpb_request_state *rqstate) {
+static void default_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
     cpb_response_append_body(&rqstate->resp, "Not found\r\n", 11);
     cpb_response_end(&rqstate->resp);
 }
@@ -91,11 +91,11 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, int 
         return NULL;
     }
     struct cpb_request_state *st = p;
-    cpb_request_state_init(st, server, socket_fd);
+    cpb_request_state_init(st, server->cpb, server, socket_fd);
     return st;
 }
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate) {
-    cpb_request_state_deinit(rqstate);
+    cpb_request_state_deinit(rqstate, server->cpb);
 }
 
 int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
@@ -229,7 +229,7 @@ void cpb_server_deinit(struct cpb_server *s) {
 
 }
 
-int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate)) {
+int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason)) {
     s->request_handler = handler;
     return CPB_OK;
 }

@@ -31,8 +31,7 @@ enum cpb_http_input_state {
 };
 enum cpb_http_parse_state {
     CPB_HTTP_P_ST_INIT,
-    CPB_HTTP_P_ST_PARSED_HEADERS,
-    CPB_HTTP_P_ST_IN_CHUNKED_BODY,
+    CPB_HTTP_P_ST_IN_CHUNKED_BODY, //Already Parsed headers
     CPB_HTTP_P_ST_DONE,
 };
 
@@ -84,6 +83,8 @@ struct cpb_request_state {
     struct cpb_str_slice status_s; //excluding its crlf
     struct cpb_str_slice headers_s; //excluding status's crlf and excluding final crlfcrlf
     struct cpb_str_slice body_s; //beginning after crlfcrlf
+    
+    struct cpb_str body_decoded; //TODO: temporary, get rid of this, currently we copy the body to this no matteer what encoding
 
     
     struct cpb_response_state resp;
@@ -105,7 +106,9 @@ static int cpb_request_input_buffer_size(struct cpb_request_state *rqstate) {
     return HTTP_INPUT_BUFFER_SIZE;
 }
 
-static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_server *s, int socket_fd) {
+static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
+    rqstate->is_chunked = 0;
+    rqstate->is_persistent = 0;
     rqstate->socket_fd = socket_fd;
     rqstate->server = s;
     rqstate->input_buffer_len = 0;
@@ -118,6 +121,7 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     rqstate->headers.h_connection_idx     = -1;
     rqstate->headers.h_content_length_idx = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
+    cpb_str_init(cpb, &rqstate->body_decoded);
     cpb_response_state_init(&rqstate->resp, rqstate);
 }
 
@@ -127,7 +131,8 @@ static int cpb_request_body_bytes_read(struct cpb_request_state *rqstate) {
 }
 
 
-static void cpb_request_state_deinit(struct cpb_request_state *rqstate) {
+static void cpb_request_state_deinit(struct cpb_request_state *rqstate, struct cpb *cpb) {
+    cpb_str_deinit(cpb, &rqstate->body_decoded);
     cpb_response_state_deinit(&rqstate->resp, rqstate);
 }
 

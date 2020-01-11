@@ -23,137 +23,11 @@ static void cpb_request_handle_fatal_error(struct cpb_request_state *rqstate) {
     abort();
 }
 
-static void cpb_request_call_handler(struct cpb_request_state *rqstate) {
-    rqstate->server->request_handler(rqstate);
+static void cpb_request_call_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
+    rqstate->server->request_handler(rqstate, reason);
 }
 
-
-struct cpb_error cpb_request_on_headers_read(struct cpb_request_state *rqstate) {
-    struct cpb_error err  = cpb_request_http_parse(rqstate);
-    if (err.error_code != CPB_OK) {
-        cpb_request_handle_http_error(rqstate);
-        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
-        return err;
-        
-    }
-    int rv = cpb_request_http_check_validity(rqstate);
-    if (rv != CPB_OK) {
-        cpb_request_handle_http_error(rqstate);
-        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
-        return cpb_make_error(rv);
-    }
-    if (rqstate->is_chunked) {
-        rqstate->parse_chunk_cursor = rqstate->body_s.index; //first chunk
-    }
-    /*
-    Here we parsed the headers, and:
-        There is no body:
-            proceed
-        There is a body:
-            one of:
-                We could've read the entire body
-                we could've partially/read none of the body
-            one of:
-                We could be getting a chunked POST                        
-                We could be getting a request with content length
-    if it's a persistent connection:
-        if there is no body or the body completed:
-            Fork request into a new one and start parsing
-    Otherwise:
-        if there is a body:
-            read it and call handler again if it didn't send a response yet
-        close connection
-        
-    */
-
-    if (cpb_request_has_body(rqstate)) {
-        rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_BODY;
-        if (rqstate->is_chunked) {
-            rqstate->pstate = CPB_HTTP_P_ST_IN_CHUNKED_BODY;
-        }
-        else {
-            cpb_assert_h(rqstate->headers.h_content_length_idx != -1 && rqstate->content_length >= 0, "");
-            rqstate->pstate = CPB_HTTP_P_ST_DONE;
-            if (cpb_request_body_bytes_read(rqstate) >= rqstate->content_length) {
-                rqstate->istate = CPB_HTTP_I_ST_DONE;
-                rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length;
-            }
-            
-        }
-        
-    }
-    else {
-        rqstate->pstate = CPB_HTTP_P_ST_DONE;
-        rqstate->istate = CPB_HTTP_I_ST_DONE;
-        rqstate->next_request_cursor = rqstate->body_s.index;
-    }
-    return cpb_make_error(CPB_OK);
-}
-
-
-//assumes rqstate->input_buffer_len is already adjusted for new bytes
-struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, int index, int nbytes) {
-    struct cpb_error err = {0};
-    int just_completed_headers = 0; //booleans
-    int just_completed_body    = 0;
-    int scan_idx = index - 3;
-    scan_idx = scan_idx < 0 ? 0 : scan_idx;
-    int scan_len = index + nbytes;
-    
-    fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
-
-    if (rqstate->istate == CPB_HTTP_I_ST_INIT)
-        rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_HEADERS;
-    
-    if (rqstate->pstate == CPB_HTTP_P_ST_INIT ) 
-    {
-        if (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
-            err = cpb_request_on_headers_read(rqstate);
-            if (err.error_code != CPB_OK)
-                return err;
-            just_completed_headers = 1;
-            just_completed_body = rqstate->istate == CPB_HTTP_I_ST_DONE;
-            if (rqstate->pstate == CPB_HTTP_P_ST_IN_CHUNKED_BODY)
-                goto chunked;
-        }
-    }
-    else if (rqstate->pstate == CPB_HTTP_P_ST_IN_CHUNKED_BODY ) 
-    {
-        if (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
-            int rv;
-        chunked:
-            rv = cpb_request_http_parse_chunked_encoding(rqstate);
-            if (rv != CPB_OK) {
-                return cpb_make_error(rv);
-            }
-            just_completed_body = cpb_request_is_chunked_body_complete(rqstate);
-        }
-    }
-    else {
-        if (rqstate->istate == CPB_HTTP_I_ST_WAITING_FOR_BODY) {
-            cpb_assert_h(rqstate->pstate == CPB_HTTP_P_ST_DONE, "");
-            if (cpb_request_body_bytes_read(rqstate) >= rqstate->content_length) {
-                rqstate->istate = CPB_HTTP_I_ST_DONE;
-                rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length;
-                /*TODO: call handler*/
-            }
-
-        }
-        else {
-            //TODO: ensure not possible
-            //This will happen if we forked a request and a READ cmd was done before it, scheduling ths old one in the event loop
-            fprintf(stderr, "read to wrong request");
-            //cpb_server_fatal_error();
-            cpb_assert_h(0, "");
-        }
-    }
-    if (just_completed_headers || just_completed_body) {
-        cpb_request_call_handler(rqstate);
-    }
-
-    return cpb_make_error(CPB_OK);
-}
-
+struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, int index, int nbytes); //fwd
 
 static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
     struct cpb_server *s = rqstate->server;
@@ -188,6 +62,128 @@ static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
 }
 
 
+struct cpb_error cpb_request_on_headers_read(struct cpb_request_state *rqstate) {
+    struct cpb_error err  = cpb_request_http_parse(rqstate);
+    if (err.error_code != CPB_OK) {
+        cpb_request_handle_http_error(rqstate);
+        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
+        return err;
+        
+    }
+    int rv = cpb_request_http_check_validity(rqstate);
+    if (rv != CPB_OK) {
+        cpb_request_handle_http_error(rqstate);
+        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
+        return cpb_make_error(rv);
+    }
+    if (rqstate->is_chunked) {
+        rqstate->parse_chunk_cursor = rqstate->body_s.index; //first chunk
+    }
+
+    return cpb_make_error(CPB_OK);
+}
+
+
+//assumes rqstate->input_buffer_len is already adjusted for new bytes
+struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, int index, int nbytes) {
+    struct cpb_error err = {0};
+    rqstate->bytes_read += nbytes;
+    int scan_idx = index - 3;
+    scan_idx = scan_idx < 0 ? 0 : scan_idx;
+    int scan_len = index + nbytes;
+    
+    fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
+
+    if (rqstate->istate == CPB_HTTP_I_ST_DONE)
+        return cpb_make_error(CPB_INVALID_STATE_ERR);
+
+    if (rqstate->istate == CPB_HTTP_I_ST_INIT)
+        rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_HEADERS;
+    
+    if (rqstate->istate == CPB_HTTP_I_ST_WAITING_FOR_HEADERS )
+    {
+        if (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
+            err = cpb_request_on_headers_read(rqstate);
+            if (err.error_code != CPB_OK)
+                return err;
+            cpb_request_call_handler(rqstate, CPB_HTTP_HANDLER_HEADERS);
+        
+            rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_BODY;
+        }
+    }
+    if (rqstate->istate == CPB_HTTP_I_ST_WAITING_FOR_BODY ) 
+    {
+        cpb_assert_h(rqstate->pstate == CPB_HTTP_P_ST_DONE || rqstate->pstate == CPB_HTTP_P_ST_IN_CHUNKED_BODY, "");
+        if (!cpb_request_has_body(rqstate)) {
+            rqstate->istate = CPB_HTTP_I_ST_DONE;
+        }
+        else if (rqstate->is_chunked && (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len))) {
+            int rv = cpb_request_http_parse_chunked_encoding(rqstate);
+            if (rv != CPB_OK) {
+                return cpb_make_error(rv);
+            }
+            if (cpb_request_is_chunked_body_complete(rqstate)) {
+                rqstate->istate = CPB_HTTP_I_ST_DONE;
+            }
+        }
+        else if (cpb_request_body_bytes_read(rqstate) >= rqstate->content_length) {
+            if (rqstate->body_handling == CPB_HTTP_B_BUFFER) {
+                rqstate->istate = CPB_HTTP_I_ST_DONE;
+                rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length;
+                int rv = cpb_str_strlappend(rqstate->server->cpb, &rqstate->body_decoded, rqstate->input_buffer + rqstate->body_s.index, rqstate->content_length);
+                if (rv != CPB_OK) {
+                    return cpb_make_error(rv);
+                }
+            }
+            else {
+                cpb_assert_h(rqstate->body_handling == CPB_HTTP_B_DISCARD, "");
+            }
+            rqstate->istate = CPB_HTTP_I_ST_DONE;
+        }
+    }
+    
+    if (rqstate->istate == CPB_HTTP_I_ST_DONE) {
+        cpb_assert_h(rqstate->pstate == CPB_HTTP_P_ST_DONE, "");
+
+            if (cpb_request_has_body(rqstate)) {
+                if (rqstate->body_handling == CPB_HTTP_B_BUFFER) {
+                    cpb_request_call_handler(rqstate, CPB_HTTP_HANDLER_BODY);
+                }
+                else if (rqstate->body_handling != CPB_HTTP_B_DISCARD) {
+                    cpb_assert_h(0, "");
+                }
+                    
+                if (!rqstate->is_chunked) {
+                    rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length; 
+                    //otherwise rqstate->next_request_cursor is set during chunked parsing
+                }
+            }
+            else {
+                rqstate->next_request_cursor = rqstate->body_s.index;
+            }
+
+        if (rqstate->is_persistent) {
+            err = cpb_request_fork(rqstate);
+            if (err.error_code != CPB_OK) {
+                cpb_request_handle_fatal_error(rqstate);
+                return err;
+            }
+            /*TODO: Destroy request after response is sent*/
+        }
+        else {
+            //TODO: connection will be closed by handler after response is sent
+            /*TODO: Destroy request after response is sent*/
+        }
+    }
+    
+
+    
+
+    return cpb_make_error(CPB_OK);
+}
+
+
+
 /*This is not the only source of bytes the request has, see also cpb_request_fork*/
 struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket) {
     int avbytes = HTTP_INPUT_BUFFER_SIZE - rqstate->input_buffer_len - 1;
@@ -220,26 +216,16 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
             return err;   
     }
 
-    if (rqstate->istate != CPB_HTTP_I_ST_DONE && nbytes != 0) {
-        goto again;
+    if (rqstate->istate != CPB_HTTP_I_ST_DONE) {
+        if (nbytes != 0)
+            goto again;
     }
-    else if (rqstate->is_persistent) {
-        err = cpb_request_fork(rqstate);
-        if (err.error_code != CPB_OK) {
-            cpb_request_handle_fatal_error(rqstate);
-        }
-        return err;
-        /*TODO: Destroy request after response is sent*/
-    }
-    else {
-        if (nbytes == 0) {
-            /*TODO: This was closed by the client, check if it's valid*/
-            /*For example if we are waiting for a request body and connection was closed prematurely*/
-            rqstate->istate = CPB_HTTP_R_ST_DONE;
-            cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
-        }
-        //TODO: connection will be closed by handler after response is sent
-        /*TODO: Destroy request after response is sent*/
+    
+    if (nbytes == 0) {
+        /*TODO: This was closed by the client, check if it's valid*/
+        /*For example if we are waiting for a request body and connection was closed prematurely*/
+        rqstate->istate = CPB_HTTP_R_ST_DONE;
+        cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
     }
     return err;
 }
@@ -258,14 +244,19 @@ static void handle_http(struct cpb_event ev) {
         //Socket reached EOF
         cpb_server_close_connection(rqstate->server, socket_fd);
     }
-    else if (cmd == CPB_HTTP_SEND && rqstate->resp.state != CPB_HTTP_R_ST_DONE) {
-        int rv = cpb_response_send(&rqstate->resp);
-        if (rv != CPB_OK) {
-            cpb_request_handle_fatal_error(rqstate);
-            return;
+    else if (cmd == CPB_HTTP_SEND) {
+        if (rqstate->resp.state != CPB_HTTP_R_ST_DONE) {
+            int rv = cpb_response_send(&rqstate->resp);
+            if (rv != CPB_OK) {
+                cpb_request_handle_fatal_error(rqstate);
+                return;
+            }
+            if (rqstate->resp.state == CPB_HTTP_R_ST_DONE && !rqstate->is_persistent) {
+                //TODO destroy
+                cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
+            }
         }
     }
-
     else{
         cpb_assert_h(0, "invalid cmd");
     }

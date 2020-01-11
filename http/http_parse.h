@@ -1,4 +1,7 @@
+#ifndef CPB_HTTT_PARSE_H 
+#define CPB_HTTT_PARSE_H 
 #include "http_request.h"
+#include "http_server.h"
 #include "../cpb_utils.h"
 #include "../cpb_str.h"
 #include <ctype.h>
@@ -84,6 +87,9 @@ static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqs
     if (rqstate->pstate != CPB_HTTP_P_ST_IN_CHUNKED_BODY) {
         return CPB_INVALID_STATE_ERR;
     }
+    if (rqstate->istate != CPB_HTTP_I_ST_WAITING_FOR_BODY) {
+        return CPB_INVALID_STATE_ERR;
+    }
     
     while (rqstate->parse_chunk_cursor < ibuff_len) {
         
@@ -97,7 +103,6 @@ static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqs
         int chunk_begin_idx = rqstate->parse_chunk_cursor + chunk_digits_len + 2; //2 for crlf
         int chunk_end_idx   = chunk_begin_idx + chunk_len;
         
-        
         if ((chunk_end_idx + 2) > ibuff_len)
             return CPB_OK; //haven't read enough for after-data crlf
         if (memcmp(ibuff+rqstate->parse_chunk_cursor + chunk_digits_len, "\r\n", 2) != 0) {
@@ -109,14 +114,23 @@ static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqs
             if (memcmp(ibuff+rqstate->parse_chunk_cursor + chunk_digits_len, "\r\n\r\n", 4) != 0)
                 return CPB_HTTP_ERROR;
             rqstate->pstate = CPB_HTTP_P_ST_DONE;
-            rqstate->istate = CPB_HTTP_I_ST_DONE;
             rqstate->next_request_cursor = chunk_end_idx + 4;
         }
         rqstate->parse_chunk_cursor = chunk_end_idx + 2;
 
         //TODO: this data probably shouldn't be stored in the input buffer, ALSO it should be used (streamed to handler or smth.) or discard
         //Depending on rqstate->body_handling
-        //Currently we're discarding it, but also saving it to the input buffer due to how naive our reads are
+        //Currently we're in all cases saving it undecoded in input buffer, then discarding it, or accumulating it in ->decoded_body
+        if (rqstate->body_handling == CPB_HTTP_B_BUFFER) {
+            int rv = cpb_str_strlappend(rqstate->server->cpb, &rqstate->body_decoded, rqstate->input_buffer + chunk_begin_idx, chunk_len);
+            if (rv != CPB_OK) {
+                return rv;
+            }
+        }
+        else if (rqstate->body_handling != CPB_HTTP_B_DISCARD) {
+            cpb_assert_h(0, "");
+        }
+        
     }
     return CPB_OK;
 }
@@ -255,9 +269,19 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
         }
     }
     
-    rqstate->pstate = CPB_HTTP_P_ST_PARSED_HEADERS;
+    if (rqstate->is_chunked) {
+        rqstate->pstate = CPB_HTTP_P_ST_IN_CHUNKED_BODY;
+    }
+    else {
+        rqstate->pstate = CPB_HTTP_P_ST_DONE;
+    }
+        
+    
+    
 
     cpb_request_repr(rqstate);
     
     return cpb_make_error(CPB_OK);
 }
+
+#endif // CPB_HTTT_PARSE_H 
