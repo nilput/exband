@@ -3,7 +3,8 @@
 #include "cpb.h"
 #include "string.h"
 #include "cpb_utils.h"
-#define ELOOP_SLEEP_TIME 50
+#define ELOOP_SLEEP_TIME 5
+
 struct cpb_event; //fwd
 struct cpb_event_handler_itable {
     void (*handle)(struct cpb_event event);
@@ -22,6 +23,7 @@ struct cpb_event {
 struct cpb_delayed_event {
     double due; //unix time + delay
     struct cpb_event event;
+    unsigned char tolerate_preexec;
 };
 struct cpb_delayed_event_node {
     struct cpb_delayed_event cur;
@@ -46,13 +48,14 @@ struct cpb_eloop {
 //_d_ functions are for delayed events which are kept in a linked list
 //_q_ functions are for regular events which are kept in an array as a queue
 
-static int cpb_eloop_d_push(struct cpb_eloop *eloop, struct cpb_event event, double due) {
+static int cpb_eloop_d_push(struct cpb_eloop *eloop, struct cpb_event event, double due, int tolerate_prexec) {
     void *p = cpb_malloc(eloop->cpb, sizeof(struct cpb_delayed_event_node));
     if (!p)
         return CPB_NOMEM_ERR;
     struct cpb_delayed_event_node *node = p;
     node->cur.event = event;
     node->cur.due = due;
+    node->cur.tolerate_preexec = tolerate_prexec;
     if (eloop->devents == NULL || (eloop->devents->cur.due > node->cur.due)) {
         node->next = eloop->devents;
         eloop->devents = node;
@@ -67,7 +70,22 @@ static int cpb_eloop_d_push(struct cpb_eloop *eloop, struct cpb_event event, dou
     eloop->devents_len++;
     return CPB_OK;
 }
-
+static double cpb_eloop_time_until_due(struct cpb_delayed_event_node *ev) {
+    double cur_time = cpb_time();
+    if (ev->cur.due <= cur_time) {
+        return 0;
+    }
+    return ev->cur.due - cur_time;
+}
+static double cpb_eloop_sleep_till(struct cpb_eloop *eloop) {
+    struct cpb_delayed_event_node *at = eloop->devents;
+    const double min = (ELOOP_SLEEP_TIME / 1024);
+    if (!at) {
+        return min;
+    }
+    double till = cpb_eloop_time_until_due(at);
+    return till > min ? min : till;
+}
 
 static int cpb_eloop_q_len(struct cpb_eloop *eloop) {
     if (eloop->tail >= eloop->head) {
@@ -98,6 +116,24 @@ static int cpb_eloop_d_pop_next(struct cpb_eloop *eloop, struct cpb_event *ev_ou
     eloop->devents_len--;
     return CPB_OK;
 }
+//try to pop an event that doesn't have a problem with being executed prematurely
+static int cpb_eloop_d_pop_next_premature(struct cpb_eloop *eloop, struct cpb_event *ev_out) {
+    if (eloop->devents_len < 1)
+        return CPB_OUT_OF_RANGE_ERR;
+    
+    struct cpb_delayed_event_node *next = eloop->devents->next;
+    struct cpb_delayed_event_node *head = eloop->devents;
+    if (!head->cur.tolerate_preexec) { 
+        /*TODO, find ones other than head*/
+        /*Also, we can have multiple linked lists for this condition*/
+        return CPB_OUT_OF_RANGE_ERR;
+    }
+    *ev_out = head->cur.event;
+    cpb_free(eloop->cpb, head);
+    eloop->devents = next;
+    eloop->devents_len--;
+    return CPB_OK;
+}
 
 static int cpb_eloop_d_len(struct cpb_eloop *eloop) {
     return eloop->devents_len;
@@ -114,6 +150,7 @@ static int cpb_eloop_pop_next(struct cpb_eloop *eloop, double cpb_cur_time, stru
     }
     return cpb_eloop_q_pop_next(eloop, ev_out);
 }
+
 static int cpb_eloop_len(struct cpb_eloop *eloop) {
     return cpb_eloop_q_len(eloop) + cpb_eloop_d_len(eloop);
 }
@@ -182,28 +219,53 @@ static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
     return CPB_OK;
 }
 //copies event, [eventually calls ev->destroy()]
-static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev, int ms) {
-    return cpb_eloop_d_push(eloop, ev, cpb_time() + (ms / 1000.0));
+static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev, int ms, int tolerate_preexec) {
+    return cpb_eloop_d_push(eloop, ev, cpb_time() + (ms / 1024.0), tolerate_preexec);
 }
 
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
+    int ineffective_spins = 0;
     while (1) {
         struct cpb_event ev;
         double cur_time = cpb_time();
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
-        if (rv != CPB_OK) {
+        if (rv == CPB_OK) {
+            //handle event
+            ev.itable->handle(ev);
+            ev.itable->destroy(ev);
+        }
+        else {
             if (rv != CPB_OUT_OF_RANGE_ERR) {
                 //serious error
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
-            cpb_sleep(ELOOP_SLEEP_TIME);
+            if (ineffective_spins++ >= 5) {
+                ineffective_spins = 0;
+                dp_register_event("eloop_sleep");
+                cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
+                dp_end_event("eloop_sleep");
+            }
+            else {
+                rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
+                if (rv == CPB_OK) {
+                    int eloop_precount = cpb_eloop_len(eloop);
+                    ev.itable->handle(ev);
+                    ev.itable->destroy(ev);
+                    //criteria of what is ineffective
+                    if ((cpb_eloop_len(eloop) - eloop_precount) > 4) {
+                        ineffective_spins = 0;
+                    }
+                }
+                else if (rv != CPB_OUT_OF_RANGE_ERR) {
+                    struct cpb_error err = cpb_make_error(rv);
+                    return err;
+                }
+            }
             continue;
         }
-        //handle event
-        ev.itable->handle(ev);
-        ev.itable->destroy(ev);
+
     }
     
     return cpb_make_error(CPB_OK);

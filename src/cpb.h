@@ -3,6 +3,7 @@
 #define CPB_H
 #include "cpb_assert.h"
 #include "cpb_errors.h"
+#include "dbgperf/dbgperf.h"
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

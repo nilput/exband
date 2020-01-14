@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <fcntl.h> /* nonblocking sockets */
+#include <errno.h> 
 
 #include "../cpb_errors.h"
 #include "http_server.h"
@@ -132,9 +133,10 @@ void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
 
 struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
     struct cpb_error err = {0};
+    dp_register_event(__FUNCTION__);
     if (listen(s->listen_socket_fd, LISTEN_BACKLOG) < 0) { 
         err = cpb_make_error(CPB_LISTEN_ERR);
-        return err;
+        goto ret;
     }
 
     
@@ -143,7 +145,7 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
     struct timeval timeout = {0, 0}; //poll
     if (select(FD_SETSIZE, &s->read_fd_set, &s->write_fd_set, NULL, &timeout) < 0) {
         err = cpb_make_error(CPB_SELECT_ERR);
-        return err;
+        goto ret;
     }
 
     /* Service Connection requests. */
@@ -152,20 +154,27 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         int new_socket;
         struct sockaddr_in clientname;
         socklen_t size = sizeof(&clientname);
-        new_socket = accept(s->listen_socket_fd,
-                    (struct sockaddr *) &clientname,
-                    &size);
-        if (new_socket < 0) {
-            err = cpb_make_error(CPB_ACCEPT_ERR);
-            return err;
+        while (1) {
+            new_socket = accept(s->listen_socket_fd,
+                        (struct sockaddr *) &clientname,
+                        &size);
+            if (new_socket < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                    err = cpb_make_error(CPB_ACCEPT_ERR);
+                    goto ret;
+                }
+                else {
+                    break;
+                }
+            }
+            if (new_socket >= CPB_SOCKET_MAX) {
+                err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+                goto ret;
+            }
+            struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
+            cpb_assert_h(nm && nm->state == CPB_MP_EMPTY, "");
+            int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
         }
-        if (new_socket >= CPB_SOCKET_MAX) {
-            err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-            return err;
-        }
-        struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
-        cpb_assert_h(nm && nm->state == CPB_MP_EMPTY, "");
-        int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
     }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {
@@ -192,6 +201,8 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
             cpb_eloop_append(s->eloop, ev);
         }
     }
+ret:
+    dp_end_event(__FUNCTION__);
     return err;
 }
 
@@ -203,7 +214,7 @@ void cpb_server_ev_listen_loop(struct cpb_event ev) {
                            .msg = {
                             .argp = s
                            }};
-    cpb_eloop_append_delayed(s->eloop, new_ev, CPB_HTTP_MIN_DELAY);
+    cpb_eloop_append_delayed(s->eloop, new_ev, CPB_HTTP_MIN_DELAY, 1);
     
 }
 

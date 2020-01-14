@@ -1,0 +1,60 @@
+
+THREAD STATS
+info at dump:
+ev_len: 0
+ev_len_max: 2
+ev_set_len: 3
+ev_set_len_max: 3
+name: 'eloop_sleep'
+	inclusive time:     35.033373.5
+	exclusive time: 35.033373.5
+	number of calls: 62122
+	avg inc  per call: 0.000564.5
+	avg exc. per call: 0.000564.5
+
+name: 'cpb_server_listen_once'
+	inclusive time:     1.668549.5
+	exclusive time: 1.668549.5
+	number of calls: 310616
+	avg inc  per call: 0.000005.5
+	avg exc. per call: 0.000005.5
+
+name: 'main'
+	inclusive time:     36.779321.5
+	exclusive time: 36.779321.5
+	number of calls: 1
+	avg inc  per call: 36.779321.5
+	avg exc. per call: 36.779321.5
+
+
+Accumulated from all threads:
+name: 'cpb_server_listen_once'
+	inclusive time:     1.668549.5
+	exclusive time: 1.668549.5
+	number of calls: 310616
+	avg inc  per call: 0.000005.5
+	avg exc. per call: 0.000005.5
+	nthreads:          1
+	avg inc. per thread:  1.668549.5
+	avg exc. per thread:  1.668549.5
+
+name: 'eloop_sleep'
+	inclusive time:     35.033373.5
+	exclusive time: 35.033373.5
+	number of calls: 62122
+	avg inc  per call: 0.000564.5
+	avg exc. per call: 0.000564.5
+	nthreads:          1
+	avg inc. per thread:  35.033373.5
+	avg exc. per thread:  35.033373.5
+
+name: 'main'
+	inclusive time:     36.779321.5
+	exclusive time: 36.779321.5
+	number of calls: 1
+	avg inc  per call: 36.779321.5
+	avg exc. per call: 36.779321.5
+	nthreads:          1
+	avg inc. per thread:  36.779321.5
+	avg exc. per thread:  36.779321.5
+

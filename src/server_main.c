@@ -22,6 +22,8 @@ void int_handler(int dummy) {
     cpb_server_deinit(&server);
     cpb_eloop_deinit(&eloop);
     cpb_deinit(&cpb_state);
+    dp_end_event("main");
+    dp_dump();
     exit(0);
 }
 
@@ -98,6 +100,7 @@ void request_handler(struct cpb_request_state *rqstate, enum cpb_request_handler
 
 int main(int argc, char *argv[]) {
     
+    dp_register_event(__FUNCTION__);
 
    signal(SIGINT, int_handler);
    signal(SIGTERM, int_handler);
@@ -109,6 +112,7 @@ int main(int argc, char *argv[]) {
     
     int rv;
     struct cpb_error erv = {0};
+    dp_clear();
     rv = cpb_init(&cpb_state);
     ordie(rv);
     rv = cpb_eloop_init(&eloop, &cpb_state, 2);
@@ -125,4 +129,6 @@ int main(int argc, char *argv[]) {
     ordie(rv);
     cpb_eloop_deinit(&eloop);
     cpb_deinit(&cpb_state);
+    dp_end_event(__FUNCTION__);
+    dp_dump();
 }

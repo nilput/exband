@@ -87,6 +87,7 @@ struct cpb_error cpb_request_on_headers_read(struct cpb_request_state *rqstate) 
 //assumes rqstate->input_buffer_len is already adjusted for new bytes
 struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, int index, int nbytes) {
     struct cpb_error err = {0};
+    dp_register_event(__FUNCTION__);
     rqstate->bytes_read += nbytes;
     int scan_idx = index - 3;
     scan_idx = scan_idx < 0 ? 0 : scan_idx;
@@ -94,8 +95,10 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
     
     fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
 
-    if (rqstate->istate == CPB_HTTP_I_ST_DONE)
-        return cpb_make_error(CPB_INVALID_STATE_ERR);
+    if (rqstate->istate == CPB_HTTP_I_ST_DONE) {
+        err = cpb_make_error(CPB_INVALID_STATE_ERR);
+        goto ret;
+    }
 
     if (rqstate->istate == CPB_HTTP_I_ST_INIT)
         rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_HEADERS;
@@ -104,8 +107,9 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
     {
         if (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
             err = cpb_request_on_headers_read(rqstate);
-            if (err.error_code != CPB_OK)
-                return err;
+            if (err.error_code != CPB_OK) {
+                goto ret;
+            }
             cpb_request_call_handler(rqstate, CPB_HTTP_HANDLER_HEADERS);
         
             rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_BODY;
@@ -120,7 +124,8 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
         else if (rqstate->is_chunked && (cpb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len))) {
             int rv = cpb_request_http_parse_chunked_encoding(rqstate);
             if (rv != CPB_OK) {
-                return cpb_make_error(rv);
+                err = cpb_make_error(rv);
+                goto ret;
             }
             if (cpb_request_is_chunked_body_complete(rqstate)) {
                 rqstate->istate = CPB_HTTP_I_ST_DONE;
@@ -132,7 +137,8 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
                 rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length;
                 int rv = cpb_str_strlappend(rqstate->server->cpb, &rqstate->body_decoded, rqstate->input_buffer + rqstate->body_s.index, rqstate->content_length);
                 if (rv != CPB_OK) {
-                    return cpb_make_error(rv);
+                    err = cpb_make_error(rv);
+                    goto ret;
                 }
             }
             else {
@@ -166,7 +172,7 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
             err = cpb_request_fork(rqstate);
             if (err.error_code != CPB_OK) {
                 cpb_request_handle_fatal_error(rqstate);
-                return err;
+                goto ret;
             }
             /*TODO: Destroy request after response is sent*/
         }
@@ -178,8 +184,9 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
     
 
     
-
-    return cpb_make_error(CPB_OK);
+ret:
+    dp_end_event(__FUNCTION__);
+    return err;
 }
 
 
@@ -189,16 +196,18 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
     int avbytes = HTTP_INPUT_BUFFER_SIZE - rqstate->input_buffer_len - 1;
     int nbytes;
     struct cpb_error err = {0};
+    dp_register_event(__FUNCTION__);
     again:
     nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
     if (nbytes < 0) {
         if (!(errno == EWOULDBLOCK || errno == EAGAIN)) {
             err = cpb_make_error(CPB_READ_ERR);
             fprintf(stderr, "READ ERROR");
-            return err;
+            goto ret;
         }
         else {
-            return cpb_make_error(CPB_OK);
+            err = cpb_make_error(CPB_OK);
+            goto ret;
         }
     }
     else if (nbytes == 0) {
@@ -213,7 +222,7 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
         rqstate->input_buffer_len += nbytes;
         err = cpb_request_on_bytes_read(rqstate, idx, nbytes);
         if (err.error_code != CPB_OK)
-            return err;   
+            goto ret;   
     }
 
     if (rqstate->istate != CPB_HTTP_I_ST_DONE) {
@@ -227,6 +236,8 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
         rqstate->istate = CPB_HTTP_R_ST_DONE;
         cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
     }
+    ret:
+    dp_end_event(__FUNCTION__);
     return err;
 }
 

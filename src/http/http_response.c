@@ -4,8 +4,12 @@
 #include <unistd.h>
 #include <errno.h>
 int cpb_response_send(struct cpb_response_state *rsp) {
-    if (rsp->state != CPB_HTTP_R_ST_SENDING)
-        return CPB_INVALID_STATE_ERR;
+    dp_register_event(__FUNCTION__);
+    int rv = CPB_OK;
+    if (rsp->state != CPB_HTTP_R_ST_SENDING) {
+        rv = CPB_INVALID_STATE_ERR;
+        goto ret;
+    }
     int header_bytes = rsp->headers_buff_len;
     int body_bytes   = rsp->output_buff_len;
     int total_bytes  = header_bytes + body_bytes;
@@ -16,7 +20,8 @@ int cpb_response_send(struct cpb_response_state *rsp) {
                                     rsp->headers_buff_len - rsp->written_bytes);
             if (written == -1) {
                 if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                    return CPB_WRITE_ERR;
+                    rv =  CPB_WRITE_ERR;
+                    goto ret;
                 }
             }
             else {
@@ -29,7 +34,8 @@ int cpb_response_send(struct cpb_response_state *rsp) {
                                     total_bytes - rsp->written_bytes);
             if (written == -1) {
                 if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                    return CPB_WRITE_ERR;
+                    rv =  CPB_WRITE_ERR;
+                    goto ret;
                 }
             }
             else {
@@ -41,7 +47,10 @@ int cpb_response_send(struct cpb_response_state *rsp) {
         cpb_assert_h(rsp->written_bytes == total_bytes, "wrote more than expected");
         rsp->state = CPB_HTTP_R_ST_DONE;
     }
-    return CPB_OK;
+    
+    ret:
+    dp_end_event(__FUNCTION__);
+    return rv;
 }
 //Takes ownership of both name and value
 int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {

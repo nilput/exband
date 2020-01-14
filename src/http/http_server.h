@@ -11,7 +11,7 @@
 
 
 #define LISTEN_BACKLOG 16
-#define CPB_SOCKET_MAX 8
+#define CPB_SOCKET_MAX 1024
 #define CPB_HTTP_MIN_DELAY 10 //ms
 
 
