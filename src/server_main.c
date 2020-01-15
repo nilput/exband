@@ -34,6 +34,7 @@ static int cpb_response_append_body_cstr(struct cpb_response_state *resp, const 
 
 void request_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
     struct cpb_str path;
+    //cpb_request_repr(rqstate);
 
     cpb_str_init(rqstate->server->cpb, &path);
     cpb_str_slice_to_copied_str(rqstate->server->cpb, rqstate->path_s, rqstate->input_buffer, &path);
@@ -101,7 +102,7 @@ void request_handler(struct cpb_request_state *rqstate, enum cpb_request_handler
 
 
 void task_test(struct cpb_thread *t, struct cpb_task *task) {
-    fprintf(stdout, "Thread %d running task!\n");
+    fprintf(stdout, "Thread %d running task!\n", t->tid);
     fflush(stdout);
 }
 void set_handlers() {
@@ -111,6 +112,7 @@ void set_handlers() {
    signal(SIGSTOP, int_handler);
    signal(SIGABRT, int_handler);
    signal(SIGSEGV, int_handler);
+   signal(SIGPIPE, SIG_IGN);
 }
 
 int main(int argc, char *argv[]) {

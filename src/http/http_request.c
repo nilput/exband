@@ -14,6 +14,7 @@ void cpb_request_repr(struct cpb_request_state *rqstate) {
     cpb_str_init_strlcpy(cpb, &t2, ibuff+method.index, method.len);
     cpb_str_init_strlcpy(cpb, &t3, ibuff+version.index, version.len);
 
+    
     fprintf(stderr,  "Request:\n"\
             "\tPATH:    '%s'\n"\
             "\tMETHOD:  '%s'\n"\

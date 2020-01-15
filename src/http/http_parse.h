@@ -191,8 +191,11 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
         return cpb_make_error(CPB_HTTP_ERROR);
     }
     //http/x.x
-    rqstate->http_major = ibuff[rqstate->version_s.index+1] - '0';
-    rqstate->http_minor = ibuff[rqstate->version_s.index+2] - '0';
+    rqstate->http_major = ibuff[rqstate->version_s.index+5] - '0';
+    rqstate->http_minor = ibuff[rqstate->version_s.index+7] - '0';
+
+    if (rqstate->http_major > 1 || rqstate->http_minor > 1)
+        return cpb_make_error(CPB_HTTP_ERROR);
 
     
 
@@ -287,11 +290,7 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
     else {
         rqstate->pstate = CPB_HTTP_P_ST_DONE;
     }
-        
     
-    
-
-    cpb_request_repr(rqstate);
     
     return cpb_make_error(CPB_OK);
 }

@@ -36,6 +36,15 @@ struct cpb_threadpool {
 
     struct cpb_taskqueue taskq;
 };
+
+/*
+This is expected to be used like for example:
+struct read_task {
+    struct cpb_task task;    
+    custom data;
+}
+then cast the pointer cpb_task * to read_task *
+*/
 struct cpb_task {
     struct cpb_error err;
     void (*run)(struct cpb_thread *thread, struct cpb_task *task);

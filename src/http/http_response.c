@@ -127,9 +127,12 @@ int cpb_response_end(struct cpb_response_state *rsp) {
         //  [select() event] -> schedules this too
         //  [First  time scheduled]
         //  [Second time scheduled]
+        // ^ this was handled by adding is_read_scheduled and is_send_scheduled flags
+        //   need to confirm this solves it
         struct cpb_event ev;
         cpb_event_http_init(&ev, rsp->req_state->socket_fd, CPB_HTTP_SEND, rsp->req_state);
         rv = cpb_eloop_append(rsp->req_state->server->eloop, ev);
+        rsp->req_state->is_send_scheduled = 1;
     }
 
     return rv;

@@ -121,11 +121,17 @@ int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sock
     cpb_http_multiplexer_queue_response(mp, rqstate);
     
     struct cpb_event ev;
+    rqstate->is_read_scheduled = 1;
     cpb_event_http_init(&ev, socket_fd, CPB_HTTP_INIT, rqstate);
     cpb_eloop_append(s->eloop, ev);
     return CPB_OK;
 }
 
+void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
+    /*TODO
+    deschedule all requests and destroy them
+    */
+}
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
     close(socket_fd);
     FD_CLR(socket_fd, &s->active_fd_set);
@@ -183,24 +189,29 @@ struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
         if (i == s->listen_socket_fd)
             continue;
         struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, i);
-        
-        if (FD_ISSET(i, &s->read_fd_set)) 
+        if (m->state == CPB_MP_EMPTY)
+            continue; //can be stdin or whatever
+        cpb_assert_h(m->creading, "");
+        if (FD_ISSET(i, &s->read_fd_set) && !m->creading->is_read_scheduled) 
         {
             /* Data arriving on an already-connected socket. */
             struct cpb_event ev;
             cpb_assert_h(m && m->state == CPB_MP_ACTIVE, "");
             cpb_assert_h(!!m->creading, "");
+            m->creading->is_read_scheduled = 1;
             cpb_event_http_init(&ev, i, CPB_HTTP_READ, m->creading);
             cpb_eloop_append(s->eloop, ev);
         
         }
-        if (FD_ISSET(i, &s->write_fd_set)                       &&
-            m->next_response                                    &&
-            m->next_response->resp.state == CPB_HTTP_R_ST_SENDING ) 
+        if ( FD_ISSET(i, &s->write_fd_set)                         &&
+             m->next_response                                      &&
+             m->next_response->resp.state == CPB_HTTP_R_ST_SENDING &&
+            !m->next_response->is_send_scheduled                      )
         {
             struct cpb_event ev;
             cpb_event_http_init(&ev, i, CPB_HTTP_SEND, m->next_response);
             cpb_eloop_append(s->eloop, ev);
+            m->next_response->is_send_scheduled = 1;
         }
     }
 ret:

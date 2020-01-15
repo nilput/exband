@@ -265,7 +265,7 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                     ev.itable->handle(ev);
                     ev.itable->destroy(ev);
                     //criteria of what is ineffective
-                    if ((cpb_eloop_len(eloop) - eloop_precount) > 4) {
+                    if ((cpb_eloop_len(eloop) - eloop_precount) > 1) {
                         ineffective_spins = 0;
                     }
                 }

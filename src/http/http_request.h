@@ -66,6 +66,9 @@ struct cpb_request_state {
     bool is_chunked;
     bool is_persistent; //Not persistent when: 
                         //HTTP1.0 (with no keepalive) OR HTTP1.1 and "Connection: close"
+    bool is_read_scheduled; /*The request is scheduled to read to*/
+    bool is_send_scheduled; /*The request is scheduled to send to*/
+    bool is_forked; //just a sanity check
     
     int content_length; //only there in messages with a body AND (!is_chunked)
     int bytes_read; //doesn't care about encoding
@@ -111,6 +114,10 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     
     rqstate->is_chunked = 0;
     rqstate->is_persistent = 0;
+    rqstate->is_read_scheduled = 0;
+    rqstate->is_send_scheduled = 0;
+    rqstate->is_forked = 0;
+
     rqstate->socket_fd = socket_fd;
     rqstate->server = s;
     rqstate->input_buffer_len = 0;
@@ -124,6 +131,8 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     rqstate->headers.h_content_length_idx = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
     rqstate->headers.len = 0;
+    rqstate->next_rqstate = NULL;
+
     cpb_str_init(cpb, &rqstate->body_decoded);
     cpb_response_state_init(&rqstate->resp, rqstate);
 }

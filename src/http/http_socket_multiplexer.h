@@ -6,7 +6,7 @@ enum cpb_http_multiplexer_state {
     CPB_MP_ACTIVE,
 };
 struct cpb_http_multiplexer {
-    char state;
+    enum cpb_http_multiplexer_state state;
     int socket_fd;
     struct sockaddr_in clientname;
     struct cpb_request_state *creading; //the current request reading from client
@@ -18,6 +18,7 @@ static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp) {
     mp->creading = NULL;
     mp->next_response = NULL;
 }
+
 static void cpb_http_multiplexer_deinit(struct cpb_http_multiplexer *mp) {
     mp->state = CPB_MP_EMPTY;
     mp->socket_fd = -1;
@@ -25,14 +26,20 @@ static void cpb_http_multiplexer_deinit(struct cpb_http_multiplexer *mp) {
     mp->next_response = NULL;
 }
 static void cpb_http_multiplexer_queue_response(struct cpb_http_multiplexer *mp, struct cpb_request_state *rqstate) {
+    
     if (mp->next_response == NULL) {
         mp->next_response = rqstate;
+        //fprintf(stderr, "Queueing response %p on top of %p\n", rqstate, NULL);
     }
     else {
         struct cpb_request_state *tail = mp->next_response;
-        while (tail && tail->next_rqstate)
+        while (tail->next_rqstate) {
+            cpb_assert_s(tail != tail->next_rqstate, "");
             tail = tail->next_rqstate;
+        }
+        cpb_assert_s(tail != rqstate, "");
         tail->next_rqstate = rqstate;
+        //fprintf(stderr, "Queueing response %p on top of %p\n", rqstate, tail);
     }
 }
 static void cpb_http_multiplexer_pop_response(struct cpb_http_multiplexer *mp) {
