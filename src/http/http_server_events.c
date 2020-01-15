@@ -1,7 +1,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
-#include "../eloop.h"
+#include "../cpb_eloop.h"
 #include "http_server.h"
 #include "http_server_events.h"
 #include "http_parse.h"
@@ -213,7 +213,7 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
     else if (nbytes == 0) {
         struct cpb_event ev;
         cpb_event_http_init(&ev, socket, CPB_HTTP_CLOSE, rqstate);
-        //TODO error handling, also we can directly deal with the event because cache is hot
+        //TODO error handling, also we should directly deal with the event because cache is hot
         cpb_eloop_append(rqstate->server->eloop, ev); 
         fprintf(stderr, "EOF");
     }
@@ -233,7 +233,7 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
     if (nbytes == 0) {
         /*TODO: This was closed by the client, check if it's valid*/
         /*For example if we are waiting for a request body and connection was closed prematurely*/
-        rqstate->istate = CPB_HTTP_R_ST_DONE;
+        rqstate->istate = CPB_HTTP_I_ST_DONE;
         cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
     }
     ret:
@@ -257,15 +257,22 @@ static void handle_http(struct cpb_event ev) {
     }
     else if (cmd == CPB_HTTP_SEND) {
         if (rqstate->resp.state != CPB_HTTP_R_ST_DONE) {
+            cpb_assert_h(rqstate->resp.state != CPB_HTTP_R_ST_DEAD, ""); /*this should never be seen*/
             int rv = cpb_response_send(&rqstate->resp);
             if (rv != CPB_OK) {
                 cpb_request_handle_fatal_error(rqstate);
                 return;
             }
-            if (rqstate->resp.state == CPB_HTTP_R_ST_DONE && !rqstate->is_persistent) {
-                //TODO destroy
-                cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
+            if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
+                struct cpb_server *s = rqstate->server;
+                int socket_fd = rqstate->socket_fd;
+                int is_persistent = rqstate->is_persistent;
+                cpb_server_destroy_rqstate(s, rqstate);
+                if (!is_persistent) {
+                    cpb_server_close_connection(s, socket_fd);
+                }
             }
+            
         }
     }
     else{

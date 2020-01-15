@@ -1,5 +1,8 @@
 #ifndef ELOOP_H
 #define ELOOP_H
+/*
+Event loop
+*/
 #include "cpb.h"
 #include "string.h"
 #include "cpb_utils.h"
@@ -178,7 +181,7 @@ static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz) {
     if (!p) {
         return CPB_NOMEM_ERR;
     }
-    //this can be optimized
+    //this can be optimized, see also taskqueue
     struct cpb_event *events = p;
     int idx = 0;
     for (int i=eloop->head; ; i++) {
@@ -218,6 +221,14 @@ static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
         eloop->tail = 0;
     return CPB_OK;
 }
+
+/*Threadsafe append event*/
+static int cpb_eloop_ts_append(struct cpb_eloop *eloop) {
+}
+/*Threadsafe pop event*/
+static int cpb_eloop_ts_pop(struct cpb_eloop *eloop) {
+}
+
 //copies event, [eventually calls ev->destroy()]
 static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev, int ms, int tolerate_preexec) {
     return cpb_eloop_d_push(eloop, ev, cpb_time() + (ms / 1024.0), tolerate_preexec);

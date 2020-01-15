@@ -16,7 +16,8 @@ enum cpb_http_response_state {
     CPB_HTTP_R_ST_READY_HEADERS,
     CPB_HTTP_R_ST_READY_BODY,
     CPB_HTTP_R_ST_SENDING,
-    CPB_HTTP_R_ST_DONE
+    CPB_HTTP_R_ST_DONE,
+    CPB_HTTP_R_ST_DEAD
 };
 struct cpb_response_header {
     struct cpb_str key;
@@ -27,7 +28,6 @@ struct cpb_response_headers {
     int len;
 };
 struct cpb_response_state {
-    
     struct cpb_request_state *req_state; //not owned, must outlive
     enum cpb_http_response_state state;
     int status_code;
@@ -38,7 +38,6 @@ struct cpb_response_state {
     int headers_buff_len;
     int output_buff_len;
     char output_buff[HTTP_OUTPUT_BUFFER_SIZE];
-
 };
 
 static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req) {
@@ -51,10 +50,20 @@ static int cpb_response_state_init(struct cpb_response_state *resp_state, struct
     resp_state->headers_buff[0] = 0;
     resp_state->headers_buff_len = 0;
     resp_state->written_bytes = 0;
+    resp_state->headers.len = 0;
     return CPB_OK;
 }
-static void cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb_request_state *req) {
+
+static int cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb *cpb) {
+    resp_state->state = CPB_HTTP_R_ST_DEAD;
+    for (int i=0; i<resp_state->headers.len; i++) {
+        cpb_str_deinit(cpb, &resp_state->headers.headers[i].key);
+        cpb_str_deinit(cpb, &resp_state->headers.headers[i].value);
+    }
+    return CPB_OK;
 }
+
+
 //doesnt own name
 static int cpb_response_get_header_index(struct cpb_response_state *rsp, const char *s, int len) {
     for (int i=0; i<rsp->headers.len; i++) {

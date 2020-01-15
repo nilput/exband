@@ -97,20 +97,22 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, int 
 }
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate) {
     cpb_request_state_deinit(rqstate, server->cpb);
+    cpb_free(server->cpb, rqstate);
 }
 
 int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
     
     fcntl(socket_fd, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state */
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
-    cpb_http_multiplexer_init(mp);
-    mp->state = CPB_MP_ACTIVE;
     if (mp == NULL)
         return CPB_SOCKET_ERR;
+    cpb_http_multiplexer_init(mp);
+    mp->state = CPB_MP_ACTIVE;
+    
     mp->clientname = clientname;
     struct cpb_request_state *rqstate = cpb_server_new_rqstate(s, socket_fd);
     fprintf(stderr,
-            "Server: connect from host %s, port %hu.\n",
+            "Server: connection from host %s, port %hu.\n",
             inet_ntoa (clientname.sin_addr),
             ntohs (clientname.sin_port));
     
@@ -210,10 +212,12 @@ struct cpb_event_handler_itable cpb_server_event_handler;
 void cpb_server_ev_listen_loop(struct cpb_event ev) {
     struct cpb_server *s = ev.msg.argp;
     cpb_server_listen_once(s);
-    struct cpb_event new_ev = {.itable = &cpb_server_event_handler,
-                           .msg = {
-                            .argp = s
-                           }};
+    struct cpb_event new_ev = {
+                               .itable = &cpb_server_event_handler,
+                               .msg = {
+                                .argp = s
+                                }
+                              };
     cpb_eloop_append_delayed(s->eloop, new_ev, CPB_HTTP_MIN_DELAY, 1);
     
 }
@@ -237,7 +241,9 @@ struct cpb_event_handler_itable cpb_server_event_handler = {
 };
 
 void cpb_server_deinit(struct cpb_server *s) {
-
+    for (int i=0; i<CPB_SOCKET_MAX; i++) {
+        cpb_http_multiplexer_deinit(&s->mp[i]);
+    }
 }
 
 int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason)) {

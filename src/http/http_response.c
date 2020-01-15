@@ -74,9 +74,14 @@ int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name
 }
 
 int cpb_response_end(struct cpb_response_state *rsp) {
-    if (rsp->state == CPB_HTTP_R_ST_SENDING || rsp->state == CPB_HTTP_R_ST_DONE) {
+    if (rsp->state == CPB_HTTP_R_ST_SENDING ||
+        rsp->state == CPB_HTTP_R_ST_DONE    ||
+        rsp->state == CPB_HTTP_R_ST_DEAD      ) 
+    {
+        cpb_assert_h(rsp->state != CPB_HTTP_R_ST_DEAD, "");
         return CPB_INVALID_STATE_ERR;
     }
+    
     int rv;
     
     struct cpb_str name;
@@ -87,12 +92,10 @@ int cpb_response_end(struct cpb_response_state *rsp) {
     cpb_str_itoa(rsp->req_state->server->cpb, &body_len_str, body_len);
     rv = cpb_response_set_header(rsp, &name, &body_len_str); //owns body_len_str
     if (rv != CPB_OK) {
+        cpb_str_deinit(rsp->req_state->server->cpb, &body_len_str);
         return rv;
     }
 
-    //TODO: Support persistent connections
-    //
-    
     if (!rsp->req_state->is_persistent) {
         struct cpb_str name, value;
         cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");

@@ -28,6 +28,7 @@ enum cpb_http_input_state {
     CPB_HTTP_I_ST_WAITING_FOR_BODY,
 
     CPB_HTTP_I_ST_DONE,
+    CPB_HTTP_I_ST_DEAD,
 };
 enum cpb_http_parse_state {
     CPB_HTTP_P_ST_INIT,
@@ -107,6 +108,7 @@ static int cpb_request_input_buffer_size(struct cpb_request_state *rqstate) {
 }
 
 static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
+    
     rqstate->is_chunked = 0;
     rqstate->is_persistent = 0;
     rqstate->socket_fd = socket_fd;
@@ -121,6 +123,7 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     rqstate->headers.h_connection_idx     = -1;
     rqstate->headers.h_content_length_idx = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
+    rqstate->headers.len = 0;
     cpb_str_init(cpb, &rqstate->body_decoded);
     cpb_response_state_init(&rqstate->resp, rqstate);
 }
@@ -132,8 +135,9 @@ static int cpb_request_body_bytes_read(struct cpb_request_state *rqstate) {
 
 
 static void cpb_request_state_deinit(struct cpb_request_state *rqstate, struct cpb *cpb) {
+    rqstate->istate = CPB_HTTP_I_ST_DEAD;
     cpb_str_deinit(cpb, &rqstate->body_decoded);
-    cpb_response_state_deinit(&rqstate->resp, rqstate);
+    cpb_response_state_deinit(&rqstate->resp, cpb);
 }
 
 static int cpb_request_has_body(struct cpb_request_state *rqstate) {

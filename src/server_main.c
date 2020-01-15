@@ -3,7 +3,8 @@
 #include "http/http_server.h"
 #include "cpb_errors.h"
 #include "cpb.h"
-#include "eloop.h"
+#include "cpb_eloop.h"
+#include "cpb_threadpool.h"
 
 void ordie(int code) {
     if (code != CPB_OK) {
@@ -98,23 +99,44 @@ void request_handler(struct cpb_request_state *rqstate, enum cpb_request_handler
     
 }
 
-int main(int argc, char *argv[]) {
-    
-    dp_register_event(__FUNCTION__);
 
+void task_test(struct cpb_thread *t, struct cpb_task *task) {
+    fprintf(stdout, "Thread %d running task!\n");
+    fflush(stdout);
+}
+void set_handlers() {
    signal(SIGINT, int_handler);
    signal(SIGTERM, int_handler);
    signal(SIGHUP, int_handler);
    signal(SIGSTOP, int_handler);
    signal(SIGABRT, int_handler);
    signal(SIGSEGV, int_handler);
+}
 
+int main(int argc, char *argv[]) {
+    
+    dp_register_event(__FUNCTION__);
+    set_handlers();
     
     int rv;
     struct cpb_error erv = {0};
     dp_clear();
     rv = cpb_init(&cpb_state);
     ordie(rv);
+    struct cpb_threadpool tp;
+    rv = cpb_threadpool_init(&tp, &cpb_state);
+    ordie(rv);
+    rv = cpb_threadpool_set_nthreads(&tp, 4);
+    ordie(rv);
+
+    struct cpb_task task;
+    task.run = task_test;
+    task.err = cpb_make_error(CPB_OK);
+    rv = cpb_threadpool_push_task(&tp, task);
+    ordie(rv);
+
+    
+
     rv = cpb_eloop_init(&eloop, &cpb_state, 2);
     ordie(rv);
     erv = cpb_server_init(&server, &cpb_state, &eloop, 8085);
@@ -124,7 +146,8 @@ int main(int argc, char *argv[]) {
     ordie(erv.error_code);
     erv = cpb_eloop_run(&eloop);
     ordie(erv.error_code);
-    
+
+    cpb_threadpool_deinit(&tp);
     cpb_server_deinit(&server);
     ordie(rv);
     cpb_eloop_deinit(&eloop);

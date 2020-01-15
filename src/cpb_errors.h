@@ -2,31 +2,34 @@
 #ifndef CPB_ERRORS_H
 #define CPB_ERRORS_H
 
-#define CPBEF(error_name)
+#define CPERR(error_name)
 #define CPB_ERR_LIST \
-    CPBEF(CPB_OK) \
-    CPBEF(CPB_EOF) \
-    CPBEF(CPB_SOCKET_ERR) \
-    CPBEF(CPB_SELECT_ERR) \
-    CPBEF(CPB_READ_ERR) \
-    CPBEF(CPB_WRITE_ERR) \
-    CPBEF(CPB_ACCEPT_ERR) \
-    CPBEF(CPB_BIND_ERR) \
-    CPBEF(CPB_OUT_OF_RANGE_ERR) \
-    CPBEF(CPB_INVALID_STATE_ERR) \
-    CPBEF(CPB_INVALID_INT_ERR) \
-    CPBEF(CPB_LISTEN_ERR) \
-    CPBEF(CPB_HTTP_ERROR) \
-    CPBEF(CPB_INVALID_ARG_ERR) \
-    CPBEF(CPB_NOMEM_ERR) 
-#undef CPBEF
-#define CPBEF(error_name) error_name,
+    CPERR(CPB_OK) \
+    CPERR(CPB_EOF) \
+    CPERR(CPB_SOCKET_ERR) \
+    CPERR(CPB_SELECT_ERR) \
+    CPERR(CPB_READ_ERR) \
+    CPERR(CPB_WRITE_ERR) \
+    CPERR(CPB_ACCEPT_ERR) \
+    CPERR(CPB_BIND_ERR) \
+    CPERR(CPB_OUT_OF_RANGE_ERR) \
+    CPERR(CPB_INVALID_STATE_ERR) \
+    CPERR(CPB_INVALID_INT_ERR) \
+    CPERR(CPB_LISTEN_ERR) \
+    CPERR(CPB_HTTP_ERROR) \
+    CPERR(CPB_INVALID_ARG_ERR) \
+    CPERR(CPB_UNSUPPORTED) \
+    CPERR(CPB_MUTEX_LOCK_ERROR) \
+    CPERR(CPB_THREAD_ERROR) \
+    CPERR(CPB_NOMEM_ERR) 
+#undef CPERR
+#define CPERR(error_name) error_name,
 enum cpb_errors {
    CPB_ERR_LIST
 };
 
-#undef CPBEF
-#define CPBEF(error_name) {error_name, #error_name,},
+#undef CPERR
+#define CPERR(error_name) {error_name, #error_name,},
 struct cpb_error_str {
     int error_code;
     const char *error_name;
