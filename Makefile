@@ -1,6 +1,9 @@
 CFLAGS := -I othersrc/
 LDLIBS := -pthread
-SERVER_MAIN_DEPS := src/server_main.c  src/cpb_utils.c src/http/http_server.c src/http/http_server_events.c src/http/http_request.c src/http/http_response.c
+SERVER_MAIN_DEPS := src/server_main.c  src/cpb_utils.c src/http/http_server.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_server_events.c src/http/http_request.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_response.c src/http/http_server_listener_select.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_server_listener_epoll.c
 
 debug: CFLAGS += -g3 -O0 -Wall -Wno-unused-function
 debug: all

@@ -3,55 +3,8 @@
 #include "http_server.h"
 #include <unistd.h>
 #include <errno.h>
-int cpb_response_send(struct cpb_response_state *rsp) {
-    dp_register_event(__FUNCTION__);
-    int rv = CPB_OK;
-    if (rsp->state != CPB_HTTP_R_ST_SENDING) {
-        rv = CPB_INVALID_STATE_ERR;
-        goto ret;
-    }
-    int header_bytes = rsp->headers_buff_len;
-    int body_bytes   = rsp->output_buff_len;
-    int total_bytes  = header_bytes + body_bytes;
-    if (rsp->written_bytes < total_bytes) {
-        if (rsp->written_bytes < header_bytes) {
-            ssize_t written = write(rsp->req_state->socket_fd,
-                                    rsp->headers_buff + rsp->written_bytes,
-                                    rsp->headers_buff_len - rsp->written_bytes);
-            if (written == -1) {
-                if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                    rv =  CPB_WRITE_ERR;
-                    goto ret;
-                }
-            }
-            else {
-                rsp->written_bytes += written;
-            }
-        }
-        if (rsp->written_bytes >= header_bytes) {
-            ssize_t written = write(rsp->req_state->socket_fd,
-                                    rsp->output_buff + (rsp->written_bytes - header_bytes),
-                                    total_bytes - rsp->written_bytes);
-            if (written == -1) {
-                if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                    rv =  CPB_WRITE_ERR;
-                    goto ret;
-                }
-            }
-            else {
-                rsp->written_bytes += written;
-            }
-        }
-    }
-    if (rsp->written_bytes >= total_bytes) {
-        cpb_assert_h(rsp->written_bytes == total_bytes, "wrote more than expected");
-        rsp->state = CPB_HTTP_R_ST_DONE;
-    }
-    
-    ret:
-    dp_end_event(__FUNCTION__);
-    return rv;
-}
+
+
 //Takes ownership of both name and value
 int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {
     int idx = cpb_response_get_header_index(rsp, name->str, name->len);
@@ -71,69 +24,4 @@ int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name
     rsp->headers.headers[rsp->headers.len].value = *value;
     rsp->headers.len++;
     return CPB_OK;
-}
-
-int cpb_response_end(struct cpb_response_state *rsp) {
-    if (rsp->state == CPB_HTTP_R_ST_SENDING ||
-        rsp->state == CPB_HTTP_R_ST_DONE    ||
-        rsp->state == CPB_HTTP_R_ST_DEAD      ) 
-    {
-        cpb_assert_h(rsp->state != CPB_HTTP_R_ST_DEAD, "");
-        return CPB_INVALID_STATE_ERR;
-    }
-    
-    int rv;
-    
-    struct cpb_str name;
-    cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Content-Length");
-    int body_len = rsp->output_buff_len;
-    struct cpb_str body_len_str;
-    cpb_str_init(rsp->req_state->server->cpb, &body_len_str);
-    cpb_str_itoa(rsp->req_state->server->cpb, &body_len_str, body_len);
-    rv = cpb_response_set_header(rsp, &name, &body_len_str); //owns body_len_str
-    if (rv != CPB_OK) {
-        cpb_str_deinit(rsp->req_state->server->cpb, &body_len_str);
-        return rv;
-    }
-
-    if (!rsp->req_state->is_persistent) {
-        struct cpb_str name, value;
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
-        rv = cpb_response_set_header(rsp, &name, &value);
-    }
-    else if (rsp->req_state->http_minor == 0) {
-        struct cpb_str name, value;
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "keep-alive");
-        rv = cpb_response_set_header(rsp, &name, &value);
-    }
-    if (rv != CPB_OK) {
-        return rv;
-    }
-        
-    rv = cpb_response_prepare_headers(rsp);
-    if (rv != CPB_OK)
-        return rv;
-
-    rsp->state = CPB_HTTP_R_ST_SENDING;
-
-    
-    //TODO: Why not do that directly
-    struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(rsp->req_state->server, rsp->req_state->socket_fd);
-    if (m->next_response == rsp->req_state) {
-        //TODO: will it be an issue if this gets scheduled twice? 
-        //  [Whatever event we are on] -> we schedule this here
-        //  [select() event] -> schedules this too
-        //  [First  time scheduled]
-        //  [Second time scheduled]
-        // ^ this was handled by adding is_read_scheduled and is_send_scheduled flags
-        //   need to confirm this solves it
-        struct cpb_event ev;
-        cpb_event_http_init(&ev, rsp->req_state->socket_fd, CPB_HTTP_SEND, rsp->req_state);
-        rv = cpb_eloop_append(rsp->req_state->server->eloop, ev);
-        rsp->req_state->is_send_scheduled = 1;
-    }
-
-    return rv;
 }

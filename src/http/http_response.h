@@ -148,6 +148,4 @@ static int cpb_response_prepare_headers(struct cpb_response_state *rsp) {
 
 int cpb_response_end(struct cpb_response_state *rsp);
 
-int cpb_response_send(struct cpb_response_state *rsp);
-
 #endif

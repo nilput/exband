@@ -6,23 +6,14 @@ Event loop
 #include "cpb.h"
 #include "string.h"
 #include "cpb_utils.h"
-#define ELOOP_SLEEP_TIME 5
+#include "cpb_event.h"
+#include "cpb_ts_event_queue.h"
+#include "cpb_event.h"
+#define ELOOP_SLEEP_TIME 1
 
 struct cpb_event; //fwd
-struct cpb_event_handler_itable {
-    void (*handle)(struct cpb_event event);
-    void (*destroy)(struct cpb_event event);
-};
-struct cpb_msg {
-    int arg1;
-    int arg2;
-    void *argp;
-};
+struct cpb_threadpool;
 
-struct cpb_event {
-    struct cpb_event_handler_itable *itable;
-    struct cpb_msg msg;
-};
 struct cpb_delayed_event {
     double due; //unix time + delay
     struct cpb_event event;
@@ -36,6 +27,8 @@ struct cpb_delayed_event_node {
 
 struct cpb_eloop {
     struct cpb *cpb; //not owned, must outlive
+    struct cpb_threadpool *threadpool; //not owned, must outlive
+    struct cpb_ts_event_queue tsq;
     
     unsigned ev_id; //counter
 
@@ -159,18 +152,27 @@ static int cpb_eloop_len(struct cpb_eloop *eloop) {
 }
 
 static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz);
-static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, int sz) {
+static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, struct cpb_threadpool *tp, int sz) {
     memset(eloop, 0, sizeof *eloop);
+    eloop->threadpool = tp;
     eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
+    int rv = cpb_ts_event_queue_init(&eloop->tsq, cpb_ref, 16);
+    if (rv != CPB_OK)
+        return rv;
     if (sz != 0) {
-        return cpb_eloop_resize(eloop, sz);
+        rv = cpb_eloop_resize(eloop, sz);
+        if (rv != CPB_OK) {
+            cpb_ts_event_queue_deinit(&eloop->tsq);
+            return rv;
+        }
     }
     return CPB_OK;
 }
 static int cpb_eloop_deinit(struct cpb_eloop *eloop) {
     //TODO destroy pending events
     cpb_free(eloop->cpb, eloop->events);
+    cpb_ts_event_queue_deinit(&eloop->tsq);
     return CPB_OK;
 }
 
@@ -223,10 +225,18 @@ static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
 }
 
 /*Threadsafe append event*/
-static int cpb_eloop_ts_append(struct cpb_eloop *eloop) {
+static int cpb_eloop_ts_append(struct cpb_eloop *eloop, struct cpb_event event) {
+    dp_register_event(__FUNCTION__);
+    int rv = cpb_ts_event_queue_append(&eloop->tsq, event);
+    dp_end_event(__FUNCTION__);
+    return rv;
 }
 /*Threadsafe pop event*/
-static int cpb_eloop_ts_pop(struct cpb_eloop *eloop) {
+static int cpb_eloop_ts_pop(struct cpb_eloop *eloop, struct cpb_event *event_out) {
+    dp_register_event(__FUNCTION__);
+    int rv = cpb_ts_event_queue_pop_next(&eloop->tsq, event_out);
+    dp_end_event(__FUNCTION__);
+    return rv;
 }
 
 //copies event, [eventually calls ev->destroy()]
@@ -234,17 +244,54 @@ static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev
     return cpb_eloop_d_push(eloop, ev, cpb_time() + (ms / 1024.0), tolerate_preexec);
 }
 
+static int cpb_eloop_fatal(struct cpb_eloop *eloop, struct cpb_error err) {
+    abort();
+}
+
+static int cpb_eloop_offload_recieve(struct cpb_eloop *eloop) {
+    /*TODO: pop many*/
+    struct cpb_event ev;
+    
+    while (1) {
+        int rv = cpb_eloop_ts_pop(eloop, &ev);
+        if (rv != CPB_OK) {
+            if (rv == CPB_OUT_OF_RANGE_ERR) {
+                return CPB_OK;
+            }
+            return rv;
+        }
+        rv = cpb_eloop_append(eloop, ev);
+        if (rv != CPB_OK) {
+            int err = cpb_eloop_ts_append(eloop, ev);
+            if (err != CPB_OK) {
+                cpb_eloop_fatal(eloop, cpb_make_error(err));
+            }
+            return rv;
+        }
+    }
+    return CPB_OK;
+}
+
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
     int ineffective_spins = 0;
+    #define CPB_ELOOP_NPROCESS_OFFLOAD 1000
+    int nprocessed = 0;
+
+    double cur_time = cpb_time();
     while (1) {
         struct cpb_event ev;
-        double cur_time = cpb_time();
+        
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
+    again:
         if (rv == CPB_OK) {
             //handle event
             ev.itable->handle(ev);
             ev.itable->destroy(ev);
+            if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
+                cpb_eloop_offload_recieve(eloop);
+                nprocessed = 0;
+            }
         }
         else {
             if (rv != CPB_OUT_OF_RANGE_ERR) {
@@ -252,31 +299,32 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
-            if (ineffective_spins++ >= 5) {
-                ineffective_spins = 0;
-                dp_register_event("eloop_sleep");
-                cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
-                dp_end_event("eloop_sleep");
+            cur_time = cpb_time();
+            cpb_eloop_offload_recieve(eloop);
+            rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
+            if (rv == CPB_OK) {
+                goto again;
             }
-            else {
+            else if (rv != CPB_OUT_OF_RANGE_ERR) {
+                //serious error
+                struct cpb_error err = cpb_make_error(rv);
+                return err;
+            }
+            if (nprocessed & 255 == 0) {
                 rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
                 if (rv == CPB_OK) {
-                    int eloop_precount = cpb_eloop_len(eloop);
-                    ev.itable->handle(ev);
-                    ev.itable->destroy(ev);
-                    //criteria of what is ineffective
-                    if ((cpb_eloop_len(eloop) - eloop_precount) > 1) {
-                        ineffective_spins = 0;
-                    }
+                    goto again;
                 }
                 else if (rv != CPB_OUT_OF_RANGE_ERR) {
+                    //serious error
                     struct cpb_error err = cpb_make_error(rv);
                     return err;
                 }
             }
-            continue;
+            dp_register_event("eloop_sleep");
+            cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
+            dp_end_event("eloop_sleep");
         }
-
     }
     
     return cpb_make_error(CPB_OK);

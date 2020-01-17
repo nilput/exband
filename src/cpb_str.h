@@ -38,14 +38,14 @@ static int cpb_str_is_const(struct cpb_str *str) {
 }
 
 static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len);
+static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len);
 
-//returned str is not null terminated!
+//assumes str is already initialized
 static int cpb_str_slice_to_copied_str(struct cpb *cpb, struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
-    struct cpb_str s;
-    int rv = cpb_str_init_strlcpy(cpb, &s, base + slice.index, slice.len);
+    
+    int rv = cpb_str_strlcpy(cpb, out, base + slice.index, slice.len);
     if (rv != CPB_OK)
         return rv;
-    *out = s;
     return CPB_OK;
 }
 
@@ -58,6 +58,12 @@ static int cpb_str_init(struct cpb *cpb, struct cpb_str *str) {
     return CPB_OK;
 }
 
+static int cpb_str_init_empty(struct cpb_str *str) {
+    str->str = "";
+    str->cap = -1;
+    str->len = 0;
+    return CPB_OK;
+}
 
 //src0 must outlive the object (doesn't own it)
 static int cpb_str_init_const_str(struct cpb *cpb, struct cpb_str *str, const char *src0) {

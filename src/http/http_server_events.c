@@ -2,16 +2,18 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "../cpb_eloop.h"
+#include "../cpb_threadpool.h"
+#include "../cpb_errors.h"
 #include "http_server.h"
 #include "http_server_events.h"
 #include "http_parse.h"
 
-static void handle_http(struct cpb_event ev);
-static void destroy_http(struct cpb_event ev);
+static void handle_http_event(struct cpb_event ev);
+static void destroy_http_event(struct cpb_event ev);
 
 struct cpb_event_handler_itable cpb_event_handler_http_itable = {
-    .handle = handle_http,
-    .destroy = destroy_http,
+    .handle = handle_http_event,
+    .destroy = destroy_http_event,
 };
 
 static void cpb_request_handle_http_error(struct cpb_request_state *rqstate) {
@@ -42,9 +44,11 @@ static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
     rqstate->is_forked = 1;
     struct cpb_server *s = rqstate->server;
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, rqstate->socket_fd);
+    if (mp->state != CPB_MP_ACTIVE)
+        return cpb_make_error(CPB_SOCKET_ERR);
     cpb_assert_h(mp && mp->state == CPB_MP_ACTIVE, "");
     
-    struct cpb_request_state *forked_rqstate = cpb_server_new_rqstate(s, rqstate->socket_fd);
+    struct cpb_request_state *forked_rqstate = cpb_server_new_rqstate(s, mp->eloop, rqstate->socket_fd);
 
     //fprintf(stderr, "Forking %p to %p\n", rqstate, forked_rqstate);
     
@@ -61,7 +65,6 @@ static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
     /*TODO: Deal with this once we have dynamic buffers*/
     cpb_assert_h(bytes_copied < cpb_request_input_buffer_size(forked_rqstate), "");
     memcpy(forked_rqstate->input_buffer, rqstate->input_buffer + rqstate->next_request_cursor, bytes_copied);
-    forked_rqstate->input_buffer_len = bytes_copied;
     struct cpb_error err = cpb_request_on_bytes_read(forked_rqstate, 0, bytes_copied);
     if (err.error_code != CPB_OK) {
         goto ret;
@@ -69,8 +72,8 @@ static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
     
     forked_rqstate->is_read_scheduled = 1;
     struct cpb_event ev;
-    cpb_event_http_init(&ev, forked_rqstate->socket_fd, CPB_HTTP_CONTINUE, forked_rqstate);
-    cpb_eloop_append(s->eloop, ev);
+    cpb_event_http_init(&ev, CPB_HTTP_CONTINUE, forked_rqstate, 0);
+    cpb_eloop_append(rqstate->eloop, ev);
     
 ret:
     dp_end_event(__FUNCTION__);
@@ -100,10 +103,12 @@ struct cpb_error cpb_request_on_headers_read(struct cpb_request_state *rqstate) 
 }
 
 
-//assumes rqstate->input_buffer_len is already adjusted for new bytes
+//assumes rqstate->input_buffer_len WAS NOT adjusted for new bytes
 struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, int index, int nbytes) {
     struct cpb_error err = {0};
     dp_register_event(__FUNCTION__);
+    cpb_assert_h(index == rqstate->input_buffer_len, "");
+    rqstate->input_buffer_len += nbytes;
     rqstate->bytes_read += nbytes;
     int scan_idx = index - 3;
     scan_idx = scan_idx < 0 ? 0 : scan_idx;
@@ -111,7 +116,7 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
     
     //fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
 
-    if (rqstate->istate == CPB_HTTP_I_ST_DONE) {
+    if (rqstate->istate == CPB_HTTP_I_ST_DONE || rqstate->istate == CPB_HTTP_I_ST_DEAD) {
         err = cpb_make_error(CPB_INVALID_STATE_ERR);
         goto ret;
     }
@@ -126,9 +131,8 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
             if (err.error_code != CPB_OK) {
                 goto ret;
             }
-            cpb_request_call_handler(rqstate, CPB_HTTP_HANDLER_HEADERS);
-        
             rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_BODY;
+            cpb_request_call_handler(rqstate, CPB_HTTP_HANDLER_HEADERS);
         }
     }
     if (rqstate->istate == CPB_HTTP_I_ST_WAITING_FOR_BODY ) 
@@ -165,6 +169,7 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
     }
     
     if (rqstate->istate == CPB_HTTP_I_ST_DONE) {
+        
         cpb_assert_h(rqstate->pstate == CPB_HTTP_P_ST_DONE, "");
 
             if (cpb_request_has_body(rqstate)) {
@@ -187,14 +192,17 @@ struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqstate, in
         if (rqstate->is_persistent) {
             err = cpb_request_fork(rqstate);
             if (err.error_code != CPB_OK) {
-                cpb_request_handle_fatal_error(rqstate);
+                cpb_request_handle_socket_error(rqstate);
                 goto ret;
             }
+        
+            cpb_request_on_request_done(rqstate);
             /*TODO: Destroy request after response is sent*/
         }
         else {
             //TODO: connection will be closed by handler after response is sent
             /*TODO: Destroy request after response is sent*/
+            cpb_request_on_request_done(rqstate);
         }
     }
     
@@ -205,51 +213,67 @@ ret:
     return err;
 }
 
-
+/*assumes rsp->written_bytes WAS NOT adjusted for new bytes*/
+struct cpb_error cpb_response_on_bytes_written(struct cpb_response_state *rsp, int index, int nbytes) {
+    dp_register_event(__FUNCTION__);
+    cpb_assert_h(index == rsp->written_bytes, "");
+    rsp->written_bytes += nbytes;
+    int header_bytes = rsp->headers_buff_len;
+    int body_bytes   = rsp->output_buff_len;
+    int total_bytes  = header_bytes + body_bytes;
+    if (rsp->written_bytes >= total_bytes) {
+        cpb_assert_h(rsp->written_bytes == total_bytes, "wrote more than expected");
+        rsp->state = CPB_HTTP_R_ST_DONE;
+    }
+    dp_end_event(__FUNCTION__);
+    return cpb_make_error(CPB_OK);
+}
 
 /*This is not the only source of bytes the request has, see also cpb_request_fork*/
-struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket) {
+struct cpb_error cpb_request_read_from_client(struct cpb_request_state *rqstate) {
+    int socket = rqstate->socket_fd;
     int avbytes = HTTP_INPUT_BUFFER_SIZE - rqstate->input_buffer_len - 1;
     int nbytes;
     struct cpb_error err = {0};
     dp_register_event(__FUNCTION__);
-    again:
+    
     nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
     if (nbytes < 0) {
-        if (!(errno == EWOULDBLOCK || errno == EAGAIN)) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            err = cpb_make_error(CPB_OK);
+            goto ret;
+        }
+        else {
             err = cpb_make_error(CPB_READ_ERR);
             //fprintf(stderr, "READ ERROR");
             goto ret;
         }
-        else {
-            err = cpb_make_error(CPB_OK);
-            goto ret;
-        }
     }
     else if (nbytes == 0) {
+        if (avbytes == 0) {
+            err = cpb_make_error(CPB_BUFFER_FULL_ERR);
+            goto ret;
+        }
         struct cpb_event ev;
-        cpb_event_http_init(&ev, socket, CPB_HTTP_CLOSE, rqstate);
-        //TODO error handling, also we should directly deal with the event because cache is hot
-        cpb_eloop_append(rqstate->server->eloop, ev); 
+        cpb_event_http_init(&ev, CPB_HTTP_CLIENT_CLOSED, rqstate, 0);
+        //TODO error handling, also why not directly deal with the event
+        cpb_eloop_append(rqstate->eloop, ev); 
         //fprintf(stderr, "EOF");
     }
     else {
+        avbytes -= nbytes;
         int idx = rqstate->input_buffer_len;
-        rqstate->input_buffer_len += nbytes;
         err = cpb_request_on_bytes_read(rqstate, idx, nbytes);
         if (err.error_code != CPB_OK)
-            goto ret;   
+            goto ret;
     }
 
-    if (rqstate->istate != CPB_HTTP_I_ST_DONE) {
-        if (nbytes != 0)
-            goto again;
-    }
     
     if (nbytes == 0) {
         /*TODO: This was closed by the client, check if it's valid*/
         /*For example if we are waiting for a request body and connection was closed prematurely*/
         rqstate->istate = CPB_HTTP_I_ST_DONE;
+        cpb_request_on_request_done(rqstate);
         cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
     }
     ret:
@@ -259,15 +283,391 @@ struct cpb_error read_from_client(struct cpb_request_state *rqstate, int socket)
 
 
 
+void cpb_request_async_read_from_client_runner(struct cpb_thread *thread, struct cpb_task *task) {
+    struct cpb_request_state *rqstate = task->msg.u.iip.argp;
+    int socket = rqstate->socket_fd;
+    int avbytes = HTTP_INPUT_BUFFER_SIZE - rqstate->input_buffer_len - 1;
+    int nbytes;
+    dp_register_event(__FUNCTION__);
 
-static void handle_http(struct cpb_event ev) {
-    int socket_fd = ev.msg.arg1;
-    int cmd  = ev.msg.arg2;
-    struct cpb_request_state *rqstate = ev.msg.argp;
+    int err = CPB_OK;
+    int client_closed = 0;
+
+    int now_read_bytes = rqstate->bytes_read;
+
+    struct cpb_event ev;
+    int read_bytes;
+    
+    nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
+    if (nbytes < 0) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            err = CPB_OK;
+            goto ret;
+        }
+        else {
+            err = CPB_READ_ERR;
+            //fprintf(stderr, "READ ERROR");
+            goto ret;
+        }
+    }
+    else if (nbytes == 0) {
+        if (avbytes == 0) {
+            err = CPB_BUFFER_FULL_ERR;
+            goto ret;
+        }
+        client_closed = 1;
+        goto ret;
+    }
+    else {
+        avbytes -= nbytes;
+        now_read_bytes += nbytes;
+    }
+
+    ret:
+    /*TODO: handle error*/
+    /*TODO: provide more details than what can fit in an event*/
+    
+    read_bytes = now_read_bytes - rqstate->bytes_read;
+
+    if (err != CPB_OK) {
+        cpb_event_http_init(&ev, CPB_HTTP_IO_ERROR, rqstate, read_bytes);
+        int perr = cpb_eloop_ts_append(rqstate->eloop, ev);
+        if (perr != CPB_OK) {
+            /*we cannot afford to have this fail*/
+            cpb_request_handle_fatal_error(rqstate);
+        }
+    }
+    else {
+        //even if it's zero we need to send this to mark it as not scheduled
+        cpb_event_http_init(&ev, CPB_HTTP_DID_READ, rqstate, read_bytes);
+        int perr = cpb_eloop_ts_append(rqstate->eloop, ev);
+        if (err != CPB_OK) {
+            /*we cannot afford to have this fail*/
+            cpb_request_handle_fatal_error(rqstate);
+        }
+        
+        if (client_closed) {
+            cpb_event_http_init(&ev, CPB_HTTP_CLIENT_CLOSED, rqstate, read_bytes);
+            perr = cpb_eloop_ts_append(rqstate->eloop, ev);
+            if (err != CPB_OK) {
+                /*we cannot afford to have this fail*/
+                cpb_request_handle_fatal_error(rqstate);
+            }
+        }
+    }
+    
+    dp_end_event(__FUNCTION__);
+    return;
+}
+struct cpb_error cpb_request_async_read_from_client(struct cpb_request_state *rqstate) {
+    dp_register_event(__FUNCTION__);
+    struct cpb_threadpool *tp = rqstate->eloop->threadpool;
+    struct cpb_task task;
+    task.err = cpb_make_error(CPB_OK);
+    task.run = cpb_request_async_read_from_client_runner;
+    task.msg.u.iip.arg1 = 0;
+    task.msg.u.iip.arg2 = 0;
+    task.msg.u.iip.argp = rqstate;
+    int rv = cpb_threadpool_push_task(tp, task);
+    dp_end_event(__FUNCTION__);
+    return cpb_make_error(rv);
+}
+void cpb_request_async_write_runner(struct cpb_thread *thread, struct cpb_task *task) {
+    dp_register_event(__FUNCTION__);
+    struct cpb_request_state *rqstate = task->msg.u.iip.argp;
+    struct cpb_response_state *rsp = &rqstate->resp;
+    int rv = CPB_OK;
+    int details = 0;
+    int header_bytes = rsp->headers_buff_len;
+    int body_bytes   = rsp->output_buff_len;
+    int total_bytes  = header_bytes + body_bytes;
+
+    int now_written_bytes = rsp->written_bytes;
+    struct cpb_event ev;
+
+    if (now_written_bytes < total_bytes) {
+        #if 0
+        if (now_written_bytes < header_bytes) {
+            ssize_t written = write(rsp->req_state->socket_fd,
+                                    rsp->headers_buff + now_written_bytes,
+                                    rsp->headers_buff_len - now_written_bytes);
+            if (written == -1) {
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    rv =  CPB_WRITE_ERR;
+                    details = errno;
+                    goto ret;
+                }
+            }
+            else {
+                now_written_bytes += written;
+            }
+        }
+        if (now_written_bytes >= header_bytes) {
+            ssize_t written = write(rsp->req_state->socket_fd,
+                                    rsp->output_buff + (now_written_bytes - header_bytes),
+                                    total_bytes - now_written_bytes);
+            if (written == -1) {
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    rv =  CPB_WRITE_ERR;
+                    details = errno;
+                    goto ret;
+                }
+            }
+            else {
+                now_written_bytes += written;
+            }
+        }
+        #else
+        char buff[2048];
+        int sz = 0;
+        memcpy(buff, rsp->headers_buff, rsp->headers_buff_len);
+        sz += rsp->headers_buff_len;
+        memcpy(buff + sz, rsp->output_buff, rsp->output_buff_len);
+        sz += rsp->output_buff_len;
+        ssize_t written = write(rsp->req_state->socket_fd,
+                                    buff + now_written_bytes,
+                                    total_bytes - now_written_bytes);
+            
+        if (written == -1) {
+            if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                rv =  CPB_WRITE_ERR;
+                details = errno;
+                goto ret;
+            }
+        }
+        else {
+            now_written_bytes += written;
+        }
+        #endif
+    }
+    ret:
+    /*TODO: handle error*/
+    /*TODO: provide more details than what can fit in an event*/
+    
+    if (rv != CPB_OK) {
+        cpb_event_http_init(&ev, CPB_HTTP_IO_ERROR, rqstate, now_written_bytes - rsp->written_bytes);
+    }
+    else {
+        cpb_event_http_init(&ev, CPB_HTTP_DID_WRITE, rqstate, now_written_bytes - rsp->written_bytes);
+    }
+    int err = cpb_eloop_ts_append(rqstate->eloop, ev);
+    if (err != CPB_OK) {
+        /*we cannot afford to have this fail*/
+        cpb_request_handle_fatal_error(rqstate);
+    }
+    dp_end_event(__FUNCTION__);
+    return;
+}
+struct cpb_error cpb_response_async_write(struct cpb_response_state *rsp) {
+    dp_register_event(__FUNCTION__);
+    int rv = CPB_OK;
+    if (rsp->state != CPB_HTTP_R_ST_SENDING) {
+        rv = CPB_INVALID_STATE_ERR;
+        goto ret;
+    }
+    struct cpb_request_state *rqstate = rsp->req_state;
+    struct cpb_threadpool *tp = rqstate->eloop->threadpool;
+    struct cpb_task task;
+    task.err = cpb_make_error(CPB_OK);
+    task.run = cpb_request_async_write_runner;
+    task.msg.u.iip.arg1 = 0;
+    task.msg.u.iip.arg2 = 0;
+    task.msg.u.iip.argp = rqstate;
+    rv = cpb_threadpool_push_task(tp, task);
+    ret:
+    dp_end_event(__FUNCTION__);
+    return cpb_make_error(rv);
+
+}
+
+
+int cpb_response_write(struct cpb_response_state *rsp) {
+    dp_register_event(__FUNCTION__);
+    int rv = CPB_OK;
+    if (rsp->state != CPB_HTTP_R_ST_SENDING) {
+        rv = CPB_INVALID_STATE_ERR;
+        goto ret;
+    }
+    int header_bytes = rsp->headers_buff_len;
+    int body_bytes   = rsp->output_buff_len;
+    int total_bytes  = header_bytes + body_bytes;
+
+    int now_written_bytes = rsp->written_bytes;
+
+    if (now_written_bytes < total_bytes) {
+        if (rsp->written_bytes < header_bytes) {
+            ssize_t written = write(rsp->req_state->socket_fd,
+                                    rsp->headers_buff + now_written_bytes,
+                                    rsp->headers_buff_len - now_written_bytes);
+            if (written == -1) {
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    rv =  CPB_WRITE_ERR;
+                    goto ret;
+                }
+            }
+            else {
+                now_written_bytes += written;
+            }
+        }
+        if (now_written_bytes >= header_bytes) {
+            ssize_t written = write(rsp->req_state->socket_fd,
+                                    rsp->output_buff + (now_written_bytes - header_bytes),
+                                    total_bytes - now_written_bytes);
+            if (written == -1) {
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    rv =  CPB_WRITE_ERR;
+                    goto ret;
+                }
+            }
+            else {
+                now_written_bytes += written;
+            }
+        }
+    }
+    struct cpb_error cerr = cpb_response_on_bytes_written(rsp, rsp->written_bytes, now_written_bytes - rsp->written_bytes);
+    rv = cerr.error_code;
+    
+    ret:
+    dp_end_event(__FUNCTION__);
+    return rv;
+}
+
+void cpb_request_lifetime(struct cpb_http_multiplexer *mp, struct cpb_request_state *rqstate) {
+    if (rqstate->istate == CPB_HTTP_I_ST_DONE && rqstate->resp.state == CPB_HTTP_R_ST_DONE && !rqstate->is_read_scheduled && !rqstate->is_send_scheduled ) {
+        if (!rqstate->is_persistent) {
+            cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
+        }
+        cpb_assert_h(mp->creading != rqstate && mp->next_response != rqstate, "");
+        cpb_server_destroy_rqstate(rqstate->server, rqstate);
+    }
+}
+
+static void handle_http_event(struct cpb_event ev);
+void cpb_request_on_request_done(struct cpb_request_state *rqstate) {
+    cpb_assert_h(!rqstate->is_read_scheduled, "");
+    cpb_assert_h(rqstate->istate == CPB_HTTP_I_ST_DONE, "");
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
+    cpb_request_lifetime(mp, rqstate);
+}
+void cpb_request_on_response_done(struct cpb_request_state *rqstate) {
+    cpb_assert_h(!rqstate->is_send_scheduled, "");
+    cpb_assert_h(rqstate->resp.state == CPB_HTTP_R_ST_DONE, "");
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
+    cpb_assert_h(mp->next_response == rqstate, "");
+    cpb_http_multiplexer_pop_response(mp);
+    if (mp->next_response && mp->next_response->resp.state == CPB_HTTP_R_ST_SENDING) {
+        cpb_assert_h(!mp->next_response->is_send_scheduled, "");
+        struct cpb_event ev;
+        mp->next_response->is_send_scheduled = 1;
+        cpb_event_http_init(&ev, CPB_HTTP_SEND, mp->next_response, 0);
+        handle_http_event(ev);
+    }
+    cpb_request_lifetime(mp, rqstate);
+    
+}
+
+#define CPB_ASYNCHRONOUS_IO 1
+
+
+
+
+int cpb_response_end(struct cpb_response_state *rsp) {
+    dp_register_event(__FUNCTION__);
+    if (rsp->state == CPB_HTTP_R_ST_SENDING ||
+        rsp->state == CPB_HTTP_R_ST_DONE    ||
+        rsp->state == CPB_HTTP_R_ST_DEAD      ) 
+    {
+        cpb_assert_h(rsp->state != CPB_HTTP_R_ST_DEAD, "");
+        dp_end_event(__FUNCTION__);
+        return CPB_INVALID_STATE_ERR;
+    }
+    
+    int rv;
+    
+    struct cpb_str name;
+    cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Content-Length");
+    int body_len = rsp->output_buff_len;
+    struct cpb_str body_len_str;
+    cpb_str_init(rsp->req_state->server->cpb, &body_len_str);
+    cpb_str_itoa(rsp->req_state->server->cpb, &body_len_str, body_len);
+    rv = cpb_response_set_header(rsp, &name, &body_len_str); //owns body_len_str
+    if (rv != CPB_OK) {
+        cpb_str_deinit(rsp->req_state->server->cpb, &body_len_str);
+        dp_end_event(__FUNCTION__);
+        return rv;
+    }
+
+    if (!rsp->req_state->is_persistent) {
+        struct cpb_str name, value;
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
+        rv = cpb_response_set_header(rsp, &name, &value);
+    }
+    else if (rsp->req_state->http_minor == 0) {
+        struct cpb_str name, value;
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
+        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "keep-alive");
+        rv = cpb_response_set_header(rsp, &name, &value);
+    }
+    if (rv != CPB_OK) {
+        dp_end_event(__FUNCTION__);
+        return rv;
+    }
+        
+    rv = cpb_response_prepare_headers(rsp);
+    if (rv != CPB_OK){
+        dp_end_event(__FUNCTION__);
+        return rv;
+    }
+        
+
+    rsp->state = CPB_HTTP_R_ST_SENDING;
+
+    
+    //TODO: Why not do that directly
+    struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(rsp->req_state->server, rsp->req_state->socket_fd);
+    if (m->next_response == rsp->req_state) {
+        //TODO: will it be an issue if this gets scheduled twice? 
+        //  [Whatever event we are on] -> we schedule this here
+        //  [select() event] -> schedules this too
+        //  [First  time scheduled]
+        //  [Second time scheduled]
+        // ^ this was handled by adding is_read_scheduled and is_send_scheduled flags
+        //   need to confirm this solves it
+        
+        struct cpb_event ev;
+        cpb_event_http_init(&ev, CPB_HTTP_SEND, rsp->req_state, 0);
+        
+        rsp->req_state->is_send_scheduled = 1;
+        #if 0
+            rv = cpb_eloop_append(rsp->req_state->eloop, ev);
+        #else
+            if (!rsp->req_state->is_read_scheduled)
+                handle_http_event(ev);
+            else
+                rv = cpb_eloop_append(rsp->req_state->eloop, ev);
+        #endif
+    }
+    dp_end_event(__FUNCTION__);
+    return rv;
+}
+
+
+static void handle_http_event(struct cpb_event ev) {
+    struct cpb_error err = {0};
+    enum cpb_event_http_cmd cmd  = ev.msg.u.iip.arg2;
+    struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
+    int socket_fd = rqstate->socket_fd;
     if (cmd == CPB_HTTP_INIT || cmd == CPB_HTTP_CONTINUE || cmd == CPB_HTTP_READ) {
         cpb_assert_h(rqstate->is_read_scheduled, "");
-        rqstate->is_read_scheduled = 0;
-        read_from_client(rqstate, socket_fd);
+        
+        if (CPB_ASYNCHRONOUS_IO) {
+            cpb_request_async_read_from_client(rqstate);
+        }
+        else {
+            rqstate->is_read_scheduled = 0;
+            cpb_request_read_from_client(rqstate);
+        }
     }
     else if (cmd == CPB_HTTP_CLOSE) {
         //Socket reached EOF
@@ -275,35 +675,64 @@ static void handle_http(struct cpb_event ev) {
     }
     else if (cmd == CPB_HTTP_SEND) {
         cpb_assert_h(rqstate->is_send_scheduled, "");
-        rqstate->is_send_scheduled = 0;
-        if (rqstate->resp.state != CPB_HTTP_R_ST_DONE) {
-            cpb_assert_h(rqstate->resp.state != CPB_HTTP_R_ST_DEAD, ""); /*this should never be seen*/
-            int rv = cpb_response_send(&rqstate->resp);
+        
+        if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
+            rqstate->is_send_scheduled = 0;
+            goto ret;
+        }
+        cpb_assert_h(rqstate->resp.state != CPB_HTTP_R_ST_DEAD, "");
+        
+        
+        if (CPB_ASYNCHRONOUS_IO) {
+            cpb_response_async_write(&rqstate->resp);
+        }
+        else {
+            int rv = cpb_response_write(&rqstate->resp);
+            rqstate->is_send_scheduled = 0;
             if (rv != CPB_OK) {
                 cpb_request_handle_socket_error(rqstate);
-                return;
+                err = cpb_make_error(rv);
+                goto ret;
             }
             if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
-                struct cpb_server *s = rqstate->server;
-                int socket_fd = rqstate->socket_fd;
-                int is_persistent = rqstate->is_persistent;
-                struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(rqstate->server, socket_fd);
-                cpb_assert_h(mp->next_response == rqstate, "");
-                cpb_http_multiplexer_pop_response(mp);
-                cpb_server_destroy_rqstate(s, rqstate);
-                if (!is_persistent) {
-                    cpb_server_close_connection(s, socket_fd);
-                }
+                cpb_request_on_response_done(rqstate);
             }
-            
         }
-        
+    }
+    else if (cmd == CPB_HTTP_DID_READ) {
+        cpb_assert_h(rqstate->is_read_scheduled, "");
+        rqstate->is_read_scheduled = 0;
+        cpb_assert_h(rqstate->istate != CPB_HTTP_I_ST_DEAD, ""); 
+        int len  = ev.msg.u.iip.arg1;
+        err = cpb_request_on_bytes_read(rqstate, rqstate->input_buffer_len, len);
+    }
+    else if (cmd == CPB_HTTP_DID_WRITE) {
+        cpb_assert_h(rqstate->is_send_scheduled, "");
+        rqstate->is_send_scheduled = 0;
+        cpb_assert_h(rqstate->resp.state != CPB_HTTP_R_ST_DEAD, "");
+        int len  = ev.msg.u.iip.arg1;
+        err = cpb_response_on_bytes_written(&rqstate->resp, rqstate->resp.written_bytes, len);
+        if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
+            cpb_request_on_response_done(rqstate);
+        }
+    }
+    else if (cmd == CPB_HTTP_IO_ERROR) {
+        cpb_request_handle_socket_error(rqstate);
+    }
+    else if (cmd == CPB_HTTP_CLIENT_CLOSED) {
+        /*TODO: This was closed by the client, check if it's valid*/
+        /*For example if we are waiting for a request body and connection was closed prematurely*/
+        cpb_server_cancel_requests(rqstate->server, rqstate->socket_fd);
+        cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
     }
     else{
         cpb_assert_h(0, "invalid cmd");
     }
+    
+ret:
+    /*TODO: print error or do something with it*/
     return;
 }
-static void destroy_http(struct cpb_event ev) {
+static void destroy_http_event(struct cpb_event ev) {
 }
 

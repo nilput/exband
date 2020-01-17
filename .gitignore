@@ -1,3 +1,4 @@
 garbage
 server_main
 .vscode
+src/util/.gitignore

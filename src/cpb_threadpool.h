@@ -37,16 +37,10 @@ struct cpb_threadpool {
     struct cpb_taskqueue taskq;
 };
 
-/*
-This is expected to be used like for example:
-struct read_task {
-    struct cpb_task task;    
-    custom data;
-}
-then cast the pointer cpb_task * to read_task *
-*/
+
 struct cpb_task {
     struct cpb_error err;
+    struct cpb_msg msg;
     void (*run)(struct cpb_thread *thread, struct cpb_task *task);
 };
 
@@ -59,13 +53,19 @@ static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
     tp->tid = 0;
     tp->nthreads = 0;
     tp->threads = NULL;
-    pthread_mutex_init(&tp->tp_mtx, NULL);
-    int rv = cpb_taskqueue_init(&tp->taskq, cpb_ref, 128);
+    int err  = CPB_OK;
+    if (pthread_mutex_init(&tp->tp_mtx, NULL) != 0) {
+        err = CPB_MUTEX_ERROR;
+    }
+    else {
+        err = cpb_taskqueue_init(&tp->taskq, cpb_ref, 128);
+    }
+    return err;
 }
 
 
 
-static int cpb_threadpool_deinit(struct cpb_threadpool *tp) {
+static void cpb_threadpool_deinit(struct cpb_threadpool *tp) {
     for (int i=0; i<tp->nthreads; i++) {
         /*ASSUMES THREAD STOPPED EXECUTING*/
         cpb_thread_destroy(tp->threads[i]);
@@ -161,6 +161,7 @@ static void cpb_thread_destroy(struct cpb_thread *thread) {
 static int cpb_thread_cancel_and_destroy(struct cpb_thread *thread) {
     pthread_cancel(thread->thread);
     cpb_thread_destroy(thread);
+    return CPB_OK;
 }
 
 static int cpb_threadpool_set_nthreads(struct cpb_threadpool *tp, int nthreads) {

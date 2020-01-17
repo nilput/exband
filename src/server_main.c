@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include<signal.h>
 #include "http/http_server.h"
+#include "http/http_server_listener_epoll.h"
 #include "cpb_errors.h"
 #include "cpb.h"
 #include "cpb_eloop.h"
@@ -28,7 +29,7 @@ void int_handler(int dummy) {
     exit(0);
 }
 
-static int cpb_response_append_body_cstr(struct cpb_response_state *resp, const char *s) {
+static int cpb_response_append_body_cstr(struct cpb_response_state *resp, char *s) {
     return cpb_response_append_body(resp, s, strlen(s));
 }
 
@@ -139,10 +140,14 @@ int main(int argc, char *argv[]) {
 
     
 
-    rv = cpb_eloop_init(&eloop, &cpb_state, 2);
+    rv = cpb_eloop_init(&eloop, &cpb_state, &tp, 2);
     ordie(rv);
     erv = cpb_server_init(&server, &cpb_state, &eloop, 8085);
     ordie(erv.error_code);
+
+    erv.error_code = cpb_server_listener_switch_to_epoll(&server);
+    ordie(erv.error_code);
+
     cpb_server_set_request_handler(&server, request_handler);
     erv = cpb_server_listen(&server);
     ordie(erv.error_code);

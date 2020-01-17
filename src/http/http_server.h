@@ -1,18 +1,17 @@
 #ifndef CPB_HTTP_SERVER_H
 #define CPB_HTTP_SERVER_H
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/select.h> //fdset
+
+
 
 #include "../cpb_errors.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
 
 
-#define LISTEN_BACKLOG 16
-#define CPB_SOCKET_MAX 1024
-#define CPB_HTTP_MIN_DELAY 10 //ms
+#define LISTEN_BACKLOG 128
+#define CPB_SOCKET_MAX 2048
+#define CPB_HTTP_MIN_DELAY 5 //ms
 
 
 
@@ -37,15 +36,18 @@ enum cpb_request_handler_reason {
     CPB_HTTP_HANDLER_BODY,
 };
 
+
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_eloop *eloop; //not owned, must outlive
+    //^will have many in the future
+
     void (*request_handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason);
     int port;
     int listen_socket_fd;
-    fd_set active_fd_set;
-    fd_set read_fd_set;
-    fd_set write_fd_set;
+
+    struct cpb_server_listener *listener;
+    
     
     struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
 };
@@ -62,7 +64,7 @@ single socket -> multiple concurrent requests
 struct cpb_request_state *cpb_server_current_reading_rqstate(struct cpb_server *server, int socketfd);
 struct cpb_request_state *cpb_server_current_writing_rqstate(struct cpb_server *server, int socketfd);
 
-struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, int socket_fd);
+struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd);
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate);
 
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
@@ -75,5 +77,10 @@ void cpb_server_deinit(struct cpb_server *s);
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);
 int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname);
+
+
+/*for gluing the listeners*/
+void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiplexer *m);
+void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multiplexer *m);
 
 #endif //CPB_HTTP_SERVER_H

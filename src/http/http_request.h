@@ -57,9 +57,11 @@ struct cpb_http_header_map {
 
 struct cpb_request_state {
     struct cpb_server *server; //not owned, must outlive
+    struct cpb_eloop *eloop;  //not owned, must outlive
 
     unsigned char http_major;
     unsigned char http_minor;
+
 
     int socket_fd;
     int input_buffer_len;
@@ -110,9 +112,10 @@ static int cpb_request_input_buffer_size(struct cpb_request_state *rqstate) {
     return HTTP_INPUT_BUFFER_SIZE;
 }
 
-static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
+static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_eloop *eloop, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
     
     rqstate->is_chunked = 0;
+    rqstate->eloop = eloop;
     rqstate->is_persistent = 0;
     rqstate->is_read_scheduled = 0;
     rqstate->is_send_scheduled = 0;
