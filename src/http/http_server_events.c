@@ -32,7 +32,9 @@ static void cpb_request_handle_socket_error(struct cpb_request_state *rqstate) {
 
 static void cpb_request_call_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
     dp_register_event(__FUNCTION__);
+    
     rqstate->server->request_handler(rqstate, reason);
+    
     dp_end_event(__FUNCTION__);
 }
 
@@ -418,6 +420,9 @@ void cpb_request_async_write_runner(struct cpb_thread *thread, struct cpb_task *
             }
         }
         #else
+        if (total_bytes > 2048) {
+            return CPB_BUFFER_FULL_ERR;
+        }
         char buff[2048];
         int sz = 0;
         memcpy(buff, rsp->headers_buff, rsp->headers_buff_len);
@@ -566,8 +571,7 @@ void cpb_request_on_response_done(struct cpb_request_state *rqstate) {
     
 }
 
-#define CPB_ASYNCHRONOUS_IO 1
-
+#define CPB_ASYNCHRONOUS_IO (rqstate->server->config.http_use_aio)
 
 
 
@@ -585,7 +589,7 @@ int cpb_response_end(struct cpb_response_state *rsp) {
     int rv;
     
     struct cpb_str name;
-    cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Content-Length");
+    cpb_str_init_const_str(&name, "Content-Length");
     int body_len = rsp->output_buff_len;
     struct cpb_str body_len_str;
     cpb_str_init(rsp->req_state->server->cpb, &body_len_str);
@@ -599,14 +603,14 @@ int cpb_response_end(struct cpb_response_state *rsp) {
 
     if (!rsp->req_state->is_persistent) {
         struct cpb_str name, value;
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "close");
+        cpb_str_init_const_str(&name, "Connection");
+        cpb_str_init_const_str(&value, "close");
         rv = cpb_response_set_header(rsp, &name, &value);
     }
     else if (rsp->req_state->http_minor == 0) {
         struct cpb_str name, value;
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &name, "Connection");
-        cpb_str_init_const_str(rsp->req_state->server->cpb, &value, "keep-alive");
+        cpb_str_init_const_str(&name, "Connection");
+        cpb_str_init_const_str(&value, "keep-alive");
         rv = cpb_response_set_header(rsp, &name, &value);
     }
     if (rv != CPB_OK) {

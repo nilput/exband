@@ -54,7 +54,10 @@ static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
     tp->nthreads = 0;
     tp->threads = NULL;
     int err  = CPB_OK;
-    if (pthread_mutex_init(&tp->tp_mtx, NULL) != 0) {
+    if (pthread_mutex_init(&tp->tp_mtx, NULL) != 0     ||
+        pthread_mutex_init(&tp->tp_cnd_mtx, NULL) != 0 ||
+        pthread_cond_init(&tp->tp_cnd, NULL) != 0) 
+    {
         err = CPB_MUTEX_ERROR;
     }
     else {

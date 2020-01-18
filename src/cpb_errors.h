@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #ifndef CPB_ERRORS_H
 #define CPB_ERRORS_H
 
@@ -6,6 +7,9 @@
 #define CPB_ERR_LIST \
     CPERR(CPB_OK) \
     CPERR(CPB_EOF) \
+    CPERR(CPB_NOT_FOUND) \
+    CPERR(CPB_INIT_ERROR) \
+    CPERR(CPB_MODULE_LOAD_ERROR) \
     CPERR(CPB_SOCKET_ERR) \
     CPERR(CPB_SELECT_ERR) \
     CPERR(CPB_READ_ERR) \
@@ -26,6 +30,7 @@
     CPERR(CPB_EPOLL_WAIT_ERROR) \
     CPERR(CPB_MUTEX_ERROR) \
     CPERR(CPB_THREAD_ERROR) \
+    CPERR(CPB_CONFIG_ERROR) \
     CPERR(CPB_NOMEM_ERR) 
 #undef CPERR
 #define CPERR(error_name) error_name,
@@ -48,27 +53,37 @@ struct cpb_error {
     int error_code;
     void *details;
 };
-static void cpb_error_debug() {
+
+static const char *cpb_error_code_name(int error_code) {
+    for (int i=0; i<CPB_ERROR_LIST_COUNT; i++) {
+        if (cpb_error_str_list[i].error_code == error_code) {
+            return cpb_error_str_list[i].error_name;
+        }
+    }
+    return NULL;
+}
+
+
+
+static void cpb_error_print(int error_code) {
+    fprintf(stderr, "Error occured: %s", cpb_error_code_name(error_code));
+}
+static void cpb_error_debug(int error_code) {
+    #ifdef CPB_DEBUG
+        cpb_error_print(error_code);
+    #endif
     return;
 }
 static struct cpb_error cpb_make_error(int error_code) {
     struct cpb_error err;
-    if (error_code != CPB_OK) cpb_error_debug();
-
+    if (error_code != CPB_OK) 
+        cpb_error_debug(error_code);
     err.details = NULL;
     err.error_code = error_code;
     return err;
 }
 static struct cpb_error cpb_prop_error(struct cpb_error src) {
     return src;
-}
-static const char *cpb_error_name(struct cpb_error *err) {
-    for (int i=0; i<CPB_ERROR_LIST_COUNT; i++) {
-        if (cpb_error_str_list[i].error_code == err->error_code) {
-            return cpb_error_str_list[i].error_name;
-        }
-    }
-    return NULL;
 }
 
 #define define_cpb_or(value_type, struct_name) \

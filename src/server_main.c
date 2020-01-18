@@ -1,15 +1,19 @@
 #include <stdio.h>
-#include<signal.h>
-#include "http/http_server.h"
-#include "http/http_server_listener_epoll.h"
-#include "cpb_errors.h"
+#include <signal.h>
+
 #include "cpb.h"
+#include "cpb_errors.h"
 #include "cpb_eloop.h"
 #include "cpb_threadpool.h"
+#include "http/http_server.h"
+#include "http/http_server_listener_epoll.h"
+
+#include "util/vg.h" //argv
+#include "util/ini_reader.h"
 
 void ordie(int code) {
     if (code != CPB_OK) {
-        fprintf(stderr, "An error occured!\n");
+        fprintf(stderr, "An error occured!: %s\n", cpb_error_code_name(code));
         exit(1);
     }
 }
@@ -28,127 +32,134 @@ void int_handler(int dummy) {
     dp_dump();
     exit(0);
 }
-
-static int cpb_response_append_body_cstr(struct cpb_response_state *resp, char *s) {
-    return cpb_response_append_body(resp, s, strlen(s));
-}
-
-void request_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
-    struct cpb_str path;
-    //cpb_request_repr(rqstate);
-
-    cpb_str_init(rqstate->server->cpb, &path);
-    cpb_str_slice_to_copied_str(rqstate->server->cpb, rqstate->path_s, rqstate->input_buffer, &path);
-    if (cpb_str_streqc(rqstate->server->cpb, &path, "/post") || cpb_str_streqc(rqstate->server->cpb, &path, "/post/")) {
-        struct cpb_str key,value;
-        cpb_str_init_const_str(rqstate->server->cpb, &key, "Content-Type");
-        cpb_str_init_const_str(rqstate->server->cpb, &value, "text/html");
-        cpb_response_append_body_cstr(&rqstate->resp, "<!DOCTYPE html>");
-        cpb_response_append_body_cstr(&rqstate->resp, "<html>"
-                                                      "<head>"
-                                                      "    <title>CPBIN!</title>"
-                                                      "</head>"
-                                                      "<body>");
-        if (cpb_request_has_body(rqstate)) {
-            if (reason == CPB_HTTP_HANDLER_HEADERS) {
-                rqstate->body_handling = CPB_HTTP_B_BUFFER;
-            }
-            else {
-                cpb_response_append_body_cstr(&rqstate->resp, "You posted: <br>");
-                cpb_response_append_body_cstr(&rqstate->resp, "<p>");
-
-                /*XSS!*/
-                if (rqstate->body_decoded.str)
-                    cpb_response_append_body_cstr(&rqstate->resp, rqstate->body_decoded.str);
-
-                cpb_response_append_body_cstr(&rqstate->resp, "</p>");
-                cpb_response_append_body_cstr(&rqstate->resp, "</body>"
-                                                              "</html>");
-                cpb_response_end(&rqstate->resp);
-            }
-        }
-        else {
-            cpb_response_set_header(&rqstate->resp, &key, &value);
-            cpb_response_append_body_cstr(&rqstate->resp, "<p> Post something! </p> <br>");
-            cpb_response_append_body_cstr(&rqstate->resp, "<form action=\"\" method=\"POST\">"
-                                                          "Text: <input type=\"text\" name=\"text\"><br>"
-                                                          "</form>");
-            cpb_response_append_body_cstr(&rqstate->resp, "</body>"
-                                                          "</html>");
-            cpb_response_end(&rqstate->resp);
-        }
-        
-    }
-    else {
-        struct cpb_str key,value;
-        cpb_str_init_const_str(rqstate->server->cpb, &key, "Content-Type");
-        cpb_str_init_const_str(rqstate->server->cpb, &value, "text/plain");
-        cpb_response_set_header(&rqstate->resp, &key, &value);
-        cpb_response_append_body(&rqstate->resp, "Hello World!\r\n", 14);
-        struct cpb_str str;
-        
-        cpb_str_init(rqstate->server->cpb, &str);
-        
-        cpb_sprintf(rqstate->server->cpb, &str, "Requested URL: '%s'", path.str);
-        
-        cpb_response_append_body(&rqstate->resp, str.str, str.len);
-        cpb_str_deinit(rqstate->server->cpb, &str);
-        cpb_response_end(&rqstate->resp);
-    }
-    
-    cpb_str_deinit(rqstate->server->cpb, &path);
-    
-    
-}
-
-
-void task_test(struct cpb_thread *t, struct cpb_task *task) {
-    fprintf(stdout, "Thread %d running task!\n", t->tid);
-    fflush(stdout);
-}
 void set_handlers() {
-   signal(SIGINT, int_handler);
+   signal(SIGINT,  int_handler);
    signal(SIGTERM, int_handler);
-   signal(SIGHUP, int_handler);
+   signal(SIGHUP,  int_handler);
    signal(SIGSTOP, int_handler);
    signal(SIGABRT, int_handler);
    signal(SIGSEGV, int_handler);
    signal(SIGPIPE, SIG_IGN);
 }
 
+
+
+struct cpb_config {
+    int tp_threads; //threadpool threads
+};
+
+
+struct cpb_config cpb_config_default(struct cpb *cpb_ref) {
+    (void) cpb_ref;
+    struct cpb_config conf = {0};
+    conf.tp_threads = 4;
+    return conf;
+}
+
+void cpb_config_deinit(struct cpb *cpb_ref, struct cpb_config *config) {
+}
+
+
+
+//assumes config_out parameters were not initialized
+static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct cpb_config *config_out, struct cpb_http_server_config *http_server_config_out) {
+    int err;
+    *config_out = cpb_config_default(cpb_ref);
+    *http_server_config_out = cpb_http_server_config_default(cpb_ref);
+    char *config_file;
+
+    int explicit = vg_get_str(vg, "-c", &config_file) == VG_OK;
+    if (!explicit)
+        config_file = "cpb.ini";
+    FILE *f = fopen(config_file, "r");
+    if (!f) {
+        return CPB_NOT_FOUND;
+    }
+    struct ini_config *c = ini_parse(cpb_ref, f);
+    if (!c) {
+        fclose(f);
+        return CPB_CONFIG_ERROR;
+    }
+    struct ini_pair *p = ini_get_value(c, "threadpool_size");
+    if (p) {
+        int count = atoi(c->input.str + p->value.index);
+        config_out->tp_threads = count;
+    }
+    p = ini_get_value(c, "polling_backend");
+    if (p) {
+        err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->polling_backend);
+        if (err != CPB_OK)
+            goto err_1;
+    }
+    p = ini_get_value(c, "http_port");
+    if (p) {
+        int port = atoi(c->input.str + p->value.index);
+        http_server_config_out->http_listen_port = port;
+    }
+    p = ini_get_value(c, "http_aio");
+    if (p) {
+        int boolean = atoi(c->input.str + p->value.index);
+        http_server_config_out->http_use_aio = !!boolean;
+    }
+    p = ini_get_value(c, "http_handler_module");
+    if (p) {
+        err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->http_handler_module);
+        if (err != CPB_OK)
+            goto err_1;
+    }
+
+    ini_destroy(cpb_ref, c);
+    return CPB_OK;
+    err_1:
+    ini_destroy(cpb_ref, c);
+    cpb_config_deinit(cpb_ref, config_out);
+    cpb_http_server_config_deinit(cpb_ref, http_server_config_out);
+    return err;
+}
+
 int main(int argc, char *argv[]) {
-    
+    struct vgstate vg;
+
     dp_register_event(__FUNCTION__);
     set_handlers();
+    vg_init(&vg, argc, argv);
     
+    struct cpb_config cpb_config;
+    struct cpb_http_server_config cpb_http_server_config;
+
     int rv;
+
     struct cpb_error erv = {0};
     dp_clear();
     rv = cpb_init(&cpb_state);
     ordie(rv);
+    rv = load_configurations(&vg, &cpb_state, &cpb_config, &cpb_http_server_config);
+    if (rv != CPB_OK) {
+        fprintf(stderr, "failed to load configuration");
+    }
+
+    
+    
     struct cpb_threadpool tp;
     rv = cpb_threadpool_init(&tp, &cpb_state);
     ordie(rv);
-    rv = cpb_threadpool_set_nthreads(&tp, 4);
+    rv = cpb_threadpool_set_nthreads(&tp, cpb_config.tp_threads);
+    fprintf(stderr, "spawning %d threads", cpb_config.tp_threads);
     ordie(rv);
-
-    struct cpb_task task;
-    task.run = task_test;
-    task.err = cpb_make_error(CPB_OK);
-    rv = cpb_threadpool_push_task(&tp, task);
-    ordie(rv);
-
     
 
     rv = cpb_eloop_init(&eloop, &cpb_state, &tp, 2);
     ordie(rv);
-    erv = cpb_server_init(&server, &cpb_state, &eloop, 8085);
+    fprintf(stderr, "Listening on port %d\n", cpb_http_server_config.http_listen_port);
+    erv = cpb_server_init_with_config(&server, &cpb_state, &eloop, cpb_http_server_config);
     ordie(erv.error_code);
 
-    erv.error_code = cpb_server_listener_switch_to_epoll(&server);
-    ordie(erv.error_code);
-
-    cpb_server_set_request_handler(&server, request_handler);
+    if (cpb_strcasel_eq(cpb_http_server_config.polling_backend.str, cpb_http_server_config.polling_backend.len, "epoll", 5)) {
+        fprintf(stderr, "using epoll\n");
+        erv.error_code = cpb_server_listener_switch_to_epoll(&server);
+        ordie(erv.error_code);
+    }
+    
     erv = cpb_server_listen(&server);
     ordie(erv.error_code);
     erv = cpb_eloop_run(&eloop);

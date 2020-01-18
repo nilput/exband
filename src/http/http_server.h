@@ -7,6 +7,7 @@
 #include "../cpb_errors.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
+#include "http_handler_module.h"
 
 
 #define LISTEN_BACKLOG 128
@@ -18,37 +19,57 @@
 define_cpb_or(int, struct cpb_or_socket);
 
 /*
-    In the beginning there was Server 
-    Then Server said let there be Light
 
-    Server -> (needs an eloop)
-        has a bunch of roles:  Accept (see whether there are new connections, if so accept them)
-                               Select (see whether there are sockets available for read/write, if
-                                       Schedule the appropriate handler in the event loop)
+    Server uses one or more event loops
+        has a bunch of roles:  Accepts connections
+                               Select (see whether there are sockets available for read/write, and schedule the appropriate handler to be ran in the event loop
 
         Server schedules itself to be ran in the event loop too
-        it manages the lifetime of requests and stores their state, event refer to the request's state
-
+        it manages the lifetime of requests and stores their state
 */
 
-enum cpb_request_handler_reason {
-    CPB_HTTP_HANDLER_HEADERS,
-    CPB_HTTP_HANDLER_BODY,
+
+
+
+struct cpb_http_server_config {
+    int http_listen_port;
+    int http_use_aio;
+    struct cpb_str http_handler_module;
+    struct cpb_str polling_backend;
 };
+static struct cpb_http_server_config cpb_http_server_config_default(struct cpb *cpb_ref) {
+    (void) cpb_ref;
+    struct cpb_http_server_config conf = {0};
+    conf.http_listen_port = 80;
+    conf.http_use_aio = 0;
+    cpb_str_init_const_str(&conf.polling_backend, "select");
+    cpb_str_init_const_str(&conf.http_handler_module, "");
+    return conf;
+}
+static void cpb_http_server_config_deinit(struct cpb *cpb_ref, struct cpb_http_server_config *config) {
+    cpb_str_deinit(cpb_ref, &config->polling_backend);
+    cpb_str_deinit(cpb_ref, &config->http_handler_module);
+}
 
 
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_eloop *eloop; //not owned, must outlive
     //^will have many in the future
+    struct cpb_http_server_config config; //owned
 
+    /*we either have a handler module (dynamic library) or a simple request handler*/
+    
     void (*request_handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason);
+
+    struct cpb_http_handler_module  *handler_module;
+    void *dll_module_handle;
+
     int port;
     int listen_socket_fd;
 
     struct cpb_server_listener *listener;
-    
-    
+        
     struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
 };
 
@@ -68,6 +89,8 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate);
 
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
+/*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, struct cpb_http_server_config config);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
 
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd);

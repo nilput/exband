@@ -93,6 +93,10 @@ static int cpb_response_append_body(struct cpb_response_state *rsp, char *s, int
     rsp->output_buff_len += len;
     return CPB_OK;
 }
+static int cpb_response_append_body_cstr(struct cpb_response_state *resp, char *s) {
+    return cpb_response_append_body(resp, s, strlen(s));
+}
+
 static int cpb_response_prepare_status(struct cpb_response_state *rsp) {
     if (rsp->state != CPB_HTTP_R_ST_INIT) {
         return CPB_INVALID_STATE_ERR;
@@ -146,6 +150,12 @@ static int cpb_response_prepare_headers(struct cpb_response_state *rsp) {
     return CPB_OK;
 }
 
+static void cpb_response_set_status_code(struct cpb_response_state *rsp, int status_code) {
+    rsp->status_code = status_code;
+}
+
+//doesnt own location
+int cpb_response_redirect_and_end(struct cpb_response_state *rsp, int status_code, const char *location);
 int cpb_response_end(struct cpb_response_state *rsp);
 
 #endif

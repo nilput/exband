@@ -1,6 +1,7 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <errno.h>
+#include <unistd.h> //close()
 #include "http_server_listener_epoll.h"
 
 #include "../cpb.h"
@@ -147,7 +148,9 @@ static int cpb_server_listener_epoll_destroy(struct cpb_server *s, struct cpb_se
 
     struct epoll_event event;
     epoll_ctl(lis->efd, EPOLL_CTL_DEL, s->listen_socket_fd, &event);
-    cpb_free(s->cpb, lis);
+    close(lis->efd);
+    cpb_free(s->cpb, listener);
+    
     return CPB_OK;
 }
 static int cpb_server_listener_epoll_close_connection(struct cpb_server *s, struct cpb_server_listener *listener, int socket_fd) {

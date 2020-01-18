@@ -50,39 +50,84 @@ static void default_handler(struct cpb_request_state *rqstate, enum cpb_request_
     cpb_response_append_body(&rqstate->resp, "Not found\r\n", 11);
     cpb_response_end(&rqstate->resp);
 }
+static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
+    cpb_assert_h(rqstate->server && rqstate->server->handler_module, "");
+    //TODO: dont ignore, also too many indirections that can be easily avoided!
+    struct cpb_server *s = rqstate->server;
+    int ignored = s->handler_module->handle_request(s->handler_module, rqstate, reason);
+}
 
-struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port) {
+
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, struct cpb_http_server_config config) {
     struct cpb_error err = {0};
     s->cpb = cpb_ref;
     s->eloop = eloop;
-    s->request_handler = default_handler;
+    s->request_handler   = default_handler;
+    s->handler_module    = NULL;
+    s->dll_module_handle = NULL;
+
+    s->config = config;
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
         cpb_http_multiplexer_init(&s->mp[i], NULL);
     }
     /* Create the socket and set it up to accept connections. */
-    struct cpb_or_socket or_socket = make_socket(port);
+    struct cpb_or_socket or_socket = make_socket(s->config.http_listen_port);
     if (or_socket.error.error_code) {
-        return cpb_prop_error(or_socket.error);
+        err = cpb_prop_error(or_socket.error);
+        goto err0;
     }
-    if (or_socket.value >= CPB_SOCKET_MAX) {
-        return cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+    else if (or_socket.value >= CPB_SOCKET_MAX) {
+        err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+        goto err0;
     }
     
-    
-
     int socket_fd = or_socket.value;
     s->listen_socket_fd = socket_fd;
 
     if (listen(s->listen_socket_fd, LISTEN_BACKLOG) < 0) { 
         err = cpb_make_error(CPB_LISTEN_ERR);
-        goto ret;
+        goto err1;
     }
 
     int rv = cpb_server_listener_select_new(s, &s->listener);
     if (rv != CPB_OK) {
         err = cpb_make_error(rv);
+        goto err1;
     }
-    ret:
+
+    if (config.http_handler_module.len > 0) {
+        int error = cpb_http_handler_module_load(cpb_ref, s, config.http_handler_module.str, &s->handler_module, &s->dll_module_handle);
+        if (error != CPB_OK) {
+            err = cpb_make_error(CPB_MODULE_LOAD_ERROR);
+            goto err2;
+        }
+        s->request_handler = module_handler;
+    }
+
+    return err;
+    /*
+    err3:
+    if (s->handler_module) {
+        cpb_http_handler_module_unload(s->cpb, s->handler_module, s->dll_module_handle);
+    }
+    */
+err2:
+    s->listener->destroy(s, s->listener);
+err1:
+    close(s->listen_socket_fd);
+err0:
+    for (int i=0; i<CPB_SOCKET_MAX; i++) {
+        cpb_http_multiplexer_deinit(&s->mp[i]);
+    }
+    return err;
+}
+struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port) {
+    struct cpb_http_server_config config = cpb_http_server_config_default(cpb_ref);
+    config.http_listen_port = port;
+    struct cpb_error err = cpb_server_init_with_config(s, cpb_ref, eloop, config);
+    if (err.error_code != CPB_OK) {
+        cpb_http_server_config_deinit(cpb_ref, &config);
+    }
     return err;
 }
 
@@ -231,6 +276,12 @@ void cpb_server_deinit(struct cpb_server *s) {
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
         cpb_http_multiplexer_deinit(&s->mp[i]);
     }
+    cpb_http_server_config_deinit(s->cpb, &s->config);
+    s->listener->destroy(s, s->listener);
+    if (s->handler_module) {
+        cpb_http_handler_module_unload(s->cpb, s->handler_module, s->dll_module_handle);
+    }
+    close(s->listen_socket_fd);
 }
 
 int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason)) {

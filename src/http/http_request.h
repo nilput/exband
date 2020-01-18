@@ -10,6 +10,8 @@
 #define HTTP_INPUT_BUFFER_SIZE 8192
 
 
+
+
 enum CPB_HTTP_METHOD {
     CPB_HTTP_M_HEAD,
     CPB_HTTP_M_GET,
@@ -39,6 +41,10 @@ enum cpb_http_parse_state {
 enum cpb_http_request_body_handling {
     CPB_HTTP_B_DISCARD,
     CPB_HTTP_B_BUFFER,
+};
+enum cpb_request_handler_reason {
+    CPB_HTTP_HANDLER_HEADERS,
+    CPB_HTTP_HANDLER_BODY,
 };
 
 struct cpb_http_header {

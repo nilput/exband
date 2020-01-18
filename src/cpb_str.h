@@ -66,8 +66,7 @@ static int cpb_str_init_empty(struct cpb_str *str) {
 }
 
 //src0 must outlive the object (doesn't own it)
-static int cpb_str_init_const_str(struct cpb *cpb, struct cpb_str *str, const char *src0) {
-    (void) cpb;
+static int cpb_str_init_const_str(struct cpb_str *str, const char *src0) {
     cpb_assert_h(!!src0, "passed NULL string");
     str->str = (char *) src0;
     str->len = strlen(src0);
@@ -275,6 +274,10 @@ static int cpb_str_streqc(struct cpb *cpb, struct cpb_str *str, const char *src0
         return 0;
     cpb_assert_h(!!str->str, "invalid string passed to be compared");
     return strcmp(str->str, src0) == 0;
+}
+static int cpb_str_startswithc(struct cpb *cpb, struct cpb_str *str, const char *src0) {
+    cpb_assert_h(str->str && src0, "invalid string passed to be compared");
+    return strncmp(str->str, src0, strlen(src0)) == 0;
 }
 
 //boolean
