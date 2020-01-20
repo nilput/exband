@@ -5,8 +5,6 @@
 struct hello_world_module {
     struct cpb_http_handler_module head;
     struct cpb *cpb_ref;
-    int (*handle_request)(struct cpb_http_handler_module *module, struct cpb_request_state *rqstate, int reason);
-    void (*destroy)(struct cpb_http_handler_module *module, struct cpb *cpb);
     int count;
 };
 static int handle_request(struct cpb_http_handler_module *module, struct cpb_request_state *rqstate, int reason) {
@@ -103,7 +101,8 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
 static int destroy_module(struct cpb_http_handler_module *module, struct cpb *cpb) {
     cpb_free(cpb, module);
 }
-int handler_init(struct cpb *cpb, struct cpb_server *server, struct cpb_http_handler_module **module_out) {
+int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_handler_module **module_out) {
+    (void) module_args;
     struct hello_world_module *mod = cpb_malloc(cpb, sizeof(struct hello_world_module));
     if (!mod)
         return CPB_NOMEM_ERR;

@@ -96,7 +96,7 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     }
 
     if (config.http_handler_module.len > 0) {
-        int error = cpb_http_handler_module_load(cpb_ref, s, config.http_handler_module.str, &s->handler_module, &s->dll_module_handle);
+        int error = cpb_http_handler_module_load(cpb_ref, s, config.http_handler_module.str, config.http_handler_module_args.str, &s->handler_module, &s->dll_module_handle);
         if (error != CPB_OK) {
             err = cpb_make_error(CPB_MODULE_LOAD_ERROR);
             goto err2;

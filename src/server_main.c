@@ -107,6 +107,12 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
         if (err != CPB_OK)
             goto err_1;
     }
+    p = ini_get_value(c, "http_handler_module_args");
+    if (p) {
+        err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->http_handler_module_args);
+        if (err != CPB_OK)
+            goto err_1;
+    }
 
     ini_destroy(cpb_ref, c);
     return CPB_OK;

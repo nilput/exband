@@ -42,11 +42,17 @@ static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src
 
 //assumes str is already initialized
 static int cpb_str_slice_to_copied_str(struct cpb *cpb, struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
-    
     int rv = cpb_str_strlcpy(cpb, out, base + slice.index, slice.len);
     if (rv != CPB_OK)
         return rv;
     return CPB_OK;
+
+}
+
+static struct cpb_str cpb_str_const_view(struct cpb_str *str) {
+    struct cpb_str view = *str;
+    view.cap = -1;
+    return view;
 }
 
 //see str valid states at kdata.h
@@ -145,6 +151,8 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
     if (capacity == 0) {
         return cpb_str_clear(cpb, str);
     }
+    if (capacity < (str->len + 1))
+        str->len = capacity - 1;
     if (str->cap < 0) {
         void *p;
         p  = cpb_malloc(cpb, capacity);
@@ -153,7 +161,6 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
         }
         memcpy(p, str->str, str->len);
         str->str = p;
-        str->str[str->len] = 0;
     }
     else {
         void *p = NULL;
@@ -163,6 +170,7 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
         }
         str->str = p;
     }
+    str->str[str->len] = 0;
     str->cap = capacity;
     return CPB_OK;
 }
@@ -176,7 +184,7 @@ static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src
     }
     memcpy(str->str, src, srclen);
     str->len = srclen;
-    str->str[str->len] = 0;
+    str->str[srclen] = 0;
     return CPB_OK;
 }
 static int cpb_str_strlappend(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen) {

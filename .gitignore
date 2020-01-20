@@ -4,3 +4,4 @@ server_main
 src/util/.gitignore
 rel
 *.so
+*.sqlite3

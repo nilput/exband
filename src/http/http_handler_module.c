@@ -4,7 +4,7 @@
 #include "../cpb_str.h"
 #include "http_handler_module.h"
 /*name := "dll_name:func_name"*/
-int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, struct cpb_http_handler_module **module_out, void **handle_out) {
+int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, char *module_args, struct cpb_http_handler_module **module_out, void **handle_out) {
     
     char *seperator = strchr(handler_name, ':');
     if (!seperator)
@@ -31,7 +31,7 @@ int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server,
         return CPB_NOT_FOUND;
     }
     cpb_handler_init_func init_func = dlsym(handle, func_name.str);
-    int init_success = init_func != NULL && (init_func(cpb_ref, server, module_out) == 0);
+    int init_success = init_func != NULL && (init_func(cpb_ref, server, module_args, module_out) == 0);
     if (init_success) {
         *handle_out = handle;
     }

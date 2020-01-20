@@ -35,6 +35,7 @@ struct cpb_http_server_config {
     int http_listen_port;
     int http_use_aio;
     struct cpb_str http_handler_module;
+    struct cpb_str http_handler_module_args;
     struct cpb_str polling_backend;
 };
 static struct cpb_http_server_config cpb_http_server_config_default(struct cpb *cpb_ref) {
@@ -44,11 +45,13 @@ static struct cpb_http_server_config cpb_http_server_config_default(struct cpb *
     conf.http_use_aio = 0;
     cpb_str_init_const_str(&conf.polling_backend, "select");
     cpb_str_init_const_str(&conf.http_handler_module, "");
+    cpb_str_init_const_str(&conf.http_handler_module_args, "");
     return conf;
 }
 static void cpb_http_server_config_deinit(struct cpb *cpb_ref, struct cpb_http_server_config *config) {
     cpb_str_deinit(cpb_ref, &config->polling_backend);
     cpb_str_deinit(cpb_ref, &config->http_handler_module);
+    cpb_str_deinit(cpb_ref, &config->http_handler_module_args);
 }
 
 

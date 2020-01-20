@@ -17,11 +17,11 @@ at http requests module_out->handle_request() is called
 at reload / destruction module_out->destroy() is called
 */
 //returning non-zero value means error
-typedef int (*cpb_handler_init_func)(struct cpb *cpb, struct cpb_server *server, struct cpb_http_handler_module **module_out);
+typedef int (*cpb_handler_init_func)(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_handler_module **module_out);
 
 //internal
 //handler name is not owned
 
-int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, struct cpb_http_handler_module **module_out, void **handle_out);
+int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, char *module_args, struct cpb_http_handler_module **module_out, void **handle_out);
 int cpb_http_handler_module_unload(struct cpb *cpb_ref, struct cpb_http_handler_module *module, void *handle);
 #endif //CPB_HTTP_HANDLER_MODULE_H
