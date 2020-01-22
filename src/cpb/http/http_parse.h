@@ -68,6 +68,9 @@ static void process_relevant_header(struct cpb_request_state *rqstate, char *ibu
     if (cpb_strcasel_eq(ibuff + key.index, key.len, "Content-Length", 14)) {
         rqstate->headers.h_content_length_idx = idx;
     }
+    else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Content-Type", 12)) {
+        rqstate->headers.h_transfer_encoding_idx = idx;
+    }
     else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Transfer-Encoding", 17)) {
         rqstate->headers.h_transfer_encoding_idx = idx;
     }

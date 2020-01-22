@@ -1,10 +1,10 @@
 .PHONY: clean all
 CFLAGS := -I othersrc/ -fPIC
 LDLIBS := -pthread -ldl
-SERVER_MAIN_DEPS := src/cpb_utils.c src/http/http_server.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_server_events.c src/http/http_request.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_response.c src/http/http_server_listener_select.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/http/http_server_listener_epoll.c src/http/http_handler_module.c
+SERVER_MAIN_DEPS := src/cpb/cpb_utils.c src/cpb/http/http_server.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_events.c src/cpb/http/http_request.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_response.c src/cpb/http/http_server_listener_select.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.c src/cpb/http/http_handler_module.c
 
 debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function
 debug: all
@@ -15,7 +15,7 @@ san: all
 
 
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function
-profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
+profile: SERVER_MAIN_DEPS += othersrc/cpb/dbgperf/dbgperf.c
 profile: server_main
 
 
@@ -23,7 +23,7 @@ profile: server_main
 libcpb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $^ $(LDLIBS)
 server_main: $(SERVER_MAIN_DEPS) libcpb.so
-	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/server_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lcpb
+	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/cpb/server_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lcpb
 
 all : server_main libcpb.so
 server_main: $(SERVER_MAIN_DEPS)

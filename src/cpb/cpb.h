@@ -1,9 +1,23 @@
 #include <stdlib.h>
 #ifndef CPB_H
 #define CPB_H
+
+#define CPB_RESTRICT 
+
 #include "cpb_assert.h"
 #include "cpb_errors.h"
-#include "dbgperf/dbgperf.h"
+
+#if defined(ENABLE_DBGPERF)
+    #include "dbgperf/dbgperf.h"
+#else
+    #define dp_clear()
+    #define dp_register_event(x)
+    #define dp_end_event(x)
+    #define dp_timed_log(x, ...)
+    #define dp_timed_logv(x, ap)
+    #define dp_dump()
+#endif
+
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

@@ -46,7 +46,34 @@ static int cpb_str_slice_to_copied_str(struct cpb *cpb, struct cpb_str_slice sli
     if (rv != CPB_OK)
         return rv;
     return CPB_OK;
+}
 
+
+static int cpb_str_clone(struct cpb *cpb, struct cpb_str *str) {
+    return cpb_str_init_strlcpy(cpb, str, str->str, str->len);
+}
+
+static int cpb_str_rtrim(struct cpb *cpb, struct cpb_str *str) {
+    int rv;
+    if (cpb_str_is_const(str) && ((rv = cpb_str_clone(cpb, str) != CPB_OK))) {
+        return rv;
+    }
+    while (str->len > 0 && (str->str[str->len-1] == ' ' ||
+                            str->str[str->len-1] == '\t'  ))
+        str->len--;
+    str->str[str->len] = 0;
+    return CPB_OK;
+}
+static void cpb_str_slice_trim(const char *base, struct cpb_str_slice *slice) {
+    while (slice->len > 0 && (base[slice->index] == ' ' ||
+                              base[slice->index] == '\t'  ))
+    {
+        slice->index++;
+        slice->len--;
+    }        
+    while (slice->len > 0 && (base[slice->index + slice->len - 1] == ' ' ||
+                              base[slice->index + slice->len - 1] == '\t'  ))
+        slice->len--;
 }
 
 static struct cpb_str cpb_str_const_view(struct cpb_str *str) {
@@ -54,6 +81,7 @@ static struct cpb_str cpb_str_const_view(struct cpb_str *str) {
     view.cap = -1;
     return view;
 }
+
 
 //see str valid states at kdata.h
 static int cpb_str_init(struct cpb *cpb, struct cpb_str *str) {
@@ -174,6 +202,15 @@ static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
     str->cap = capacity;
     return CPB_OK;
 }
+//make sure capacity is at least the provided arg
+static int cpb_str_ensure_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
+    if (str->cap >= capacity) {
+        return CPB_OK;
+    }
+    if (capacity < 16)
+        capacity = 16;
+    return cpb_str_set_cap(cpb, str, (capacity * 3) / 2);
+}
 static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen) {
     int rv;
     if (str->cap <= srclen) {
@@ -199,6 +236,10 @@ static int cpb_str_strlappend(struct cpb *cpb, struct cpb_str *str, const char *
     str->len += srclen;
     str->str[str->len] = 0;
     return CPB_OK;
+}
+static int cpb_str_charappend(struct cpb *cpb, struct cpb_str *str, unsigned char ch) {
+    char buff[1] = {ch};
+    return cpb_str_strlappend(cpb, str, buff, 1);
 }
 static int cpb_str_strcpy(struct cpb *cpb, struct cpb_str *str, const char *src0) {
     return cpb_str_strlcpy(cpb, str, src0, strlen(src0));

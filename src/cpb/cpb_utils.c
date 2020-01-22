@@ -19,19 +19,18 @@ double cpb_time() {
 int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen) {
     if (nlen == 0)
         return hidx;
-    int end = hidx + hlen;
-    if (hidx + nlen > end)
+    if (hidx + nlen > hlen)
         return -1;
-    char *f = memchr(haystack + hidx, needle[0], end - hidx);
+    char *f = memchr(haystack + hidx, needle[0], hlen - hidx);
     while (f != NULL) {
         int f_idx = f - haystack;
-        if (f_idx + nlen > end)
+        if (f_idx + nlen > hlen)
             return -1;
         if (memcmp(f, needle, nlen) == 0) {
             return f_idx;
         }
         hidx = f_idx + 1;
-        f = memchr(haystack + hidx, needle[0], end - hidx);
+        f = memchr(haystack + hidx, needle[0], hlen - hidx);
     }
     return -1;
 }

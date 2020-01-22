@@ -58,6 +58,7 @@ struct cpb_http_header_map {
     //Indices of headers that are relevant to the HTTP protocol, -1 means not present
     int h_connection_idx; 
     int h_content_length_idx;
+    int h_content_type_idx;
     int h_transfer_encoding_idx;
 };
 
@@ -136,8 +137,9 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     rqstate->istate = CPB_HTTP_I_ST_INIT;
     rqstate->pstate = CPB_HTTP_P_ST_INIT;
     rqstate->body_handling = CPB_HTTP_B_DISCARD;
-    rqstate->headers.h_connection_idx     = -1;
-    rqstate->headers.h_content_length_idx = -1;
+    rqstate->headers.h_connection_idx        = -1;
+    rqstate->headers.h_content_length_idx    = -1;
+    rqstate->headers.h_content_type_idx      = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;

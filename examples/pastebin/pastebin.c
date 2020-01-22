@@ -1,6 +1,7 @@
-#include "cpb.h"
-#include "http/http_handler_module.h"
-#include "http/http_request.h"
+#include "cpb/cpb.h"
+#include "cpb/http/http_handler_module.h"
+#include "cpb/http/http_request.h"
+#include "cpb/http/http_decode.h"
 #include <sqlite3.h>
 
 
@@ -217,8 +218,45 @@ char *module_get_arg(struct pastebin_module *mod, char *mod_args, char *arg_name
 }
 
 
-static struct cpb_str get_post_param(struct cpb_request_state *rqstate, char *param_name) {
-    return cpb_str_const_view(&rqstate->body_decoded);
+static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_state *rqstate, char *param_name) {
+    struct cpb_str str;
+    struct cpb *cpb_ref = 
+    cpb_str_init_empty(&str);
+    char *content_type_header = NULL;
+    int content_type_header_len = 0;
+    if (rqstate->headers.h_content_type_idx != -1) {
+        content_type_header = rqstate->input_buffer + rqstate->headers.headers[rqstate->headers.h_content_type_idx].value.index;
+        content_type_header_len = rqstate->headers.headers[rqstate->headers.h_content_type_idx].value.len;
+    }
+    if (content_type_header && cpb_content_type_is(content_type_header, content_type_header_len, "multipart/form-data")) {
+        struct cpb_form_parts fp;
+        struct cpb_str_slice content_type =  rqstate->headers.headers[rqstate->headers.h_content_type_idx].value;
+        if (cpb_decode_multipart(cpb_ref, &fp, rqstate->input_buffer + content_type.index, content_type.len, rqstate->body_decoded.str, rqstate->body_decoded.le ) == CPB_OK) {
+            for (int i=0; i<fp.nparts; i++) {
+                if (strcmp(fp.buff.str + fp.keys[i].index, "f") == 0) {
+                    str = cpb_str_slice_to_const_str((struct cpb_str_slice){fp.values[i].index, fp.values[i].len}, rqstate->body_decoded.str);
+                    break;
+                }
+            }
+            cpb_form_parts_deinit(cpb_ref, &fp);
+        }
+    }
+    else if (content_type_header && cpb_content_type_is(content_type_header, content_type_header_len, "application/x-www-form-urlencoded")) {
+        struct cpb_form_parts fp;
+        if (cpb_urlencode_decode_parts(cpb_ref, &fp, rqstate->body_decoded.str, rqstate->body_decoded.len) == CPB_OK) {
+            for (int i=0; i<fp.nparts; i++) {
+                if (strcmp(fp.buff.str + fp.keys[i].index, "f") == 0) {
+                    cpb_str_strlcpy(cpb_ref, &str, fp.buff.str + fp.values[i].index, fp.values[i].len);
+                    break;
+                }
+            }
+            cpb_form_parts_deinit(cpb_ref, &fp);
+        }
+    }
+    else {
+        str = cpb_str_const_view(&rqstate->body_decoded);
+    }
+    return str;
 }
 
 static int handle_request(struct cpb_http_handler_module *module, struct cpb_request_state *rqstate, int reason) {
@@ -243,7 +281,7 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
             char key_buff[5];
             randkey(key_buff, 4);
             key_buff[4] = 0;
-            struct cpb_str posted_value = get_post_param(rqstate, "f");
+            struct cpb_str posted_value = get_post_param(mod->cpb_ref, rqstate, "f");
             struct sql_value values[2] = {{.len = 4, .value=key_buff, .value_type=SQLITE_TEXT},
                                           {.len = posted_value.len, .value=posted_value.str, .value_type=SQLITE_BLOB}};
             struct sql_value out[1];
@@ -262,6 +300,7 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
                 cpb_response_append_body_cstr(&rqstate->resp, "Error!...");
                 cpb_response_end(&rqstate->resp);
             }
+            cpb_str_deinit(mod->cpb_ref, &posted_value);
             
         }
         else {

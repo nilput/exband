@@ -1,6 +1,6 @@
-#include "cpb.h"
-#include "http/http_handler_module.h"
-#include "http/http_request.h"
+#include "cpb/cpb.h"
+#include "cpb/http/http_handler_module.h"
+#include "cpb/http/http_request.h"
 
 struct hello_world_module {
     struct cpb_http_handler_module head;
