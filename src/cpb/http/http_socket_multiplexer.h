@@ -5,6 +5,7 @@ enum cpb_http_multiplexer_state {
     CPB_MP_EMPTY,
     CPB_MP_ACTIVE,
     CPB_MP_CANCELLING,
+    CPB_MP_DEAD, //should never be seen
 };
 struct cpb_http_multiplexer {
     struct cpb_eloop *eloop;
@@ -23,7 +24,7 @@ static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cp
 }
 
 static void cpb_http_multiplexer_deinit(struct cpb_http_multiplexer *mp) {
-    mp->state = CPB_MP_EMPTY;
+    mp->state = CPB_MP_DEAD;
     mp->socket_fd = -1;
     mp->creading = NULL;
     mp->next_response = NULL;

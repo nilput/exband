@@ -28,7 +28,6 @@ static void cpb_request_handle_fatal_error(struct cpb_request_state *rqstate) {
 
 static void cpb_request_handle_socket_error(struct cpb_request_state *rqstate) {
     cpb_server_cancel_requests(rqstate->server, rqstate->socket_fd);
-    cpb_server_close_connection(rqstate->server, rqstate->socket_fd);
 }
 
 static void cpb_request_call_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {

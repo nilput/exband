@@ -274,7 +274,7 @@ static int cpb_eloop_offload_recieve(struct cpb_eloop *eloop) {
 
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
     int ineffective_spins = 0;
-    #define CPB_ELOOP_NPROCESS_OFFLOAD 1000
+    #define CPB_ELOOP_NPROCESS_OFFLOAD 8
     int nprocessed = 0;
 
     double cur_time = cpb_time();
@@ -284,14 +284,14 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
     again:
+        if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
+            cpb_eloop_offload_recieve(eloop);
+            nprocessed = 0;
+        }
         if (rv == CPB_OK) {
             //handle event
             ev.itable->handle(ev);
             ev.itable->destroy(ev);
-            if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
-                cpb_eloop_offload_recieve(eloop);
-                nprocessed = 0;
-            }
         }
         else {
             if (rv != CPB_OUT_OF_RANGE_ERR) {
@@ -310,17 +310,16 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
-            if ((nprocessed & 255) == 0) {
-                rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
-                if (rv == CPB_OK) {
-                    goto again;
-                }
-                else if (rv != CPB_OUT_OF_RANGE_ERR) {
-                    //serious error
-                    struct cpb_error err = cpb_make_error(rv);
-                    return err;
-                }
+            rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
+            if (rv == CPB_OK) {
+                goto again;
             }
+            else if (rv != CPB_OUT_OF_RANGE_ERR) {
+                //serious error
+                struct cpb_error err = cpb_make_error(rv);
+                return err;
+            }
+        
             dp_register_event("eloop_sleep");
             cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
             dp_end_event("eloop_sleep");

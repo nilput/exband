@@ -8,20 +8,22 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.
 
 debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function
 debug: all
-release: CFLAGS += -g3 -O3 -Wall -Wno-unused-function
+release: CFLAGS += -O2 -Wall -Wno-unused-function 
 release: all
+fast-release: CFLAGS += -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
+fast-release: all
 san: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=address
 san: all
 
 
-profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function
-profile: SERVER_MAIN_DEPS += othersrc/cpb/dbgperf/dbgperf.c
-profile: server_main
+profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
+profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
+profile: server_main libcpb.so
 
 
 
 libcpb.so: $(SERVER_MAIN_DEPS)
-	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $^ $(LDLIBS)
+	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
 server_main: $(SERVER_MAIN_DEPS) libcpb.so
 	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/cpb/server_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lcpb
 
