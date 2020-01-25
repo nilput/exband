@@ -69,7 +69,7 @@ static void cpb_header_params_deinit(struct cpb *cpb_ref, struct cpb_header_para
 
 static const char *skipwhitespace(const char *s, int len) {
     const char *end = s + len;
-    while (s < end && *s == ' ' || *s == '\t')
+    while (s < end && (*s == ' ' || *s == '\t'))
         s++;
     return s;
 }
@@ -140,7 +140,7 @@ static int cpb_content_type_is(const char *content_type_header, int content_type
     if (content_type_len - at < strlen(mime))
         return 0;
     return cpb_strcasel_eq(content_type_header + at, strlen(mime), mime, strlen(mime)) &&
-           ((at + 1 > content_type_len) || content_type_header[at+1+strlen(mime)] == ';' || content_type_header[at+1+strlen(mime)] == ' ');
+           ((at + strlen(mime) + 1 > content_type_len) || content_type_header[at+1+strlen(mime)] == ';' || content_type_header[at+1+strlen(mime)] == ' ');
 }
 
 //params_out is assumed to be uninitialized

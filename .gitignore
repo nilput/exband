@@ -5,3 +5,4 @@ src/util/.gitignore
 rel
 *.so
 *.sqlite3
+mkrel.sh

@@ -21,12 +21,14 @@ static void form(struct cpb_request_state *rqstate) {
     cpb_response_append_body_cstr(&rqstate->resp, "<html>"
                                                     "<head>"
                                                     "    <title>CPBIN!</title>"
+                                                    "<style> *{margin: auto; margin-top: 10px; text-align: center; font-family: monospace; padding: 10px;}\nbody{max-width: 960px;} textarea{ text-align: left; padding: 0;}</style>"
                                                     "</head>"
                                                     "<body>");
     cpb_response_set_header(&rqstate->resp, &key, &value);
-    cpb_response_append_body_cstr(&rqstate->resp, "<p> Post something! </p> <br>");
+    cpb_response_append_body_cstr(&rqstate->resp, "<p>POWERED BY CPBIN HTTP SERVER</p> <br>");
     cpb_response_append_body_cstr(&rqstate->resp, "<form action=\"/\" method=\"POST\">"
-                                                    "Value: <input type=\"text\" name=\"f\"><br>"
+                                                    "<textarea name=\"f\" rows=\"20\" cols=\"80\" required=""></textarea> <br>"
+                                                    "<button> PASTE </button> <br>"
                                                     "</form>");
     cpb_response_append_body_cstr(&rqstate->resp, "</body>"
                                                     "</html>");
@@ -55,11 +57,12 @@ void randkey(char *out, int len) {
 }
 
 
-static int destroy_module(struct cpb_http_handler_module *module, struct cpb *cpb) {
+static void destroy_module(struct cpb_http_handler_module *module, struct cpb *cpb) {
     struct pastebin_module *mod = module;
     sqlite3_close(mod->db);
     cpb_str_deinit(cpb, &mod->site_link);
     cpb_free(cpb, module);
+    return CPB_OK;
 }
 
 struct sql_value {
@@ -220,7 +223,6 @@ char *module_get_arg(struct pastebin_module *mod, char *mod_args, char *arg_name
 
 static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_state *rqstate, char *param_name) {
     struct cpb_str str;
-    struct cpb *cpb_ref = 
     cpb_str_init_empty(&str);
     char *content_type_header = NULL;
     int content_type_header_len = 0;
@@ -231,7 +233,7 @@ static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_sta
     if (content_type_header && cpb_content_type_is(content_type_header, content_type_header_len, "multipart/form-data")) {
         struct cpb_form_parts fp;
         struct cpb_str_slice content_type =  rqstate->headers.headers[rqstate->headers.h_content_type_idx].value;
-        if (cpb_decode_multipart(cpb_ref, &fp, rqstate->input_buffer + content_type.index, content_type.len, rqstate->body_decoded.str, rqstate->body_decoded.le ) == CPB_OK) {
+        if (cpb_decode_multipart(cpb_ref, &fp, rqstate->input_buffer + content_type.index, content_type.len, rqstate->body_decoded.str, rqstate->body_decoded.len ) == CPB_OK) {
             for (int i=0; i<fp.nparts; i++) {
                 if (strcmp(fp.buff.str + fp.keys[i].index, "f") == 0) {
                     str = cpb_str_slice_to_const_str((struct cpb_str_slice){fp.values[i].index, fp.values[i].len}, rqstate->body_decoded.str);
@@ -293,6 +295,7 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
                 cpb_response_append_body_cstr(&rqstate->resp, mod->site_link.str);
                 cpb_response_append_body_cstr(&rqstate->resp, "/");
                 cpb_response_append_body_cstr(&rqstate->resp, key_buff);
+                cpb_response_append_body_cstr(&rqstate->resp, "\r\n");
                 cpb_response_end(&rqstate->resp);
             }
             else {

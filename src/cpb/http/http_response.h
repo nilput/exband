@@ -5,14 +5,14 @@
 #include "../cpb_str.h"
 #include "http_server_events.h"
 #include "http_status.h"
-#define HTTP_HEADERS_BUFFER_SIZE 2048
-#define HTTP_OUTPUT_BUFFER_SIZE 6144
+#define HTTP_HEADERS_BUFFER_INIT_SIZE 2048
+#define HTTP_OUTPUT_BUFFER_INIT_SIZE 2048
 #define CPB_HTTP_RESPONSE_HEADER_MAX 32
+#define HTTP_STATUS_MAX_SZ 128
 
 
 enum cpb_http_response_state {
     CPB_HTTP_R_ST_INIT,
-    CPB_HTTP_R_ST_READY_STATUS,
     CPB_HTTP_R_ST_READY_HEADERS,
     CPB_HTTP_R_ST_READY_BODY,
     CPB_HTTP_R_ST_SENDING,
@@ -31,35 +31,69 @@ struct cpb_response_state {
     struct cpb_request_state *req_state; //not owned, must outlive
     enum cpb_http_response_state state;
     int status_code;
-    bool is_chunked; //currently not supported
+    //bool is_chunked; //currently not supported
     struct cpb_response_headers headers;
     int written_bytes;
-    char headers_buff[HTTP_HEADERS_BUFFER_SIZE];
-    int headers_buff_len;
-    int output_buff_len;
-    char output_buff[HTTP_OUTPUT_BUFFER_SIZE];
-};
 
-static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req) {
+    char *output_buffer; //layout: [space?] STATUS . HEADERS . BODY
+    int output_buffer_cap;
+    int headers_bytes; //whenever we set a header we accumulate it length + crlf to this member
+                       //inititalized to 2 (because there's a final crlf after all headers)
+    int status_begin_index;  //inititalized to -1
+    int status_len;          //inititalized to -1
+    int headers_begin_index; //inititalized to -1
+    int headers_len;         //inititalized to -1
+    int body_begin_index;    //inititalized to HEADERS_BUFFER_INIT_SIZE
+    int body_len;            //inititalized to 0
+};
+/*
+    The way we do responses is:
+        Our goal is ending up with one buffer that has status.headers.body contigously
+        What we do is: assume status + headers have x size, then start writing body at offset x
+        then, at the end, once we know status + headers size write them before the body
+*/
+
+static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req, struct cpb_eloop *eloop) {
+    cpb_assert_h(eloop, "");
     resp_state->req_state = req;
     resp_state->state = CPB_HTTP_R_ST_INIT;
-    resp_state->is_chunked = 0;
+    //resp_state->is_chunked = 0;
     resp_state->status_code = 200;
-    resp_state->output_buff[0] = 0;
-    resp_state->output_buff_len = 0;
-    resp_state->headers_buff[0] = 0;
-    resp_state->headers_buff_len = 0;
     resp_state->written_bytes = 0;
     resp_state->headers.len = 0;
+
+    resp_state->output_buffer = NULL;
+    resp_state->output_buffer_cap = 0;
+    resp_state->headers_bytes = 2;    /*final crlf*/
+    resp_state->body_begin_index = 0;
+
+
+    resp_state->status_begin_index = -1;
+    resp_state->status_len = 0;
+    resp_state->headers_begin_index = -1;
+    resp_state->headers_len = 0;
+    resp_state->body_begin_index = HTTP_HEADERS_BUFFER_INIT_SIZE;
+    resp_state->body_len = 0;
+
+    struct cpb_error err = cpb_eloop_alloc_buffer(eloop,
+                                HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
+                                &resp_state->output_buffer,
+                                &resp_state->output_buffer_cap);
+    cpb_assert_h(resp_state->body_begin_index < resp_state->output_buffer_cap, "");
+    if (err.error_code) {
+        return err.error_code;
+    }
+
     return CPB_OK;
 }
 
-static int cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb *cpb) {
+static int cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb *cpb, struct cpb_eloop *eloop) {
     resp_state->state = CPB_HTTP_R_ST_DEAD;
     for (int i=0; i<resp_state->headers.len; i++) {
         cpb_str_deinit(cpb, &resp_state->headers.headers[i].key);
         cpb_str_deinit(cpb, &resp_state->headers.headers[i].value);
     }
+    cpb_eloop_release_buffer(eloop, resp_state->output_buffer);
     return CPB_OK;
 }
 
@@ -75,76 +109,84 @@ static int cpb_response_get_header_index(struct cpb_response_state *rsp, const c
     return -1;
 }
 
-static int cpb_response_done_headers(struct cpb_response_state *rsp) {
-    return rsp->state != CPB_HTTP_R_ST_INIT &&
-           rsp->state != CPB_HTTP_R_ST_READY_STATUS;
-}
-
 //Takes ownership of both name and value
 int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value);
 
+static size_t cpb_response_body_available_bytes(struct cpb_response_state *rsp) {
+    return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
+}
+
 //the bytes are copied to output buffer
 static int cpb_response_append_body(struct cpb_response_state *rsp, char *s, int len) {
-    int available_bytes = HTTP_OUTPUT_BUFFER_SIZE - rsp->output_buff_len - 1;
+    int available_bytes = cpb_response_body_available_bytes(rsp);
     if (len > available_bytes) {
-        return CPB_OUT_OF_RANGE_ERR;
+        return CPB_BUFFER_FULL_ERR;
     }
-    memcpy(rsp->output_buff + rsp->output_buff_len, s, len);
-    rsp->output_buff_len += len;
+    memcpy(rsp->output_buffer + rsp->body_begin_index + rsp->body_len, s, len);
+    rsp->body_len += len;
     return CPB_OK;
 }
 static int cpb_response_append_body_cstr(struct cpb_response_state *resp, char *s) {
     return cpb_response_append_body(resp, s, strlen(s));
 }
 
-static int cpb_response_prepare_status(struct cpb_response_state *rsp) {
+
+static int cpb_response_prepare_headers(struct cpb_response_state *rsp, struct cpb_eloop *eloop) {
     if (rsp->state != CPB_HTTP_R_ST_INIT) {
         return CPB_INVALID_STATE_ERR;
     }
-    int nwritten = 0;
-    int rv = cpb_write_status_code(rsp->headers_buff, HTTP_HEADERS_BUFFER_SIZE, &nwritten, rsp->status_code, 1, 1);
+    cpb_assert_h(rsp->headers_len == 0, "");
+    cpb_assert_h(rsp->headers_begin_index == -1, "");
+    if ((rsp->headers_bytes + HTTP_STATUS_MAX_SZ) > rsp->body_begin_index) {
+        //this should be unlikely to happen
+        char *new_buff;
+        int new_buff_cap;
+        struct cpb_error err = cpb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
+        if (err.error_code) {
+            return err.error_code;
+        }
+        int new_body_index = rsp->headers_bytes + HTTP_STATUS_MAX_SZ;
+        memcpy(new_buff + new_body_index, rsp->output_buffer + rsp->body_begin_index, rsp->body_len);
+        cpb_eloop_release_buffer(eloop, rsp->output_buffer);
+        rsp->output_buffer = new_buff;
+        rsp->output_buffer_cap = new_buff_cap;
+        rsp->body_begin_index = new_body_index;
+    }
+    rsp->headers_begin_index = rsp->body_begin_index - rsp->headers_bytes;
+
+
+    //prepare status
+    cpb_assert_h(rsp->headers_begin_index >= 0, "");
+    int status_len = 0;
+    char statusbuff[HTTP_STATUS_MAX_SZ];
+    int rv = cpb_write_status_code(statusbuff, HTTP_STATUS_MAX_SZ, &status_len, rsp->status_code, 1, 1);
     if (rv != CPB_OK)
         return rv;
-    rsp->headers_buff_len = nwritten;
-    rsp->state = CPB_HTTP_R_ST_READY_STATUS;
-    return CPB_OK;
-}
-static int cpb_response_prepare_headers(struct cpb_response_state *rsp) {
-    if (rsp->state == CPB_HTTP_R_ST_INIT) {
-        int rv = cpb_response_prepare_status(rsp);
-        if (rv != CPB_OK)
-            return rv;
-    }
-    if (rsp->state != CPB_HTTP_R_ST_READY_STATUS)
-        return CPB_INVALID_STATE_ERR;
+    
+    rsp->status_len = status_len;
+    rsp->status_begin_index = rsp->headers_begin_index - rsp->status_len;
+    memcpy(rsp->output_buffer + rsp->status_begin_index, statusbuff, status_len);
 
+
+    //prepare headers
     for (int i=0; i<rsp->headers.len; i++) {
         struct cpb_response_header *h = &rsp->headers.headers[i];
-        int to_write = 0;
-        to_write += h->key.len;
-        to_write += h->value.len;
-        to_write += 2 /*': '*/ + 2 /*crlf*/;
-        int size_left = HTTP_HEADERS_BUFFER_SIZE - rsp->headers_buff_len - 1;
-        if (to_write > size_left) {
-            return CPB_OUT_OF_RANGE_ERR;
-        }
-        memcpy(rsp->headers_buff + rsp->headers_buff_len, h->key.str, h->key.len);
-        rsp->headers_buff_len += h->key.len;
-        memcpy(rsp->headers_buff + rsp->headers_buff_len, ": ", 2);
-        rsp->headers_buff_len += 2;
-        memcpy(rsp->headers_buff + rsp->headers_buff_len, h->value.str, h->value.len);
-        rsp->headers_buff_len += h->value.len;
-        memcpy(rsp->headers_buff + rsp->headers_buff_len, "\r\n", 2);
-        rsp->headers_buff_len += 2;
+        char *key   = rsp->output_buffer + rsp->headers_begin_index + rsp->headers_len;
+        char *colon = key + h->key.len;
+        char *value = colon + 2;
+        char *crlf  = value + h->value.len;
+        memcpy(key,    h->key.str, h->key.len);
+        memcpy(colon,  ": ",   2);
+        memcpy(value,  h->value.str, h->value.len);
+        memcpy(crlf,   "\r\n", 2);
+        rsp->headers_len   += (crlf + 2) - key; //this header's length
     }
-    {
-        int size_left = HTTP_HEADERS_BUFFER_SIZE - rsp->headers_buff_len - 1;
-        if (size_left < 2) {
-            return CPB_OUT_OF_RANGE_ERR;
-        }
-        memcpy(rsp->headers_buff + rsp->headers_buff_len, "\r\n", 2);
-        rsp->headers_buff_len += 2;
-    }
+    
+    memcpy(rsp->output_buffer + rsp->headers_begin_index + rsp->headers_len, "\r\n", 2);
+    rsp->headers_len += 2;
+    cpb_assert_h(rsp->headers_bytes == rsp->headers_len, "headers size mismatch");
+
+    
 
     rsp->state = CPB_HTTP_R_ST_READY_HEADERS;
     return CPB_OK;

@@ -4,6 +4,7 @@
 enum cpb_http_multiplexer_state {
     CPB_MP_EMPTY,
     CPB_MP_ACTIVE,
+    CPB_MP_CANCELLING,
 };
 struct cpb_http_multiplexer {
     struct cpb_eloop *eloop;
@@ -13,10 +14,10 @@ struct cpb_http_multiplexer {
     struct cpb_request_state *creading; //the current request reading from client
     struct cpb_request_state *next_response; //queue of responses (linkedlist)
 };
-static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cpb_eloop *eloop) {
+static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cpb_eloop *eloop, int socket_fd) {
     mp->state = CPB_MP_EMPTY;
     mp->eloop = eloop;
-    mp->socket_fd = -1;
+    mp->socket_fd = socket_fd;
     mp->creading = NULL;
     mp->next_response = NULL;
 }

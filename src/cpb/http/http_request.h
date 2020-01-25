@@ -7,7 +7,7 @@
 
 
 #define CPB_HTTP_HEADER_MAX 32
-#define HTTP_INPUT_BUFFER_SIZE 8192
+#define HTTP_INPUT_BUFFER_INITIAL_SIZE 2048
 
 
 
@@ -72,12 +72,17 @@ struct cpb_request_state {
 
     int socket_fd;
     int input_buffer_len;
+    int input_buffer_cap;
+    char *input_buffer;
+
     bool is_chunked;
     bool is_persistent; //Not persistent when: 
                         //HTTP1.0 (with no keepalive) OR HTTP1.1 and "Connection: close"
     bool is_read_scheduled; /*The request is scheduled to read to*/
     bool is_send_scheduled; /*The request is scheduled to send to*/
+    
     bool is_forked; //just a sanity check
+    bool is_cancelled; //this can be done better
     
     int content_length; //only there in messages with a body AND (!is_chunked)
     int bytes_read; //doesn't care about encoding
@@ -105,7 +110,7 @@ struct cpb_request_state {
     //only relevant when used as a linked list
     struct cpb_request_state * next_rqstate;
 
-    char input_buffer[HTTP_INPUT_BUFFER_SIZE];
+    
 };
 
 //boolean
@@ -116,21 +121,32 @@ static int cpb_request_http_version_eq(struct cpb_request_state *rqstate, int ma
 void cpb_request_repr(struct cpb_request_state *rqstate);
 
 static int cpb_request_input_buffer_size(struct cpb_request_state *rqstate) {
-    return HTTP_INPUT_BUFFER_SIZE;
+    return rqstate->input_buffer_cap;
 }
 
-static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_eloop *eloop, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
+static int cpb_request_input_buffer_ensure_cap(struct cpb_request_state *rqstate, size_t capacity) {
+    if (capacity > rqstate->input_buffer_cap) {
+        struct cpb_error err = cpb_eloop_realloc_buffer(rqstate->eloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+        return err.error_code;
+    }
+    return CPB_OK;
+}
+
+static int cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_eloop *eloop, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
     
     rqstate->is_chunked = 0;
     rqstate->eloop = eloop;
     rqstate->is_persistent = 0;
     rqstate->is_read_scheduled = 0;
     rqstate->is_send_scheduled = 0;
+    rqstate->is_cancelled = 0;
     rqstate->is_forked = 0;
 
     rqstate->socket_fd = socket_fd;
     rqstate->server = s;
+    rqstate->input_buffer = NULL;
     rqstate->input_buffer_len = 0;
+    rqstate->input_buffer_cap = 0;
     rqstate->bytes_read = 0;
     rqstate->parse_chunk_cursor = 0;
     rqstate->next_request_cursor = -1;
@@ -143,9 +159,13 @@ static void cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb
     rqstate->headers.h_transfer_encoding_idx = -1;
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
+    struct cpb_error err = cpb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+    if (err.error_code) {
+        return err.error_code;
+    }
 
-    cpb_str_init(cpb, &rqstate->body_decoded);
-    cpb_response_state_init(&rqstate->resp, rqstate);
+    cpb_str_init_empty(&rqstate->body_decoded);
+    return cpb_response_state_init(&rqstate->resp, rqstate, eloop);
 }
 
 
@@ -153,11 +173,11 @@ static int cpb_request_body_bytes_read(struct cpb_request_state *rqstate) {
     return rqstate->bytes_read - rqstate->body_s.index;
 }
 
-
 static void cpb_request_state_deinit(struct cpb_request_state *rqstate, struct cpb *cpb) {
-    rqstate->istate = CPB_HTTP_I_ST_DEAD;
+    cpb_response_state_deinit(&rqstate->resp, cpb, rqstate->eloop);
+    cpb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer);
     cpb_str_deinit(cpb, &rqstate->body_decoded);
-    cpb_response_state_deinit(&rqstate->resp, cpb);
+    rqstate->istate = CPB_HTTP_I_ST_DEAD;
 }
 
 static int cpb_request_has_body(struct cpb_request_state *rqstate) {

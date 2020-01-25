@@ -68,7 +68,7 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
 
     s->config = config;
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
-        cpb_http_multiplexer_init(&s->mp[i], NULL);
+        cpb_http_multiplexer_init(&s->mp[i], NULL, i);
     }
     /* Create the socket and set it up to accept connections. */
     struct cpb_or_socket or_socket = make_socket(s->config.http_listen_port);
@@ -148,7 +148,11 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
         return NULL;
     }
     struct cpb_request_state *st = p;
-    cpb_request_state_init(st, eloop, server->cpb, server, socket_fd);
+    int rv;
+    if ((rv = cpb_request_state_init(st, eloop, server->cpb, server, socket_fd)) != CPB_OK) {
+        cpb_free(server->cpb, p);
+        return NULL;
+    }
     dp_end_event(__FUNCTION__);
     return st;
 }
@@ -172,7 +176,7 @@ int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sock
 
     struct cpb_eloop *eloop =  cpb_server_get_any_eloop(s);
     cpb_assert_h(!!eloop, "");
-    cpb_http_multiplexer_init(mp, eloop);
+    cpb_http_multiplexer_init(mp, eloop, socket_fd);
 
     mp->state = CPB_MP_ACTIVE;
     
@@ -195,10 +199,28 @@ int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sock
     return CPB_OK;
 }
 
+//this must be called from the eloop thread
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
-    /*TODO
-    deschedule all requests and destroy them
+    /*
+        deschedule all requests and defer destroying them
     */
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
+    mp->state = CPB_MP_CANCELLING;
+    if (mp->creading) {
+        mp->creading->is_cancelled = 1;
+    }
+    struct cpb_request_state *next = mp->next_response;
+    while (next) {
+        next->is_cancelled = 1;
+        next = next->next_rqstate;
+    }
+    struct cpb_event ev;
+    int rv;
+    cpb_event_http_init(&ev, CPB_HTTP_CANCEL, s, socket_fd);
+    if ((rv = cpb_eloop_append(mp->eloop, ev)) != CPB_OK) {
+        //HMM, what to do
+        abort();
+    }
 }
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
     close(socket_fd);

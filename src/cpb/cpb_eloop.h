@@ -310,7 +310,7 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
-            if (nprocessed & 255 == 0) {
+            if ((nprocessed & 255) == 0) {
                 rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
                 if (rv == CPB_OK) {
                     goto again;
@@ -328,6 +328,28 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
     }
     
     return cpb_make_error(CPB_OK);
+}
+
+//TODO: optimize to recycle or use custom allocator
+static struct cpb_error cpb_eloop_alloc_buffer(struct cpb_eloop *eloop, size_t size, char **buff_out, int *cap_out) {
+    *buff_out = cpb_malloc(eloop->cpb, size);
+    if (!*buff_out) {
+        return cpb_make_error(CPB_NOMEM_ERR);
+    }
+    *cap_out = size;
+    return cpb_make_error(CPB_OK);
+}
+static struct cpb_error cpb_eloop_realloc_buffer(struct cpb_eloop *eloop, char *buff, size_t new_size, char **buff_out, int *cap_out) {
+    char *new_buff = cpb_realloc(eloop->cpb, buff, new_size);
+    if (!new_buff) {
+        return cpb_make_error(CPB_NOMEM_ERR);
+    }
+    *buff_out = new_buff;
+    *cap_out = new_size;
+    return cpb_make_error(CPB_OK);
+}
+static void cpb_eloop_release_buffer(struct cpb_eloop *eloop, char *buff) {
+    cpb_free(eloop->cpb, buff);
 }
 
 #endif// ELOOP_H

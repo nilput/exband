@@ -28,7 +28,7 @@ struct cpb_str_slice {
 //returned str is not null terminated!
 static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, const char *base) {
     struct cpb_str s;
-    s.str = (char *)base;
+    s.str = (char *)base + slice.index;
     s.len = slice.len;
     s.cap = -1;
     return s;
@@ -353,7 +353,6 @@ static int cpb_str_init_strcpy(struct cpb *cpb, struct cpb_str *str, const char 
 
 
 static int cpb_vsprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, va_list ap_in) {
-    int fmtlen = strlen(fmt);
     int rv;
     va_list ap;
     if (str->cap < 2) {

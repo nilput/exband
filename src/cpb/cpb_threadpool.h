@@ -89,7 +89,7 @@ static int cpb_threadpool_push_task(struct cpb_threadpool *tp, struct cpb_task t
     }
     int err = CPB_OK;
     err = cpb_taskqueue_append(&tp->taskq, task);
-ret:
+//ret:
     pthread_mutex_unlock(&tp->tp_mtx);
     pthread_cond_signal(&tp->tp_cnd);
     return err;
@@ -102,7 +102,7 @@ static int cpb_threadpool_pop_task(struct cpb_threadpool *tp, struct cpb_task *t
     }
     int err = CPB_OK;
     err = cpb_taskqueue_pop_next(&tp->taskq, task_out);
-ret:
+//ret:
     pthread_mutex_unlock(&tp->tp_mtx);
     return err;
 }

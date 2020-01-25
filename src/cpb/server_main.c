@@ -66,7 +66,7 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
     int err;
     *config_out = cpb_config_default(cpb_ref);
     *http_server_config_out = cpb_http_server_config_default(cpb_ref);
-    char *config_file;
+    const char *config_file;
 
     int explicit = vg_get_str(vg, "-c", &config_file) == VG_OK;
     if (!explicit)

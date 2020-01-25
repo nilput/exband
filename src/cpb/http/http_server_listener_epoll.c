@@ -88,7 +88,7 @@ static int cpb_server_listener_epoll_listen(struct cpb_server *s, struct cpb_ser
             continue;
         }
         struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, ev->data.fd);
-        if (m->state == CPB_MP_EMPTY)
+        if (m->state != CPB_MP_ACTIVE)
             continue; //can be stdin or whatever
         cpb_assert_h(!!m->creading, "");
         if ((ev->events & EPOLLIN)                      &&

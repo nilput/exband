@@ -1,15 +1,17 @@
 Our current way of handling requests:
     Server listens on port using 1 socket
-    Server accepts connections and creates a request state which has its own socket
-    Server calls handlers whenever rqstate's socket can read/write
+    Server accepts connections and creates an http multiplexer, which manages 1 reading request_state, and multiple queued response request_states
+    Server creates events for respective eloops when socket can read/write
+    Server manages terminiation of socket
 
-To handle pipelined GET requests, and keep-alive connections, we can do the following:
+To handle pipelined GET requests, and keep-alive connections, we do the following:
     Whenever a request's body [POST] / headers [GET] ends
-    We clone the current request and detatch it from the socket
-    The next thing recieved on the socket is another request
-    But the responses have to be in order
+    We fork the current request and detatch it from the http multiplexer
+    forking:
+        copy whatever bytes in the input buffer to the new request state to which they belong
+        make multiplexer->currently_reading point to the newly forked request state
+        queue the newly forked request state in the http multiplexer for its response
 
-    Socket Manager (can be the server):
         -> Request #1   [ Keep alive ]
            Response #1  [            ]
         -> Request #2   [            ]
@@ -19,22 +21,27 @@ To handle pipelined GET requests, and keep-alive connections, we can do the foll
         -> Request #4   [            ]
            Response #3  [            ]
            Response #4  [            ]
-    Socket manager needs to have a queue of requests, whenever a response is ready it notifies it
-    then in turn it sends responses (Response #4 can be ready before Response #3 but we wait for Response #3)
+    
 
 on connection:
-   multiplexer = get_http_multiplexer(server, socket)
-   first_rqstate = new_request_state
-   multiplexer.add(first_rqstate)
+   multiplexer = new_http_multiplexer(server, socket)
+   first_rqstate = new_request_state()
+   multiplexer.queue_response(first_rqstate)
+   multiplexer.set_currently_reading(first_rqstate)
 on connection closed:
    destroy_http_multiplexer(server, socket)
 
 on request parsed and beginning of new request:
    multiplexer = get_http_multiplexer(server, socket)
-   rqstate = fork_request_state(old_request_state)
+   forked_rqstate = fork_request_state(old_request_state)
+   multiplexer.set_currently_reading(forked_rqstate)
+   multiplexer.queue_response(forked_rqstate)
 
-then stuff go on with the request, it's handled in
-the event loop, eventually being destroyed after response
 
-
-destroy_rqstate(rqstate)
+request life time:
+    request_state_created
+        -> can be destroyed when its response is sent
+        -> can be destroyed when an error occurs in parsing/request handler/socket
+    
+but we cannot immediately destroy requests when they're scheduled
+so we treat requests as being cancelled when there's an error

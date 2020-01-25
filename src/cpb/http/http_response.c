@@ -23,6 +23,9 @@ int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name
     rsp->headers.headers[rsp->headers.len].key = *name;
     rsp->headers.headers[rsp->headers.len].value = *value;
     rsp->headers.len++;
+
+    rsp->headers_bytes += name->len + 2 /*": "*/ + value->len + 2 /*crlf*/;
+    
     return CPB_OK;
 }
 

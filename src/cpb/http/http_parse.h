@@ -69,7 +69,7 @@ static void process_relevant_header(struct cpb_request_state *rqstate, char *ibu
         rqstate->headers.h_content_length_idx = idx;
     }
     else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Content-Type", 12)) {
-        rqstate->headers.h_transfer_encoding_idx = idx;
+        rqstate->headers.h_content_type_idx = idx;
     }
     else if (cpb_strcasel_eq(ibuff + key.index, key.len, "Transfer-Encoding", 17)) {
         rqstate->headers.h_transfer_encoding_idx = idx;
@@ -213,7 +213,7 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
             //error
             return cpb_make_error(CPB_HTTP_ERROR);
         }
-        int colon_idx = cpb_memmem(ibuff, idx, line_end_idx - idx, ":", 1);
+        int colon_idx = cpb_memmem(ibuff, idx, line_end_idx, ":", 1);
         if (colon_idx == -1) {
             break;
         }
