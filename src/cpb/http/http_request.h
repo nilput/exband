@@ -175,7 +175,7 @@ static int cpb_request_body_bytes_read(struct cpb_request_state *rqstate) {
 
 static void cpb_request_state_deinit(struct cpb_request_state *rqstate, struct cpb *cpb) {
     cpb_response_state_deinit(&rqstate->resp, cpb, rqstate->eloop);
-    cpb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer);
+    cpb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer, rqstate->input_buffer_cap);
     cpb_str_deinit(cpb, &rqstate->body_decoded);
     rqstate->istate = CPB_HTTP_I_ST_DEAD;
 }

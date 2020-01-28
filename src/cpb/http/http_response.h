@@ -93,7 +93,7 @@ static int cpb_response_state_deinit(struct cpb_response_state *resp_state, stru
         cpb_str_deinit(cpb, &resp_state->headers.headers[i].key);
         cpb_str_deinit(cpb, &resp_state->headers.headers[i].value);
     }
-    cpb_eloop_release_buffer(eloop, resp_state->output_buffer);
+    cpb_eloop_release_buffer(eloop, resp_state->output_buffer, resp_state->output_buffer_cap);
     return CPB_OK;
 }
 
@@ -155,7 +155,7 @@ static int cpb_response_prepare_headers(struct cpb_response_state *rsp, struct c
         }
         int new_body_index = rsp->headers_bytes + HTTP_STATUS_MAX_SZ;
         memcpy(new_buff + new_body_index, rsp->output_buffer + rsp->body_begin_index, rsp->body_len);
-        cpb_eloop_release_buffer(eloop, rsp->output_buffer);
+        cpb_eloop_release_buffer(eloop, rsp->output_buffer, rsp->output_buffer_cap);
         rsp->output_buffer = new_buff;
         rsp->output_buffer_cap = new_buff_cap;
         rsp->body_begin_index = new_body_index;

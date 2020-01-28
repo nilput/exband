@@ -1,0 +1,7 @@
+options:
+    kcachegrind + valgrind: meh
+    dplog : umm, idk
+    oprofile: YES
+
+https://linuxhint.com/oprofile-tutorial/
+opreport --demangle=smart --symbols

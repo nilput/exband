@@ -30,7 +30,9 @@ void int_handler(int dummy) {
     cpb_deinit(&cpb_state);
     dp_end_event("main");
     dp_dump();
-    exit(0);
+
+    if (dummy != SIGABRT)
+        exit(1);
 }
 void set_handlers() {
    signal(SIGINT,  int_handler);
@@ -150,7 +152,7 @@ int main(int argc, char *argv[]) {
     rv = cpb_threadpool_init(&tp, &cpb_state);
     ordie(rv);
     rv = cpb_threadpool_set_nthreads(&tp, cpb_config.tp_threads);
-    fprintf(stderr, "spawning %d threads", cpb_config.tp_threads);
+    fprintf(stderr, "spawning %d threads\n", cpb_config.tp_threads);
     ordie(rv);
     
 

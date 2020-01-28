@@ -70,6 +70,8 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     s->dll_module_handle = NULL;
 
     s->config = config;
+
+
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
         cpb_http_multiplexer_init(&s->mp[i], NULL, i);
     }
@@ -107,13 +109,21 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
         s->request_handler = module_handler;
     }
 
+    
+    if ((rv = cpb_request_state_recycle_array_init(cpb_ref, &s->rq_cyc)) != CPB_OK) {
+        err = cpb_make_error(rv);
+        goto err3;
+    }
+
     return err;
-    /*
-    err3:
+/*
+err4:
+    cpb_request_state_recycle_array_deinit(cpb_ref, &s->rq_cyc)
+*/  
+err3:
     if (s->handler_module) {
         cpb_http_handler_module_unload(s->cpb, s->handler_module, s->dll_module_handle);
     }
-    */
 err2:
     s->listener->destroy(s, s->listener);
 err1:
@@ -145,15 +155,17 @@ struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, in
 
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd) {
     dp_register_event(__FUNCTION__);
-    void *p = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
-    if (!p) {
+    struct cpb_request_state *st = NULL;
+    if (cpb_request_state_recycle_array_pop(server->cpb, &server->rq_cyc, &st) != CPB_OK) {
+        st = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
+    }
+    if (!st) {
         dp_end_event(__FUNCTION__);
         return NULL;
     }
-    struct cpb_request_state *st = p;
     int rv;
     if ((rv = cpb_request_state_init(st, eloop, server->cpb, server, socket_fd)) != CPB_OK) {
-        cpb_free(server->cpb, p);
+        cpb_free(server->cpb, st);
         return NULL;
     }
     dp_end_event(__FUNCTION__);
@@ -162,7 +174,9 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate) {
     dp_register_event(__FUNCTION__);
     cpb_request_state_deinit(rqstate, server->cpb);
-    cpb_free(server->cpb, rqstate);
+    if (cpb_request_state_recycle_array_push(server->cpb, &server->rq_cyc, rqstate) != CPB_OK) {
+        cpb_free(server->cpb, rqstate);
+    }
     dp_end_event(__FUNCTION__);
 }
 
@@ -302,6 +316,9 @@ struct cpb_event_handler_itable cpb_server_event_handler = {
 };
 
 void cpb_server_deinit(struct cpb_server *s) {
+
+    cpb_request_state_recycle_array_deinit(s->cpb, &s->rq_cyc);
+
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
         cpb_http_multiplexer_deinit(&s->mp[i]);
     }

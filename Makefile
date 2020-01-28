@@ -8,9 +8,9 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.
 
 debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function
 debug: all
-release: CFLAGS += -O2 -Wall -Wno-unused-function 
+release: CFLAGS += -g -O2 -Wall -Wno-unused-function 
 release: all
-fast-release: CFLAGS += -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
+fast-release: CFLAGS += -g -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 fast-release: all
 san: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=address
 san: all

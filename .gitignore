@@ -2,6 +2,8 @@ garbage
 server_main
 .vscode
 src/util/.gitignore
+tests/c/test_recycle
+tests/c/test_decode
 rel
 *.so
 *.sqlite3
@@ -9,3 +11,6 @@ mkrel.sh
 pushrel.sh
 dplog.txt
 .vscode/*
+callgrind*
+vgcore*
+oprofile_data

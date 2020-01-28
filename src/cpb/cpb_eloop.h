@@ -9,6 +9,7 @@ Event loop
 #include "cpb_event.h"
 #include "cpb_ts_event_queue.h"
 #include "cpb_event.h"
+#include "cpb_buffer_recycle_list.h"
 #define ELOOP_SLEEP_TIME 1
 
 struct cpb_event; //fwd
@@ -29,6 +30,7 @@ struct cpb_eloop {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_threadpool *threadpool; //not owned, must outlive
     struct cpb_ts_event_queue tsq;
+    struct cpb_buffer_recycle_list buff_cyc;
     
     unsigned ev_id; //counter
 
@@ -158,11 +160,18 @@ static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, struct c
     eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
     int rv = cpb_ts_event_queue_init(&eloop->tsq, cpb_ref, 16);
-    if (rv != CPB_OK)
+    if ((rv = cpb_buffer_recycle_list_init(cpb_ref, &eloop->buff_cyc)) != CPB_OK) {
         return rv;
+    }
+    rv = cpb_ts_event_queue_init(&eloop->tsq, cpb_ref, 16);
+    if (rv != CPB_OK) {
+        cpb_buffer_recycle_list_deinit(cpb_ref, &eloop->buff_cyc);
+        return rv;
+    }
     if (sz != 0) {
         rv = cpb_eloop_resize(eloop, sz);
         if (rv != CPB_OK) {
+            cpb_buffer_recycle_list_deinit(cpb_ref, &eloop->buff_cyc);
             cpb_ts_event_queue_deinit(&eloop->tsq);
             return rv;
         }
@@ -171,8 +180,9 @@ static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, struct c
 }
 static int cpb_eloop_deinit(struct cpb_eloop *eloop) {
     //TODO destroy pending events
-    cpb_free(eloop->cpb, eloop->events);
+    cpb_buffer_recycle_list_deinit(eloop->cpb, &eloop->buff_cyc);
     cpb_ts_event_queue_deinit(&eloop->tsq);
+    cpb_free(eloop->cpb, eloop->events);
     return CPB_OK;
 }
 
@@ -342,6 +352,13 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
 
 //TODO: optimize to recycle or use custom allocator
 static struct cpb_error cpb_eloop_alloc_buffer(struct cpb_eloop *eloop, size_t size, char **buff_out, int *cap_out) {
+    void *p;
+    size_t cap;
+    if (cpb_buffer_recycle_list_pop(eloop->cpb, &eloop->buff_cyc, size, &p, &cap) == CPB_OK) {
+        *buff_out = p;
+        *cap_out = cap;
+        return cpb_make_error(CPB_OK);
+    }
     *buff_out = cpb_malloc(eloop->cpb, size);
     if (!*buff_out) {
         return cpb_make_error(CPB_NOMEM_ERR);
@@ -358,7 +375,9 @@ static struct cpb_error cpb_eloop_realloc_buffer(struct cpb_eloop *eloop, char *
     *cap_out = new_size;
     return cpb_make_error(CPB_OK);
 }
-static void cpb_eloop_release_buffer(struct cpb_eloop *eloop, char *buff) {
+static void cpb_eloop_release_buffer(struct cpb_eloop *eloop, char *buff, size_t capacity) {
+    if (cpb_buffer_recycle_list_push(eloop->cpb, &eloop->buff_cyc, buff, capacity) == CPB_OK)
+        return;
     cpb_free(eloop->cpb, buff);
 }
 

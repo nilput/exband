@@ -33,7 +33,6 @@ static void cpb_http_multiplexer_queue_response(struct cpb_http_multiplexer *mp,
     
     if (mp->next_response == NULL) {
         mp->next_response = rqstate;
-        //fprintf(stderr, "Queueing response %p on top of %p\n", rqstate, NULL);
     }
     else {
         struct cpb_request_state *tail = mp->next_response;
@@ -43,7 +42,6 @@ static void cpb_http_multiplexer_queue_response(struct cpb_http_multiplexer *mp,
         }
         cpb_assert_s(tail != rqstate, "");
         tail->next_rqstate = rqstate;
-        //fprintf(stderr, "Queueing response %p on top of %p\n", rqstate, tail);
     }
 }
 static void cpb_http_multiplexer_pop_response(struct cpb_http_multiplexer *mp) {

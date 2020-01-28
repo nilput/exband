@@ -6,9 +6,9 @@
 #include <string.h>
 
 #include "cmocka.h"
-#include "../src/cpb/cpb.h"
-#include "../src/cpb/cpb_str.h"
-#include "../src/cpb/http/http_decode.h"
+#include "../../src/cpb/cpb.h"
+#include "../../src/cpb/cpb_str.h"
+#include "../../src/cpb/http/http_decode.h"
 
 
 struct encdec {

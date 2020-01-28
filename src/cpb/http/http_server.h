@@ -8,6 +8,7 @@
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
 #include "http_handler_module.h"
+#include "cpb_request_state_recycle_array.h"
 
 
 #define LISTEN_BACKLOG 128
@@ -72,7 +73,9 @@ struct cpb_server {
     int listen_socket_fd;
 
     struct cpb_server_listener *listener;
-        
+    
+    struct cpb_request_state_recycle_array rq_cyc;
+
     struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
 };
 
