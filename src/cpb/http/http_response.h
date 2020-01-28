@@ -54,7 +54,7 @@ struct cpb_response_state {
 */
 
 static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req, struct cpb_eloop *eloop) {
-    cpb_assert_h(eloop, "");
+    cpb_assert_h(!!eloop, "");
     resp_state->req_state = req;
     resp_state->state = CPB_HTTP_R_ST_INIT;
     //resp_state->is_chunked = 0;

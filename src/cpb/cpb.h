@@ -6,6 +6,7 @@
 
 #include "cpb_assert.h"
 #include "cpb_errors.h"
+#define RQSTATE_EVENT(f, fmt, ...) 
 
 #if defined(ENABLE_DBGPERF)
     #include "dbgperf/dbgperf.h"

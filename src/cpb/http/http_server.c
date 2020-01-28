@@ -217,6 +217,9 @@ int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sock
     rqstate->is_read_scheduled = 1;
     cpb_event_http_init(&ev, CPB_HTTP_INIT, rqstate, 0);
     cpb_eloop_append(mp->eloop, ev);
+    
+    RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
+    
     return CPB_OK;
 }
 
@@ -254,9 +257,14 @@ void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiple
     cpb_assert_h((!!m) && m->state == CPB_MP_ACTIVE, "");
     cpb_assert_h(!!m->creading, "");
     cpb_assert_h(!m->creading->is_read_scheduled, "");
+    
     m->creading->is_read_scheduled = 1;
     cpb_event_http_init(&ev, CPB_HTTP_READ, m->creading, 0);
     cpb_eloop_append(m->eloop, ev);
+
+    RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because we found out "
+                    "read is available for socket %d\n", m->creading, m->socket_fd);
+    
 }
 void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multiplexer *m) {
     struct cpb_event ev;

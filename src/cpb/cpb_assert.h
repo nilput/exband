@@ -6,6 +6,7 @@
     #define cpb_assert_h(c,m)
     #define cpb_assert_s(c,m)
 #else
+    #define CPB_ASSERTS
     static void cpb_assert_h(int cond, const char *msg) {
         assert(cond);
     }

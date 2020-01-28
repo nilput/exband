@@ -119,6 +119,39 @@ ret:
     pthread_mutex_unlock(&tq->mtx);
     return err;
 }
+
+static int cpb_ts_event_queue_pop_many(struct cpb_ts_event_queue *tq, struct cpb_event *events_out, int *nevents_out, int max_events) {
+    if (pthread_mutex_lock(&tq->mtx) != 0) {
+        return CPB_MUTEX_LOCK_ERROR;
+    }
+    int err = CPB_OK;
+
+    int nevents = cpb_ts_event_queue_len_u(tq);
+    if (nevents > max_events)
+        nevents = max_events;
+    for (int i=0; i<nevents; i++){
+        cpb_assert_h(tq->head != tq->tail, "");
+        events_out[i] = tq->events[tq->head];
+        tq->head++;
+        if (tq->head >= tq->cap) //tq->head %= tq->cap;
+            tq->head = 0;
+    }
+    *nevents_out = nevents;
+    #ifdef CPB_ASSERTS
+        int i = tq->head;
+        for (int idx = nevents; idx > 0;) {
+            idx--;
+            i = i == 0 ? tq->cap - 1 : i - 1;
+            cpb_assert_h(memcmp(events_out + idx, tq->events + i, sizeof(struct cpb_event)) == 0, "");
+        }
+    #endif
+
+bnret:
+    pthread_mutex_unlock(&tq->mtx);
+    return err;
+}
+
+
 static int cpb_ts_event_queue_init(struct cpb_ts_event_queue *tq, struct cpb* cpb_ref, int sz) {
     memset(tq, 0, sizeof *tq);
     tq->cpb = cpb_ref;
