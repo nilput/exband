@@ -523,6 +523,9 @@ void dp_register_event(const char *event) {
 	//stats
 	dp->ev_len_max = dp->ev_len > dp->ev_len_max ? dp->ev_len : dp->ev_len_max;
 }
+void dp_useless(int n) {
+	return;
+}
 void dp_end_event(const char *event) {
 	struct dp_info *dp = dp_init();
 	assert(dp_data);

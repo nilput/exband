@@ -78,7 +78,7 @@ static int cpb_server_listener_select_listen(struct cpb_server *s, struct cpb_se
                 goto ret;
             }
             struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
-            cpb_assert_h(nm && nm->state == CPB_MP_EMPTY, "");
+            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
             int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
         }
     }

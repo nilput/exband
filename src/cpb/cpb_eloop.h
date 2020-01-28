@@ -282,10 +282,15 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
         struct cpb_event ev;
         
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
+        dp_register_event("eloop_pop_next");
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
+        
+        dp_end_event("eloop_pop_next");
     again:
         if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
+            dp_register_event("eloop_offload");
             cpb_eloop_offload_recieve(eloop);
+            dp_end_event("eloop_offload");
             nprocessed = 0;
         }
         if (rv == CPB_OK) {
@@ -300,8 +305,12 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 return err;
             }
             cur_time = cpb_time();
+            dp_register_event("eloop_offload_2");
             cpb_eloop_offload_recieve(eloop);
+            dp_end_event("eloop_offload_2");
+            dp_register_event("eloop_pop_next");
             rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
+            dp_end_event("eloop_pop_next");
             if (rv == CPB_OK) {
                 goto again;
             }
@@ -310,7 +319,9 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
+            dp_register_event("eloop_pop_next_p");
             rv = cpb_eloop_d_pop_next_premature(eloop, &ev);
+            dp_end_event("eloop_pop_next_p");
             if (rv == CPB_OK) {
                 goto again;
             }

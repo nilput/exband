@@ -116,11 +116,19 @@ static size_t cpb_response_body_available_bytes(struct cpb_response_state *rsp) 
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
 }
 
+int cpb_response_body_buffer_ensure(struct cpb_response_state *rsp, size_t cap);
+
 //the bytes are copied to output buffer
 static int cpb_response_append_body(struct cpb_response_state *rsp, char *s, int len) {
     int available_bytes = cpb_response_body_available_bytes(rsp);
     if (len > available_bytes) {
-        return CPB_BUFFER_FULL_ERR;
+        int rv;
+        size_t new_cap = rsp->output_buffer_cap;
+        cpb_assert_h(new_cap > 0, "");
+        while (new_cap < (len - available_bytes))
+            new_cap *= 2;
+        if ((rv = cpb_response_body_buffer_ensure(rsp, new_cap)) != CPB_OK)
+            return rv;
     }
     memcpy(rsp->output_buffer + rsp->body_begin_index + rsp->body_len, s, len);
     rsp->body_len += len;

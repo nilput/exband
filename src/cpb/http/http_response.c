@@ -4,6 +4,20 @@
 #include <unistd.h>
 #include <errno.h>
 
+int cpb_response_body_buffer_ensure(struct cpb_response_state *rsp, size_t cap) {
+    cap = cap + rsp->body_begin_index;
+    if (cap > rsp->output_buffer_cap) {
+        struct cpb_error err;
+        char *new_buff;
+        int new_sz;
+        err = cpb_eloop_realloc_buffer(rsp->req_state->eloop, rsp->output_buffer, cap, &new_buff, &new_sz);
+        if (err.error_code)
+            return err.error_code;
+        rsp->output_buffer = new_buff;
+        rsp->output_buffer_cap = new_sz;
+    }
+    return CPB_OK;
+}
 
 //Takes ownership of both name and value
 int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {
@@ -25,7 +39,7 @@ int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name
     rsp->headers.len++;
 
     rsp->headers_bytes += name->len + 2 /*": "*/ + value->len + 2 /*crlf*/;
-    
+
     return CPB_OK;
 }
 

@@ -21,6 +21,7 @@ extern "C" {
     #define dp_timed_log(x, ...)
     #define dp_timed_logv(x, ap)
     #define dp_dump()
+	#define dp_useless(n)
 #else  //(enabled)
 	//called at top of main
 	void dp_clear(void);
@@ -30,6 +31,7 @@ extern "C" {
 	//a log with a time and a tid logged to seperate file
 	void dp_timed_log(const char *fmt, ...);
 	void dp_timed_logv(const char *fmt, va_list ap);
+	void dp_useless(int n);
 	//called at end of program to write summary to file
 	void dp_dump(void);
 #endif

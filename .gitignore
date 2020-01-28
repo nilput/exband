@@ -6,5 +6,6 @@ rel
 *.so
 *.sqlite3
 mkrel.sh
+pushrel.sh
 dplog.txt
 .vscode/*

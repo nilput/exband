@@ -16,6 +16,7 @@
     #define dp_timed_log(x, ...)
     #define dp_timed_logv(x, ap)
     #define dp_dump()
+    #define dp_useless(n)
 #endif
 
 struct cpb {

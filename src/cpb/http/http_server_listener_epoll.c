@@ -81,33 +81,36 @@ static int cpb_server_listener_epoll_listen(struct cpb_server *s, struct cpb_ser
         return CPB_EPOLL_WAIT_ERROR;
     }
     int incoming_connections = 0;
-    for (int i=0; i<n; i++) {
-        struct epoll_event *ev = lis->events + i;
-        if (ev->data.fd == s->listen_socket_fd) {
-            incoming_connections = 1;
-            continue;
+    for (int w=0; w<2; w++) {
+        for (int i=0; i<n; i++) {
+            struct epoll_event *ev = lis->events + i;
+            if (ev->data.fd == s->listen_socket_fd) {
+                incoming_connections = 1;
+                continue;
+            }
+            struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, ev->data.fd);
+            if (m->state != CPB_MP_ACTIVE)
+                continue; //can be stdin or whatever
+            cpb_assert_h(!!m->creading, "");
+            if ( w == 0                                     &&
+                (ev->events & EPOLLIN)                      &&
+                 m->creading->istate != CPB_HTTP_I_ST_DONE  &&
+                !m->creading->is_read_scheduled                ) 
+            {
+                /* Data arriving on an already-connected socket. */
+                cpb_server_on_read_available(s, m);
+            
+            }
+            if ( w == 1                                                &&
+                (ev->events & EPOLLOUT)                                &&
+                 m->next_response                                      &&
+                 m->next_response->resp.state == CPB_HTTP_R_ST_SENDING &&
+                !m->next_response->is_send_scheduled                      )
+            {
+                cpb_server_on_write_available(s, m);
+            }
+           
         }
-        struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, ev->data.fd);
-        if (m->state != CPB_MP_ACTIVE)
-            continue; //can be stdin or whatever
-        cpb_assert_h(!!m->creading, "");
-        if ((ev->events & EPOLLIN)                      &&
-             m->creading->istate != CPB_HTTP_I_ST_DONE  &&
-            !m->creading->is_read_scheduled                ) 
-        {
-            /* Data arriving on an already-connected socket. */
-            cpb_server_on_read_available(s, m);
-        
-        }
-        if ((ev->events & EPOLLOUT)                                &&
-             m->next_response                                      &&
-             m->next_response->resp.state == CPB_HTTP_R_ST_SENDING &&
-            !m->next_response->is_send_scheduled                      )
-        {
-            cpb_server_on_write_available(s, m);
-        }
-    
-        
     }
 
     /* Service Connection requests. */
@@ -134,7 +137,7 @@ static int cpb_server_listener_epoll_listen(struct cpb_server *s, struct cpb_ser
                 goto ret;
             }
             struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
-            cpb_assert_h(nm && nm->state == CPB_MP_EMPTY, "");
+            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
             int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
         }
     }

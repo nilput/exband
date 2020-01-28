@@ -1,6 +1,9 @@
 
 #include <unistd.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -168,8 +171,12 @@ struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s) {
 }
 
 int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
-    
-    fcntl(socket_fd, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state */
+    int flags = fcntl(socket_fd, F_GETFL, 0);
+    cpb_assert_h(flags != -1, "");
+    if ((flags = fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK)) == -1) {
+        return CPB_SOCKET_ERR;
+    }
+    setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (int [1]){1}, sizeof(int));
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
     if (mp == NULL)
         return CPB_SOCKET_ERR;

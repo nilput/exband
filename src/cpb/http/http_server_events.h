@@ -11,7 +11,8 @@ enum cpb_event_http_cmd {
     CPB_HTTP_SEND, /*ask it to write, .argp : rqstate*/
     CPB_HTTP_DID_READ,  /*inform about async read result, .argp : rqstate*/
     CPB_HTTP_DID_WRITE, /*inform about async write result, .argp : rqstate*/
-    CPB_HTTP_IO_ERROR, /*inform about error during async read/write, .argp : rqstate*/
+    CPB_HTTP_WRITE_IO_ERROR, /*inform about error during async read/write, .argp : rqstate*/
+    CPB_HTTP_READ_IO_ERROR,
     CPB_HTTP_INPUT_BUFFER_FULL, /*inform about a full buffer during async read, .argp : rqstate*/
     CPB_HTTP_CLIENT_CLOSED, //.argp : rqstate
     CPB_HTTP_CANCEL, /*.argp: http server, .arg1: socket*/
