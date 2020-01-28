@@ -12,6 +12,7 @@
 
 #include "../cpb_errors.h"
 #include "http_server.h"
+#include "http_server_internal.h"
 #include "http_server_events.h"
 #include "http_parse.h"
 #include "http_request.h"
@@ -147,10 +148,7 @@ struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, stru
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd) 
 {
-    if (socket_fd > CPB_SOCKET_MAX)
-        return NULL;
-    cpb_assert_h(socket_fd >= 0, "invalid socket no");
-    return s->mp + socket_fd;
+    return cpb_server_get_multiplexer_i(s, socket_fd);
 }
 
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd) {

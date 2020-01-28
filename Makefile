@@ -10,7 +10,7 @@ debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function
 debug: all
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function 
 release: all
-fast-release: CFLAGS += -g -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
+fast-release: CFLAGS += -flto -g -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 fast-release: all
 no-release: CFLAGS += -g -O1 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 no-release: all

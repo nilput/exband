@@ -5,6 +5,7 @@
 #include "../cpb_threadpool.h"
 #include "../cpb_errors.h"
 #include "http_server.h"
+#include "http_server_internal.h"
 #include "http_server_events.h"
 #include "http_parse.h"
 
@@ -43,7 +44,7 @@ static struct cpb_error cpb_request_fork(struct cpb_request_state *rqstate) {
     dp_register_event(__FUNCTION__);
     struct cpb_error err;
     struct cpb_server *s = rqstate->server;
-    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, rqstate->socket_fd);
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(s, rqstate->socket_fd);
     if (mp->state != CPB_MP_ACTIVE)
         return cpb_make_error(CPB_SOCKET_ERR);
     cpb_assert_h(mp && mp->state == CPB_MP_ACTIVE, "");
@@ -532,13 +533,13 @@ static void handle_http_event(struct cpb_event ev);
 void cpb_request_on_request_done(struct cpb_request_state *rqstate) {
     cpb_assert_h(!rqstate->is_read_scheduled, "");
     cpb_assert_h(rqstate->istate == CPB_HTTP_I_ST_DONE || rqstate->is_cancelled, "");
-    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     cpb_request_lifetime(mp, rqstate);
 }
 void cpb_request_on_response_done(struct cpb_request_state *rqstate) {
     cpb_assert_h(!rqstate->is_send_scheduled, "");
     cpb_assert_h(rqstate->resp.state == CPB_HTTP_R_ST_DONE, "");
-    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     cpb_assert_h(mp->next_response == rqstate, "");
     cpb_http_multiplexer_pop_response(mp);
     if (mp->next_response && mp->next_response->resp.state == CPB_HTTP_R_ST_SENDING) {
@@ -610,7 +611,7 @@ int cpb_response_end(struct cpb_response_state *rsp) {
 
     
     //TODO: Why not do that directly
-    struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(rsp->req_state->server, rsp->req_state->socket_fd);
+    struct cpb_http_multiplexer *m = cpb_server_get_multiplexer_i(rsp->req_state->server, rsp->req_state->socket_fd);
     if (m->next_response == rsp->req_state) {
         //TODO: will it be an issue if this gets scheduled twice? 
         //  [Whatever event we are on] -> we schedule this here
@@ -747,7 +748,7 @@ static void handle_http_event(struct cpb_event ev) {
     {
         struct cpb_server *s = ev.msg.u.iip.argp;
         int socket_fd = ev.msg.u.iip.arg1;
-        struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
+        struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(s, socket_fd);
         cpb_assert_h(mp->state == CPB_MP_CANCELLING, "invalid mp state");
         cpb_assert_h(mp->socket_fd == socket_fd, "invalid mp state");
         if (mp->creading) {
