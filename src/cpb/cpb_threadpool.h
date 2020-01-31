@@ -8,6 +8,9 @@
 #include "cpb.h"
 #include "cpb_errors.h"
 #include "cpb_utils.h"
+#include "cpb_task.h"
+
+#define CPB_THREAD_TASK_BUFFER_COUNT 16
 
 struct cpb_threadpool;
 struct cpb_thread {
@@ -37,12 +40,6 @@ struct cpb_threadpool {
     struct cpb_taskqueue taskq;
 };
 
-
-struct cpb_task {
-    struct cpb_error err;
-    struct cpb_msg msg;
-    void (*run)(struct cpb_thread *thread, struct cpb_task *task);
-};
 
 
 static int cpb_taskqueue_deinit(struct cpb_taskqueue *tq); //fwd
@@ -78,7 +75,9 @@ static void cpb_threadpool_deinit(struct cpb_threadpool *tp) {
 }
 
 static int cpb_taskqueue_pop_next(struct cpb_taskqueue *tq, struct cpb_task *task_out);
+static int cpb_taskqueue_pop_many(struct cpb_taskqueue *tq, struct cpb_task *tasks_out, int *ntasks_out, int max_tasks);
 static int cpb_taskqueue_append(struct cpb_taskqueue *tq, struct cpb_task task);
+static int cpb_taskqueue_append_many(struct cpb_taskqueue *tq, struct cpb_task *tasks, int ntasks);
 static int cpb_taskqueue_len(struct cpb_taskqueue *tq);
 
 /*Must be threadsafe*/
@@ -94,6 +93,22 @@ static int cpb_threadpool_push_task(struct cpb_threadpool *tp, struct cpb_task t
     pthread_cond_signal(&tp->tp_cnd);
     return err;
 }
+
+
+static int cpb_threadpool_push_tasks_many(struct cpb_threadpool *tp, struct cpb_task *tasks, int ntasks) {
+    if (pthread_mutex_lock(&tp->tp_mtx) != 0) {
+        return CPB_MUTEX_LOCK_ERROR;
+    }
+    int err = CPB_OK;
+    err = cpb_taskqueue_append_many(&tp->taskq, tasks, ntasks);
+
+//ret:
+    pthread_mutex_unlock(&tp->tp_mtx);
+    pthread_cond_signal(&tp->tp_cnd);
+    return err;
+}
+
+
 /*Must be threadsafe*/
 /*TODO: optimize, use a CAS/LLSC algorithm with a fallback on mutexes*/
 static int cpb_threadpool_pop_task(struct cpb_threadpool *tp, struct cpb_task *task_out) {
@@ -106,6 +121,20 @@ static int cpb_threadpool_pop_task(struct cpb_threadpool *tp, struct cpb_task *t
     pthread_mutex_unlock(&tp->tp_mtx);
     return err;
 }
+
+/*Must be threadsafe*/
+/*TODO: optimize, use a CAS/LLSC algorithm with a fallback on mutexes*/
+static int cpb_threadpool_pop_tasks_many(struct cpb_threadpool *tp, struct cpb_task *tasks_out, int *ntasks_out, int max_tasks) {
+    if (pthread_mutex_lock(&tp->tp_mtx) != 0) {
+        return CPB_MUTEX_LOCK_ERROR;
+    }
+    int err = CPB_OK;
+    err = cpb_taskqueue_pop_many(&tp->taskq, tasks_out, ntasks_out, max_tasks);
+//ret:
+    pthread_mutex_unlock(&tp->tp_mtx);
+    return err;
+}
+
 
 /*Must be threadsafe*/
 /*Waits until new tasks are available (this can be done way better)*/
@@ -126,14 +155,19 @@ static int cpb_threadpool_wait_for_work(struct cpb_threadpool *tp) {
 
 static void  *cpb_thread_run(void *arg) {
     struct cpb_thread *t = arg;
-    struct cpb_task current_task;
+    struct cpb_task current_tasks[CPB_THREAD_TASK_BUFFER_COUNT];
+    int ntasks = 0;
     while (1) {
-        int rv = cpb_threadpool_pop_task(t->tp, &current_task);
+        int rv = cpb_threadpool_pop_tasks_many(t->tp, current_tasks, &ntasks, CPB_THREAD_TASK_BUFFER_COUNT);
         if (rv != CPB_OK) { 
-            cpb_threadpool_wait_for_work(t->tp);
-            continue;
+            break;
         }
-        current_task.run(t, &current_task);
+        else if (ntasks == 0) {
+            cpb_threadpool_wait_for_work(t->tp);
+        }
+        for (int i=0; i<ntasks; i++) {
+            current_tasks[i].run(t, &current_tasks[i]);
+        }
     }
     return arg;
 }
@@ -232,6 +266,73 @@ static int cpb_taskqueue_append(struct cpb_taskqueue *tq, struct cpb_task task) 
         tq->tail = 0;
     return CPB_OK;
 }
+
+//see also cpb_eloop_append_many()
+static int cpb_taskqueue_append_many(struct cpb_taskqueue *tq, struct cpb_task *tasks, int ntasks) {
+    if ((cpb_taskqueue_len(tq) + ntasks) >= tq->cap - 1) {
+        int nsz = tq->cap ? tq->cap * 2 : 4;
+        while ((cpb_taskqueue_len(tq) + ntasks) >= nsz - 1)
+            nsz *= 2;
+        int rv = cpb_taskqueue_resize(tq, nsz);
+        if (rv != CPB_OK)
+            return rv;
+    }
+    cpb_assert_h((cpb_taskqueue_len(tq) + ntasks) < tq->cap - 1, "");
+
+    if (tq->head > tq->tail) {
+        //example: cap=8
+        //         []
+        //indices: 0  1  2  3  4  5  6  7
+        //               ^tail       ^head
+        //               ^^^^^^^^^^
+        //               at tail
+        // no at head
+        cpb_assert_h(tq->tail + ntasks < tq->head, "");
+        memcpy(tq->tasks +tq->tail, tasks, ntasks * sizeof(struct cpb_task));
+        tq->tail += ntasks;
+    }
+    else {
+        //example: cap=8
+        //         []
+        //indices: 0  1  2  3  4  5  6  7
+        //         ^^^^  ^head ^tail
+        //         ^           ^^^^^^^^^^
+        //         ^           ^^at tail^
+        //         ^
+        //         at head
+        int at_tail = tq->cap - tq->tail;
+        if (at_tail > ntasks) {
+            at_tail = ntasks;
+        }
+        memcpy(tq->tasks + tq->tail, tasks, at_tail * sizeof(struct cpb_task));
+        int remainder = ntasks - at_tail;
+        if (remainder > 0) {
+            cpb_assert_h(tq->head > remainder, "");
+            //A STUPID BUG WAS FIXED HERE!
+            memcpy(tq->tasks, tasks + at_tail, remainder * sizeof(struct cpb_task));
+            tq->tail = remainder;
+        }
+        else {
+            cpb_assert_h(remainder == 0, "");
+            tq->tail += at_tail;
+            if (tq->tail >= tq->cap)
+                tq->tail = 0;
+        }
+    }
+    #if defined(CPB_ASSERTS) && 0 
+        //TODO: MOVE TO A TEST SUITE
+        int i = eloop->tail;
+        for (int idx = nevents; idx > 0;) {
+            cpb_assert_h(i != eloop->head, "");
+            idx--;
+            i = i == 0 ? eloop->cap - 1 : i - 1;
+            cpb_assert_h(memcmp(events + idx, eloop->events + i, sizeof(struct cpb_event)) == 0, "");
+        }
+    #endif
+    return CPB_OK;
+}
+
+
 static int cpb_taskqueue_resize(struct cpb_taskqueue *tq, int sz) {
     cpb_assert_h(!!tq->cpb, "");
     void *p = cpb_malloc(tq->cpb, sizeof(struct cpb_task) * sz);
@@ -276,6 +377,23 @@ static int cpb_taskqueue_pop_next(struct cpb_taskqueue *tq, struct cpb_task *tas
     *task_out = task;
     return CPB_OK;
 }
+
+
+static int cpb_taskqueue_pop_many(struct cpb_taskqueue *tq, struct cpb_task *tasks_out, int *ntasks_out, int max_tasks) {
+    int navailable = cpb_taskqueue_len(tq);
+    if (navailable > max_tasks)
+        navailable = max_tasks;
+    for (int i=0; i<navailable; i++){
+        cpb_assert_h(tq->head != tq->tail, "");
+        tasks_out[i] = tq->tasks[tq->head];
+        tq->head++;
+        if (tq->head >= tq->cap) //tq->head %= tq->cap;
+            tq->head = 0;
+    }
+    *ntasks_out = navailable;
+    return CPB_OK;
+}
+
 static int cpb_taskqueue_init(struct cpb_taskqueue *tq, struct cpb* cpb_ref, int sz) {
     memset(tq, 0, sizeof *tq);
     tq->cpb = cpb_ref;

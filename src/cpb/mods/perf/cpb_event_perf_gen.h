@@ -23,16 +23,18 @@ struct cpb_perf_gen {
 //analogous to CPB_HTTP_MIN_DELAY
 #define cpb_perf_gen_MIN_DELAY 5
 static struct cpb_event_handler_itable cpb_perf_gen_event_handler;
-#define PER_LOOP 500
+#define PER_LOOP 5000
 //analogous to server_listen_once
 static void cpb_perf_gen_once(struct cpb_perf_gen *t) {
+    //cpb_sleep(1);
     struct cpb_event ev;
     for (int i=0; i<PER_LOOP; i++) {
         cpb_event_act_init(&ev, CPB_PERF_ACT_INIT, t, 0);
         cpb_eloop_append(t->eloop, ev);
         t->syns++;
     }
-    if (t->acks > t->total) {
+    
+    if (t->acks >= t->total) {
         fprintf(stderr, "handled %llu events\n", t->acks);
         exit(0);
     }

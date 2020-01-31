@@ -6,12 +6,14 @@ Event loop
 #include "cpb.h"
 #include "string.h"
 #include "cpb_utils.h"
-#include "cpb_event.h"
+#include "cpb_task.h"
 #include "cpb_ts_event_queue.h"
 #include "cpb_event.h"
+#include "cpb_threadpool.h"
 #include "cpb_buffer_recycle_list.h"
 #define ELOOP_SLEEP_TIME 2
 #define CPB_ELOOP_TMP_EVENTS_SZ 256
+#define CPB_ELOOP_TASK_BUFFER_COUNT 256
 
 struct cpb_event; //fwd
 struct cpb_threadpool;
@@ -26,6 +28,42 @@ struct cpb_delayed_event_node {
     struct cpb_delayed_event_node *next;
 };
 
+enum cpb_eloop_event_cmd {
+    CPB_ELOOP_FLUSH,
+};
+
+struct cpb_eloop;
+static int cpb_eloop_flush_tasks(struct cpb_eloop *eloop);
+
+static void cpb_eloop_handle_eloop_event(struct cpb_event ev) {
+    struct cpb_eloop *eloop = ev.msg.u.iip.argp;
+    int cmd = ev.msg.u.iip.arg1;
+    if (cmd == CPB_ELOOP_FLUSH) {
+        cpb_eloop_flush_tasks(eloop);
+    }
+    else {
+        cpb_assert_h(0, "unknown cmd");
+    }
+}
+static void cpb_eloop_destroy_eloop_event(struct cpb_event ev) {
+
+}
+
+
+static struct cpb_event_handler_itable cpb_eloop_events_itable = {
+    .handle = cpb_eloop_handle_eloop_event,
+    .destroy = cpb_eloop_destroy_eloop_event
+};
+static struct cpb_event cpb_eloop_make_eloop_event(struct cpb_eloop *eloop, enum cpb_eloop_event_cmd cmd) {
+    struct cpb_event ev;
+    ev.itable = &cpb_eloop_events_itable;
+    ev.msg.u.iip.arg1 = cmd;
+    ev.msg.u.iip.argp = eloop;
+    ev.msg.u.iip.arg2 = 0;
+    return ev;
+}
+
+
 
 struct cpb_eloop {
     struct cpb *cpb; //not owned, must outlive
@@ -37,6 +75,13 @@ struct cpb_eloop {
 
     struct cpb_delayed_event_node* devents;
     int devents_len;
+
+    //this is done to collect a number of tasks before sending them to the threadpool
+    struct cpb_task task_buffer[CPB_ELOOP_TASK_BUFFER_COUNT];
+    int ntasks;
+    int tasks_flush_min_delay_ms;
+    double tasks_flush_ts;
+    
 
     struct cpb_event* events;
     int head;
@@ -160,6 +205,11 @@ static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, struct c
     eloop->threadpool = tp;
     eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
+
+    eloop->ntasks = 0;
+    eloop->tasks_flush_ts = 0.0;
+    eloop->tasks_flush_min_delay_ms = 0;
+
     int rv;
     if ((rv = cpb_buffer_recycle_list_init(cpb_ref, &eloop->buff_cyc)) != CPB_OK) {
         return rv;
@@ -235,6 +285,8 @@ static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
         eloop->tail = 0;
     return CPB_OK;
 }
+
+//see also thread_pool_append_many
 static int cpb_eloop_append_many(struct cpb_eloop *eloop, struct cpb_event *events, int nevents) {
     
     if ((cpb_eloop_q_len(eloop) + nevents) >= eloop->cap - 1) {
@@ -300,6 +352,38 @@ static int cpb_eloop_append_many(struct cpb_eloop *eloop, struct cpb_event *even
     #endif
     return CPB_OK;
 }
+
+static int cpb_eloop_append_delayed(struct cpb_eloop *eloop, struct cpb_event ev, int ms, int tolerate_preexec);
+
+static int cpb_eloop_flush_tasks(struct cpb_eloop *eloop) {
+    int err = CPB_OK;
+    if (eloop->ntasks > 0)
+        err = cpb_threadpool_push_tasks_many(eloop->threadpool, eloop->task_buffer, eloop->ntasks);
+    if (err != CPB_OK)
+        return err;
+    eloop->ntasks = 0;
+    eloop->tasks_flush_ts = 0.0;
+}
+static int cpb_eloop_push_task(struct cpb_eloop *eloop, struct cpb_task task, int acceptable_delay_ms) {
+    int err;
+    if (  eloop->ntasks >= CPB_ELOOP_TASK_BUFFER_COUNT && 
+        ((err = cpb_eloop_flush_tasks(eloop)) != CPB_OK))
+    {
+        return err;
+    }
+    eloop->task_buffer[eloop->ntasks] = task;
+    if (eloop->ntasks == 0                           || 
+        acceptable_delay_ms < eloop->tasks_flush_min_delay_ms) 
+    {
+        eloop->tasks_flush_min_delay_ms = acceptable_delay_ms;
+        struct cpb_event flush_ev = cpb_eloop_make_eloop_event(eloop, CPB_ELOOP_FLUSH);
+        cpb_eloop_append_delayed(eloop, flush_ev, acceptable_delay_ms, 1);
+    }
+    eloop->ntasks++;
+        
+    return CPB_OK;
+}
+
 
 /*Threadsafe append event*/
 static int cpb_eloop_ts_append(struct cpb_eloop *eloop, struct cpb_event event) {

@@ -54,7 +54,8 @@ struct cpb_error cpb_perf_act_async_read_from_client(struct cpb_perf_act_state *
     task.msg.u.iip.arg1 = 0;
     task.msg.u.iip.arg2 = 0;
     task.msg.u.iip.argp = rqstate;
-    int rv = cpb_threadpool_push_task(tp, task);
+    int rv = cpb_eloop_push_task(rqstate->eloop, task, 10);
+    
     
     return cpb_make_error(rv);
 }

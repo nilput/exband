@@ -25,7 +25,7 @@ int cpb_perf_init(struct cpb *cpb, struct cpb_server *server, char *module_args,
     mod->head.destroy = destroy_module;
     mod->count = 0;
 
-    cpb_perf_gen_init(&mod->gen, cpb_server_get_any_eloop(server), 1000000);
+    cpb_perf_gen_init(&mod->gen, cpb_server_get_any_eloop(server), 4000000);
     cpb_assert_h(mod->gen.eloop, "");
     cpb_perf_gen_begin(&mod->gen);
     
