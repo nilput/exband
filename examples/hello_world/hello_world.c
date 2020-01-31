@@ -1,13 +1,13 @@
 #include "cpb/cpb.h"
-#include "cpb/http/http_handler_module.h"
+#include "cpb/http/http_server_module.h"
 #include "cpb/http/http_request.h"
 
 struct hello_world_module {
-    struct cpb_http_handler_module head;
+    struct cpb_http_server_module head;
     struct cpb *cpb_ref;
     int count;
 };
-static int handle_request(struct cpb_http_handler_module *module, struct cpb_request_state *rqstate, int reason) {
+static int handle_request(struct cpb_http_server_module *module, struct cpb_request_state *rqstate, int reason) {
     struct hello_world_module *mod = (struct hello_world_module *) module;
 
     struct cpb_str path;
@@ -98,18 +98,23 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
     
     cpb_str_deinit(mod->cpb_ref, &path);   
 }
-static int destroy_module(struct cpb_http_handler_module *module, struct cpb *cpb) {
+static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
     cpb_free(cpb, module);
 }
-int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_handler_module **module_out) {
+int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_server_module **module_out) {
     (void) module_args;
     struct hello_world_module *mod = cpb_malloc(cpb, sizeof(struct hello_world_module));
     if (!mod)
         return CPB_NOMEM_ERR;
     mod->cpb_ref = cpb;
-    mod->head.handle_request = handle_request;
+    
     mod->head.destroy = destroy_module;
     mod->count = 0;
-    *module_out = (struct cpb_http_handler_module*)mod;
+    
+    if (cpb_server_set_module_request_handler(server, (struct cpb_http_server_module*)mod, handle_request) != CPB_OK) {
+        destroy_module((struct cpb_http_server_module*)mod, cpb);
+        return CPB_MODULE_LOAD_ERROR;
+    }
+    *module_out = (struct cpb_http_server_module*)mod;
     return CPB_OK;
 }

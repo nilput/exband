@@ -368,7 +368,7 @@ void cpb_request_async_read_from_client_runner(struct cpb_thread *thread, struct
         //even if it's zero we need to send this to mark it as not scheduled
         cpb_event_http_init(&ev, CPB_HTTP_DID_READ, rqstate, read_bytes);
         int perr = cpb_eloop_ts_append(rqstate->eloop, ev);
-        if (err != CPB_OK) {
+        if (perr != CPB_OK) {
             /*we cannot afford to have this fail*/
             cpb_request_handle_fatal_error(rqstate);
         }

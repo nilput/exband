@@ -7,6 +7,7 @@ HTTP/1.1 basic functionality (GET)             [x]
 HTTP/1.1 POST/PUT/DELETE/WHATEVER              [x]
 urlencode decoding                             [x]
 multipart decoding                             [x]
+multipart decoding tests                       [x]
 Keepalive connections                          [x]      
 Pipelined GET                                  [x]      
 Header/Method/Version parsing                  [x]      
@@ -19,12 +20,20 @@ Request Keepalive Timeout                      [ ]
 TCP/Slow request DDOS Protection               [ ]      
 Date header                                    [ ]      
 logging                                        [ ]
-     Log each request with ip+timestamp     [ ]
-     Log errors                             [ ]
+     Log each request with ip+timestamp        [ ]
+     Log errors                                [ ]
 Stacktraces in places they're relevant         [ ]      
 HTTP Error reasons                             [ ]      
 Serving files handler                          [ ]
-Serving files default mimetypes                [ ]
+Serving files handler default mimetypes        [ ]
 Fast threadsafe queue for threads->eloop       [ ]
 Fast threadsafe queue for eloops->threadpool   [ ]
-DO a periodic clean up or a MRU based cleanup of buffer recycle lists [ ]
+DO a periodic clean up or a MRU based cleanup  \
+   of buffer recycle lists                     [ ]
+DO A performance testing setup, that targets   \
+   the event loop and the threadpool, (without \
+   actual http/io events, just measuring how   \
+   fast the communication is)                  [ ]
+Increase buffer size integers to a larger      \
+type such as size_t,                           \
+ and check for overflow conditions             [ ]

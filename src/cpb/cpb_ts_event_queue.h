@@ -137,7 +137,8 @@ static int cpb_ts_event_queue_pop_many(struct cpb_ts_event_queue *tq, struct cpb
             tq->head = 0;
     }
     *nevents_out = nevents;
-    #ifdef CPB_ASSERTS
+    #if defined(CPB_ASSERTS) && 0 
+        //TODO: MOVE TO A TEST SUITE
         int i = tq->head;
         for (int idx = nevents; idx > 0;) {
             idx--;

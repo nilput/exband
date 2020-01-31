@@ -66,7 +66,7 @@ static const char *cpb_error_code_name(int error_code) {
 
 
 static void cpb_error_print(int error_code) {
-    fprintf(stderr, "Error occured: %s", cpb_error_code_name(error_code));
+    fprintf(stderr, "An Error occured: %s\n", cpb_error_code_name(error_code));
 }
 static void cpb_error_debug(int error_code) {
     #ifdef CPB_DEBUG

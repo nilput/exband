@@ -1,12 +1,12 @@
 #include "cpb/cpb.h"
-#include "cpb/http/http_handler_module.h"
+#include "cpb/http/http_server_module.h"
 #include "cpb/http/http_request.h"
 #include "cpb/http/http_decode.h"
 #include <sqlite3.h>
 
 
 struct pastebin_module {
-    struct cpb_http_handler_module head;
+    struct cpb_http_server_module head;
     struct cpb *cpb_ref;
     int count;
     sqlite3 *db;
@@ -57,7 +57,7 @@ void randkey(char *out, int len) {
 }
 
 
-static void destroy_module(struct cpb_http_handler_module *module, struct cpb *cpb) {
+static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
     struct pastebin_module *mod = module;
     sqlite3_close(mod->db);
     cpb_str_deinit(cpb, &mod->site_link);
@@ -261,7 +261,7 @@ static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_sta
     return str;
 }
 
-static int handle_request(struct cpb_http_handler_module *module, struct cpb_request_state *rqstate, int reason) {
+static int handle_request(struct cpb_http_server_module *module, struct cpb_request_state *rqstate, int reason) {
     struct pastebin_module *mod = (struct pastebin_module *) module;
 
     struct cpb_str path;
@@ -357,7 +357,7 @@ static int handle_request(struct cpb_http_handler_module *module, struct cpb_req
     return CPB_OK;
 }
 
-int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_handler_module **module_out) {
+int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_server_module **module_out) {
 
     srand(time(NULL));
 
@@ -365,7 +365,7 @@ int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, 
     if (!mod)
         return CPB_NOMEM_ERR;
     mod->cpb_ref = cpb;
-    mod->head.handle_request = handle_request;
+    
     mod->head.destroy = destroy_module;
     mod->count = 0;
     mod->db = NULL;
@@ -402,6 +402,10 @@ int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, 
         return 1;
     }
 
-    *module_out = (struct cpb_http_handler_module*)mod;
+    if (cpb_server_set_module_request_handler(server, (struct cpb_http_server_module*)mod, handle_request) != CPB_OK) {
+        destroy_module((struct cpb_http_server_module*)mod, cpb);
+        return CPB_MODULE_LOAD_ERROR;
+    }
+    *module_out = (struct cpb_http_server_module*)mod;
     return CPB_OK;
 }

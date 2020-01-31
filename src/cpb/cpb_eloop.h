@@ -288,7 +288,8 @@ static int cpb_eloop_append_many(struct cpb_eloop *eloop, struct cpb_event *even
                 eloop->tail = 0;
         }
     }
-    #ifdef CPB_ASSERTS
+    #if defined(CPB_ASSERTS) && 0 
+        //TODO: MOVE TO A TEST SUITE
         int i = eloop->tail;
         for (int idx = nevents; idx > 0;) {
             cpb_assert_h(i != eloop->head, "");

@@ -20,6 +20,8 @@
 
 #include "http_server_listener_select.h"
 
+#include "http_server_module_internal.h"
+
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
@@ -55,10 +57,10 @@ static void default_handler(struct cpb_request_state *rqstate, enum cpb_request_
     cpb_response_end(&rqstate->resp);
 }
 static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
-    cpb_assert_h(rqstate->server && rqstate->server->handler_module, "");
+    cpb_assert_h(rqstate->server && rqstate->server->handler_module && rqstate->server->module_request_handler, "");
     //TODO: dont ignore, also too many indirections that can be easily avoided!
     struct cpb_server *s = rqstate->server;
-    int ignored = s->handler_module->handle_request(s->handler_module, rqstate, reason);
+    int ignored = s->module_request_handler(s->handler_module, rqstate, reason);
 }
 
 
@@ -68,7 +70,8 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     s->eloop = eloop;
     s->request_handler   = default_handler;
     s->handler_module    = NULL;
-    s->dll_module_handle = NULL;
+    s->module_request_handler = NULL;
+    s->n_loaded_modules = 0;
 
     s->config = config;
 
@@ -101,14 +104,14 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
         goto err1;
     }
 
-    if (config.http_handler_module.len > 0) {
-        int error = cpb_http_handler_module_load(cpb_ref, s, config.http_handler_module.str, config.http_handler_module_args.str, &s->handler_module, &s->dll_module_handle);
+    for (int i=0; i<config.n_modules; i++) {
+        int error = cpb_http_server_module_load(cpb_ref, s, config.module_specs[i].module_spec.str, config.module_specs[i].module_args.str, &s->loaded_modules[s->n_loaded_modules].module, &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
         if (error != CPB_OK) {
             err = cpb_make_error(CPB_MODULE_LOAD_ERROR);
-            goto err2;
+            goto err3;
         }
-        s->request_handler = module_handler;
     }
+    
 
     
     if ((rv = cpb_request_state_recycle_array_init(cpb_ref, &s->rq_cyc)) != CPB_OK) {
@@ -122,8 +125,8 @@ err4:
     cpb_request_state_recycle_array_deinit(cpb_ref, &s->rq_cyc)
 */  
 err3:
-    if (s->handler_module) {
-        cpb_http_handler_module_unload(s->cpb, s->handler_module, s->dll_module_handle);
+    for (int i=0; i<s->n_loaded_modules; i++) {
+        cpb_http_server_module_unload(s->cpb, s->loaded_modules[i].module, s->loaded_modules[i].dll_module_handle);
     }
 err2:
     s->listener->destroy(s, s->listener);
@@ -135,6 +138,16 @@ err0:
     }
     return err;
 }
+
+
+        
+int cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_server_module *mod, cpb_module_request_handler_func func) {
+    s->request_handler = module_handler;
+    s->handler_module = mod;
+    s->module_request_handler = func;
+    return CPB_OK;
+}
+
 struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port) {
     struct cpb_http_server_config config = cpb_http_server_config_default(cpb_ref);
     config.http_listen_port = port;
@@ -330,8 +343,8 @@ void cpb_server_deinit(struct cpb_server *s) {
     }
     cpb_http_server_config_deinit(s->cpb, &s->config);
     s->listener->destroy(s, s->listener);
-    if (s->handler_module) {
-        cpb_http_handler_module_unload(s->cpb, s->handler_module, s->dll_module_handle);
+    for (int i=0; i<s->n_loaded_modules; i++) {
+        cpb_http_server_module_unload(s->cpb, s->loaded_modules[i].module, s->loaded_modules[i].dll_module_handle);
     }
     close(s->listen_socket_fd);
 }

@@ -44,8 +44,6 @@ void set_handlers() {
    signal(SIGPIPE, SIG_IGN);
 }
 
-
-
 struct cpb_config {
     int tp_threads; //threadpool threads
 };
@@ -82,6 +80,8 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
         fclose(f);
         return CPB_CONFIG_ERROR;
     }
+    fclose(f);
+    f = NULL;
     struct ini_pair *p = ini_get_value(c, "threadpool_size");
     if (p) {
         int count = atoi(c->input.str + p->value.index);
@@ -103,19 +103,41 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
         int boolean = atoi(c->input.str + p->value.index);
         http_server_config_out->http_use_aio = !!boolean;
     }
-    p = ini_get_value(c, "http_handler_module");
-    if (p) {
-        err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->http_handler_module);
-        if (err != CPB_OK)
+    struct cpb_str tmp;
+    cpb_str_init_empty(&tmp);
+    for (int i=0; i<CPB_SERVER_MAX_MODULES; i++) {
+        if (i == 0)
+            err = cpb_sprintf(cpb_ref, &tmp, "http_server_module");
+        else
+            err = cpb_sprintf(cpb_ref, &tmp, "http_server_module_%d", i);
+        if (err != CPB_OK) {
             goto err_1;
-    }
-    p = ini_get_value(c, "http_handler_module_args");
-    if (p) {
-        err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->http_handler_module_args);
-        if (err != CPB_OK)
+        }
+        p = ini_get_value(c, tmp.str);
+        if (p) {
+            err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_spec);
+            if (err != CPB_OK)
+                goto err_1;
+        }
+        else {
+            continue;
+        }
+        if (i == 0)
+            err = cpb_sprintf(cpb_ref, &tmp, "http_server_module_args");
+        else
+            err = cpb_sprintf(cpb_ref, &tmp, "http_server_module_%d_args", i);
+        if (err != CPB_OK) {
             goto err_1;
+        }
+        p = ini_get_value(c, tmp.str);
+        if (p) {
+            err = cpb_str_slice_to_copied_str(cpb_ref, p->value, c->input.str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_args);
+            if (err != CPB_OK)
+                goto err_1;
+        }
+        http_server_config_out->n_modules++;
     }
-
+    cpb_str_deinit(cpb_ref, &tmp);
     ini_destroy(cpb_ref, c);
     return CPB_OK;
     err_1:

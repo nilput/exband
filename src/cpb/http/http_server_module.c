@@ -2,9 +2,10 @@
 #include <string.h>
 #include "../cpb.h"
 #include "../cpb_str.h"
-#include "http_handler_module.h"
+#include "http_server_module.h"
+#include "http_server_module_internal.h"
 /*name := "dll_name:func_name"*/
-int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, char *module_args, struct cpb_http_handler_module **module_out, void **handle_out) {
+int cpb_http_server_module_load(struct cpb *cpb_ref, struct cpb_server *server, char *handler_name, char *module_args, struct cpb_http_server_module **module_out, void **handle_out) {
     
     char *seperator = strchr(handler_name, ':');
     if (!seperator)
@@ -26,11 +27,13 @@ int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server,
     }
     void *handle = dlopen(dll_name.str, RTLD_LAZY);
     if (!handle) {
+        char *e = dlerror();
+        fprintf(stderr, "Failed to load lib: \"%s\": %s\n", dll_name.str, e ? e : "");
         cpb_str_deinit(cpb_ref, &dll_name);
         cpb_str_deinit(cpb_ref, &func_name);
         return CPB_NOT_FOUND;
     }
-    cpb_handler_init_func init_func = dlsym(handle, func_name.str);
+    cpb_http_server_module_init_func init_func = dlsym(handle, func_name.str);
     int init_success = init_func != NULL && (init_func(cpb_ref, server, module_args, module_out) == 0);
     if (init_success) {
         *handle_out = handle;
@@ -46,7 +49,7 @@ int cpb_http_handler_module_load(struct cpb *cpb_ref, struct cpb_server *server,
         return CPB_INIT_ERROR;
     return CPB_OK;
 }
-int cpb_http_handler_module_unload(struct cpb *cpb_ref, struct cpb_http_handler_module *module, void *handle) {
+int cpb_http_server_module_unload(struct cpb *cpb_ref, struct cpb_http_server_module *module, void *handle) {
     
     if (module->destroy)
         module->destroy(module, cpb_ref);

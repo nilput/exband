@@ -7,7 +7,7 @@
 #include "../cpb_errors.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
-#include "http_handler_module.h"
+#include "http_server_module.h"
 #include "cpb_request_state_recycle_array.h"
 
 
@@ -30,13 +30,16 @@ define_cpb_or(int, struct cpb_or_socket);
 */
 
 
-
+#define CPB_SERVER_MAX_MODULES 11
 
 struct cpb_http_server_config {
     int http_listen_port;
     int http_use_aio;
-    struct cpb_str http_handler_module;
-    struct cpb_str http_handler_module_args;
+    struct {
+        struct cpb_str module_spec; //path:entry_name
+        struct cpb_str module_args;
+    } module_specs[CPB_SERVER_MAX_MODULES];
+    int n_modules;
     struct cpb_str polling_backend;
 };
 static struct cpb_http_server_config cpb_http_server_config_default(struct cpb *cpb_ref) {
@@ -44,17 +47,22 @@ static struct cpb_http_server_config cpb_http_server_config_default(struct cpb *
     struct cpb_http_server_config conf = {0};
     conf.http_listen_port = 80;
     conf.http_use_aio = 0;
+    conf.n_modules = 0;
     cpb_str_init_const_str(&conf.polling_backend, "select");
-    cpb_str_init_const_str(&conf.http_handler_module, "");
-    cpb_str_init_const_str(&conf.http_handler_module_args, "");
     return conf;
 }
 static void cpb_http_server_config_deinit(struct cpb *cpb_ref, struct cpb_http_server_config *config) {
+    cpb_assert_h(config->n_modules <= CPB_SERVER_MAX_MODULES, "");
+    for (int i=0; i<config->n_modules; i++) {
+        cpb_str_deinit(cpb_ref, &config->module_specs[i].module_spec);
+        cpb_str_deinit(cpb_ref, &config->module_specs[i].module_args);
+    }
     cpb_str_deinit(cpb_ref, &config->polling_backend);
-    cpb_str_deinit(cpb_ref, &config->http_handler_module);
-    cpb_str_deinit(cpb_ref, &config->http_handler_module_args);
+    
 }
 
+
+typedef void (*cpb_server_request_handler_func)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason);
 
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
@@ -62,17 +70,24 @@ struct cpb_server {
     //^will have many in the future
     struct cpb_http_server_config config; //owned
 
-    /*we either have a handler module (dynamic library) or a simple request handler*/
-    
-    void (*request_handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason);
-
-    struct cpb_http_handler_module  *handler_module;
-    void *dll_module_handle;
-
     int port;
     int listen_socket_fd;
 
     struct cpb_server_listener *listener;
+
+    /*we either have a handler module (dynamic library) or a simple request handler*/
+    /*simple*/
+    cpb_server_request_handler_func request_handler;
+    /*dynamically loaded*/
+    struct cpb_http_server_module  *handler_module; //must be present in loaded_modules too
+    cpb_module_request_handler_func module_request_handler;
+
+    struct {
+        struct cpb_http_server_module *module;
+        void *dll_module_handle;
+    } loaded_modules[CPB_SERVER_MAX_MODULES];
+    int n_loaded_modules;
+
     
     struct cpb_request_state_recycle_array rq_cyc;
 
@@ -91,6 +106,8 @@ single socket -> multiple concurrent requests
 struct cpb_request_state *cpb_server_current_reading_rqstate(struct cpb_server *server, int socketfd);
 struct cpb_request_state *cpb_server_current_writing_rqstate(struct cpb_server *server, int socketfd);
 
+struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s);
+
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd);
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate);
 
@@ -102,6 +119,7 @@ struct cpb_error cpb_server_listen(struct cpb_server *s);
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd);
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd);
 int  cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason));
+int  cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_server_module *mod, cpb_module_request_handler_func func);
 void cpb_server_deinit(struct cpb_server *s);
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);

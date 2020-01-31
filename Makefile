@@ -4,9 +4,9 @@ LDLIBS := -pthread -ldl
 SERVER_MAIN_DEPS := src/cpb/cpb_utils.c src/cpb/http/http_server.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_events.c src/cpb/http/http_request.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_response.c src/cpb/http/http_server_listener_select.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.c src/cpb/http/http_handler_module.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.c src/cpb/http/http_server_module.c
 
-debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function
+debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 debug: all
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function 
 release: all
