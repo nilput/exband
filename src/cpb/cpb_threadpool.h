@@ -28,9 +28,8 @@ struct cpb_taskqueue {
 };
 struct cpb_threadpool {
     int tid;
-    pthread_mutex_t tp_mtx;
 
-    pthread_mutex_t tp_cnd_mtx;
+    pthread_mutex_t tp_mtx;
     pthread_cond_t tp_cnd;
 
     struct cpb *cpb; //not owned, must outlive
@@ -51,8 +50,7 @@ static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
     tp->nthreads = 0;
     tp->threads = NULL;
     int err  = CPB_OK;
-    if (pthread_mutex_init(&tp->tp_mtx, NULL) != 0     ||
-        pthread_mutex_init(&tp->tp_cnd_mtx, NULL) != 0 ||
+    if (pthread_mutex_init(&tp->tp_mtx, NULL) != 0 ||
         pthread_cond_init(&tp->tp_cnd, NULL) != 0) 
     {
         err = CPB_MUTEX_ERROR;
@@ -89,8 +87,8 @@ static int cpb_threadpool_push_task(struct cpb_threadpool *tp, struct cpb_task t
     int err = CPB_OK;
     err = cpb_taskqueue_append(&tp->taskq, task);
 //ret:
-    pthread_mutex_unlock(&tp->tp_mtx);
     pthread_cond_signal(&tp->tp_cnd);
+    pthread_mutex_unlock(&tp->tp_mtx);
     return err;
 }
 
@@ -103,8 +101,8 @@ static int cpb_threadpool_push_tasks_many(struct cpb_threadpool *tp, struct cpb_
     err = cpb_taskqueue_append_many(&tp->taskq, tasks, ntasks);
 
 //ret:
-    pthread_mutex_unlock(&tp->tp_mtx);
     pthread_cond_signal(&tp->tp_cnd);
+    pthread_mutex_unlock(&tp->tp_mtx);
     return err;
 }
 
@@ -138,20 +136,31 @@ static int cpb_threadpool_pop_tasks_many(struct cpb_threadpool *tp, struct cpb_t
 
 /*Must be threadsafe*/
 /*Waits until new tasks are available (this can be done way better)*/
-static int cpb_threadpool_wait_for_work(struct cpb_threadpool *tp) {
-    int rv = pthread_mutex_lock(&tp->tp_cnd_mtx);
+static int cpb_threadpool_wait_for_work_and_lock(struct cpb_threadpool *tp) {
+    int rv = pthread_mutex_lock(&tp->tp_mtx);
     if (rv != 0) {
         return CPB_MUTEX_LOCK_ERROR;
     }
     while (cpb_taskqueue_len(&tp->taskq) == 0) {
-        rv = pthread_cond_wait(&tp->tp_cnd, &tp->tp_cnd_mtx);
+        rv = pthread_cond_wait(&tp->tp_cnd, &tp->tp_mtx);
         if (rv != 0) {
             return CPB_MUTEX_LOCK_ERROR;
         }
     }
-    pthread_mutex_unlock(&tp->tp_cnd_mtx);
+
     return CPB_OK;
 }
+
+/*Must be threadsafe*/
+/*Waits until new tasks are available (this can be done way better)*/
+static int cpb_threadpool_wait_for_work(struct cpb_threadpool *tp) {
+    int rv = cpb_threadpool_wait_for_work_and_lock(tp);
+    if (rv == CPB_OK) {
+        pthread_mutex_unlock(&tp->tp_mtx);
+    }
+    return rv;
+}
+
 
 static void  *cpb_thread_run(void *arg) {
     struct cpb_thread *t = arg;
@@ -164,6 +173,7 @@ static void  *cpb_thread_run(void *arg) {
         }
         else if (ntasks == 0) {
             cpb_threadpool_wait_for_work(t->tp);
+            
         }
         for (int i=0; i<ntasks; i++) {
             current_tasks[i].run(t, &current_tasks[i]);
@@ -407,5 +417,10 @@ static int cpb_taskqueue_deinit(struct cpb_taskqueue *tq) {
     cpb_free(tq->cpb, tq->tasks);
     return CPB_OK;
 }
+
+int cpb_hw_cpu_count();
+int cpb_hw_bind_to_core(int core_id);
+
+
 
 #endif // CPB_THREADPOOL_H

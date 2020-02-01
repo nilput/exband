@@ -2,4 +2,5 @@ initially: 300    req/s
            7000   req/s [optimized event loop]
            13000  req/s [now]
            174000 req/s [epoll + write to buffer]
-           191000 res/s [3 threads, with buffer recycling]
+           191000 req/s [3 threads, with buffer recycling]
+           274000 req/s [3 threads, improved thread synchronization]

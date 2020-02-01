@@ -61,6 +61,7 @@ static void cpb_perf_gen_init(struct cpb_perf_gen *t, struct cpb_eloop *eloop, s
     t->total = total;
     t->syns = 0;
     t->acks = 0;
+    t->prog = 0;
     t->eloop = eloop;
 }
 static struct cpb_error cpb_perf_gen_begin(struct cpb_perf_gen *t) {

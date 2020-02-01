@@ -14,6 +14,7 @@ Event loop
 #define ELOOP_SLEEP_TIME 2
 #define CPB_ELOOP_TMP_EVENTS_SZ 256
 #define CPB_ELOOP_TASK_BUFFER_COUNT 256
+#define CPB_ELOOP_DELAYED_MAX 4 // 4 : 1 ratio
 
 struct cpb_event; //fwd
 struct cpb_threadpool;
@@ -75,6 +76,7 @@ struct cpb_eloop {
 
     struct cpb_delayed_event_node* devents;
     int devents_len;
+    int ndelayed_processed;
 
     //this is done to collect a number of tasks before sending them to the threadpool
     struct cpb_task task_buffer[CPB_ELOOP_TASK_BUFFER_COUNT];
@@ -189,9 +191,11 @@ static struct cpb_delayed_event *cpb_eloop_d_peek_next(struct cpb_eloop *eloop) 
 }
 static int cpb_eloop_pop_next(struct cpb_eloop *eloop, double cpb_cur_time, struct cpb_event *ev_out) {
     struct cpb_delayed_event *dev = cpb_eloop_d_peek_next(eloop);
-    if (dev != NULL && dev->due <= cpb_cur_time) {
+    if (eloop->ndelayed_processed < CPB_ELOOP_DELAYED_MAX && dev != NULL && dev->due <= cpb_cur_time) {
+        eloop->ndelayed_processed++;
         return cpb_eloop_d_pop_next(eloop, ev_out);
     }
+    eloop->ndelayed_processed = 0;
     return cpb_eloop_q_pop_next(eloop, ev_out);
 }
 
@@ -205,6 +209,7 @@ static int cpb_eloop_init(struct cpb_eloop *eloop, struct cpb* cpb_ref, struct c
     eloop->threadpool = tp;
     eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
+    eloop->ndelayed_processed = 0;
 
     eloop->ntasks = 0;
     eloop->tasks_flush_ts = 0.0;
@@ -273,7 +278,7 @@ static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz) {
 //copies event, [eventually calls ev->destroy()]
 static int cpb_eloop_append(struct cpb_eloop *eloop, struct cpb_event ev) {
     eloop->ev_id++;
-    if (cpb_eloop_q_len(eloop) == eloop->cap - 1) {
+    if (cpb_eloop_q_len(eloop) >= eloop->cap - 1) {
         int nsz = eloop->cap * 2;
         int rv = cpb_eloop_resize(eloop, nsz > 0 ? nsz : 4);
         if (rv != CPB_OK)
@@ -363,6 +368,7 @@ static int cpb_eloop_flush_tasks(struct cpb_eloop *eloop) {
         return err;
     eloop->ntasks = 0;
     eloop->tasks_flush_ts = 0.0;
+    eloop->tasks_flush_min_delay_ms = 1000;
 }
 static int cpb_eloop_push_task(struct cpb_eloop *eloop, struct cpb_task task, int acceptable_delay_ms) {
     int err;
@@ -446,6 +452,8 @@ static int cpb_eloop_offload_recieve(struct cpb_eloop *eloop) {
 }
 
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
+    //cpb_hw_bind_to_core(0);
+
     int ineffective_spins = 0;
     #define CPB_ELOOP_NPROCESS_OFFLOAD 64
     int nprocessed = 0;
