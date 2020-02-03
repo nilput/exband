@@ -3,22 +3,22 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <pthread.h>
-
 #include "cpb.h"
 #include "cpb_errors.h"
 #include "cpb_utils.h"
 #include "cpb_task.h"
+#include "cpb_thread.h"
 
 #define CPB_THREAD_TASK_BUFFER_COUNT 16
 
-struct cpb_threadpool;
-struct cpb_thread {
-    struct cpb_threadpool *tp; //not owned, must outlive
-    int tid;
 
-    pthread_t thread;
-};
+int cpb_hw_cpu_count();
+int cpb_hw_bind_to_core(int core_id);
+int cpb_hw_bind_not_to_core(int core_id);
+int cpb_hw_thread_sched_important();
+int cpb_hw_thread_sched_background();
+
+
 struct cpb_taskqueue {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_task *tasks;
@@ -43,7 +43,6 @@ struct cpb_threadpool {
 
 static int cpb_taskqueue_deinit(struct cpb_taskqueue *tq); //fwd
 static int cpb_taskqueue_init(struct cpb_taskqueue *tq, struct cpb* cpb_ref, int sz);
-static void cpb_thread_destroy(struct cpb_thread *thread);
 
 static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
     tp->tid = 0;
@@ -66,7 +65,7 @@ static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
 static void cpb_threadpool_deinit(struct cpb_threadpool *tp) {
     for (int i=0; i<tp->nthreads; i++) {
         /*ASSUMES THREAD STOPPED EXECUTING*/
-        cpb_thread_destroy(tp->threads[i]);
+        cpb_thread_destroy(tp->threads[i], tp->cpb);
     }
     cpb_free(tp->cpb, tp->threads);
     cpb_taskqueue_deinit(&tp->taskq);
@@ -162,7 +161,11 @@ static int cpb_threadpool_wait_for_work(struct cpb_threadpool *tp) {
 }
 
 
-static void  *cpb_thread_run(void *arg) {
+static void  *cpb_threadpool_thread_run(void *arg) {
+    #if 0
+        cpb_hw_bind_not_to_core(0);
+        cpb_hw_thread_sched_background();
+    #endif
     struct cpb_thread *t = arg;
     struct cpb_task current_tasks[CPB_THREAD_TASK_BUFFER_COUNT];
     int ntasks = 0;
@@ -181,35 +184,7 @@ static void  *cpb_thread_run(void *arg) {
     }
     return arg;
 }
-static int cpb_thread_cancel_and_destroy(struct cpb_thread *thread);
 
-
-static int cpb_thread_new(struct cpb_threadpool *tp, int tid, struct cpb_thread **new_thread) {
-    void *p = cpb_malloc(tp->cpb, sizeof(struct cpb_thread));
-    if (!p)
-        return CPB_NOMEM_ERR;
-    struct cpb_thread *t = p;
-    memset(t, 0, sizeof(*t));
-    t->tid = tid;
-    t->tp = tp;
-    int rv = pthread_create(&t->thread, NULL, cpb_thread_run, t);
-    if (rv != 0) {
-        cpb_free(tp->cpb, t);
-        return CPB_THREAD_ERROR;
-    }
-    *new_thread = t;
-    return CPB_OK;
-}
-static void cpb_thread_destroy(struct cpb_thread *thread) {
-    /*this doesn't attempt to cancel the thread*/
-    /*it is assumed that it is no longer executing*/
-    cpb_free(thread->tp->cpb, thread);
-}
-static int cpb_thread_cancel_and_destroy(struct cpb_thread *thread) {
-    pthread_cancel(thread->thread);
-    cpb_thread_destroy(thread);
-    return CPB_OK;
-}
 
 static int cpb_threadpool_set_nthreads(struct cpb_threadpool *tp, int nthreads) {
     if (pthread_mutex_lock(&tp->tp_mtx) != 0) {
@@ -238,10 +213,10 @@ static int cpb_threadpool_set_nthreads(struct cpb_threadpool *tp, int nthreads) 
     }
     
     for (int i=old_thread_count; i<nthreads; i++) {
-        int rv = cpb_thread_new(tp, tp->tid, &tp->threads[i]);
+        int rv = cpb_thread_new(tp->cpb, tp->tid, tp, cpb_threadpool_thread_run, NULL, &tp->threads[i]);
         if (rv != CPB_OK) {
             for (int j=i-1; j>=old_thread_count; j--) {
-                cpb_thread_cancel_and_destroy(tp->threads[j]);
+                cpb_thread_cancel_and_destroy(tp->threads[j], tp->cpb);
                 tp->tid--;
                 err = rv;
                 goto ret;
@@ -417,10 +392,6 @@ static int cpb_taskqueue_deinit(struct cpb_taskqueue *tq) {
     cpb_free(tq->cpb, tq->tasks);
     return CPB_OK;
 }
-
-int cpb_hw_cpu_count();
-int cpb_hw_bind_to_core(int core_id);
-
 
 
 #endif // CPB_THREADPOOL_H

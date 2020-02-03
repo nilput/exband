@@ -1,5 +1,5 @@
 .PHONY: clean all
-CFLAGS := -I othersrc/ -fPIC
+CFLAGS := -I othersrc/ -fPIC 
 LDLIBS := -pthread -ldl
 SERVER_MAIN_DEPS := src/cpb/cpb_utils.c src/cpb/http/http_server.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_events.c src/cpb/http/http_request.c
@@ -17,6 +17,8 @@ no-release: CFLAGS += -g -O1 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 no-release: all
 san: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=address
 san: all
+san-thread: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=thread
+san-thread: all
 
 
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DCPB_NO_ASSERTS

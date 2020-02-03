@@ -89,7 +89,7 @@ struct cpb_request_state {
     int parse_chunk_cursor; //only in chunked requests
     int next_request_cursor;
     
-    enum cpb_http_input_state istate; //what portion did we recieve yet
+    enum cpb_http_input_state istate; //what portion did we receive yet
     enum cpb_http_parse_state pstate; //what portion did we parse
     enum cpb_http_request_body_handling body_handling;
     enum CPB_HTTP_METHOD method;

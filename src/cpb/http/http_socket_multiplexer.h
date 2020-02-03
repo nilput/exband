@@ -8,6 +8,7 @@ enum cpb_http_multiplexer_state {
     CPB_MP_DEAD, //should never be seen
 };
 struct cpb_http_multiplexer {
+    int eloop_idx;
     struct cpb_eloop *eloop;
     enum cpb_http_multiplexer_state state;
     int socket_fd;
@@ -15,8 +16,9 @@ struct cpb_http_multiplexer {
     struct cpb_request_state *creading; //the current request reading from client
     struct cpb_request_state *next_response; //queue of responses (linkedlist)
 };
-static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cpb_eloop *eloop, int socket_fd) {
+static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cpb_eloop *eloop, int eloop_idx, int socket_fd) {
     mp->state = CPB_MP_EMPTY;
+    mp->eloop_idx = eloop_idx;
     mp->eloop = eloop;
     mp->socket_fd = socket_fd;
     mp->creading = NULL;
@@ -25,6 +27,8 @@ static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cp
 
 static void cpb_http_multiplexer_deinit(struct cpb_http_multiplexer *mp) {
     mp->state = CPB_MP_DEAD;
+    mp->eloop = NULL;
+    mp->eloop_idx = -1;
     mp->socket_fd = -1;
     mp->creading = NULL;
     mp->next_response = NULL;

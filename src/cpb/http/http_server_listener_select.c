@@ -12,20 +12,23 @@
 
 struct cpb_server_listener_select {
     struct cpb_server_listener head;
+    struct cpb_server *server; //not owned, must outlive
+    struct cpb_eloop *eloop;   //not owned, must outlive
+
     fd_set active_fd_set;
     fd_set read_fd_set;
     fd_set write_fd_set;
 };
 
-static int cpb_server_listener_select_destroy(struct cpb_server *s, struct cpb_server_listener *listener);
-static int cpb_server_listener_select_listen(struct cpb_server *s, struct cpb_server_listener *listener);
-static int cpb_server_listener_select_close_connection(struct cpb_server *s, struct cpb_server_listener *listener, int socket_fd);
-static int cpb_server_listener_select_new_connection(struct cpb_server *s, struct cpb_server_listener *listener, int socket_fd);
-static int cpb_server_listener_select_get_fds(struct cpb_server *s, struct cpb_server_listener *lis, struct cpb_server_listener_fdlist **fdlist_out);
+static int cpb_server_listener_select_destroy(struct cpb_server_listener *listener);
+static int cpb_server_listener_select_listen(struct cpb_server_listener *listener);
+static int cpb_server_listener_select_close_connection(struct cpb_server_listener *listener, int socket_fd);
+static int cpb_server_listener_select_new_connection(struct cpb_server_listener *listener, int socket_fd);
+static int cpb_server_listener_select_get_fds(struct cpb_server_listener *lis, struct cpb_server_listener_fdlist **fdlist_out);
 
 /*Possible optimization: keep a bitmask of fds that we dont care about because they're not ready, making this edge triggered*/
 
-int cpb_server_listener_select_new(struct cpb_server *s, struct cpb_server_listener **listener) {
+int cpb_server_listener_select_new(struct cpb_server *s, struct cpb_eloop *eloop, struct cpb_server_listener **listener) {
     struct cpb_server_listener_select *lis = cpb_malloc(s->cpb, sizeof(struct cpb_server_listener_select));
     if (!lis)
         return CPB_NOMEM_ERR;
@@ -34,6 +37,8 @@ int cpb_server_listener_select_new(struct cpb_server *s, struct cpb_server_liste
     lis->head.close_connection  = cpb_server_listener_select_close_connection;
     lis->head.new_connection    = cpb_server_listener_select_new_connection;
     lis->head.get_fds           = cpb_server_listener_select_get_fds;
+    lis->server = s;
+    lis->eloop = eloop;
     
     /* Initialize the set of active sockets. */
     FD_ZERO(&lis->active_fd_set);
@@ -43,8 +48,9 @@ int cpb_server_listener_select_new(struct cpb_server *s, struct cpb_server_liste
     return CPB_OK;
 }
 
-static int cpb_server_listener_select_listen(struct cpb_server *s, struct cpb_server_listener *listener) {
+static int cpb_server_listener_select_listen(struct cpb_server_listener *listener) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
+    struct cpb_server *s = lis->server;
     struct cpb_error err = {0};
     lis->read_fd_set  = lis->active_fd_set;
     lis->write_fd_set = lis->active_fd_set;
@@ -79,7 +85,7 @@ static int cpb_server_listener_select_listen(struct cpb_server *s, struct cpb_se
             }
             struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
             cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
-            int rv = cpb_server_init_multiplexer(s, new_socket, clientname);
+            int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
         }
     }
     /* Service all the sockets with input pending. */
@@ -109,23 +115,27 @@ static int cpb_server_listener_select_listen(struct cpb_server *s, struct cpb_se
     ret:
     return err.error_code;
 }
-static int cpb_server_listener_select_destroy(struct cpb_server *s, struct cpb_server_listener *listener) {
+static int cpb_server_listener_select_destroy(struct cpb_server_listener *listener) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
+    struct cpb_server *s = lis->server;
     cpb_free(s->cpb, lis);
     return CPB_OK;
 }
-static int cpb_server_listener_select_close_connection(struct cpb_server *s, struct cpb_server_listener *listener, int socket_fd) {
+static int cpb_server_listener_select_close_connection(struct cpb_server_listener *listener, int socket_fd) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
+    struct cpb_server *s = lis->server;
     FD_CLR(socket_fd, &lis->active_fd_set);
     return CPB_OK;
 }
-static int cpb_server_listener_select_new_connection(struct cpb_server *s, struct cpb_server_listener *listener, int socket_fd) {
+static int cpb_server_listener_select_new_connection(struct cpb_server_listener *listener, int socket_fd) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
+    struct cpb_server *s = lis->server;
     FD_SET(socket_fd, &lis->active_fd_set);
     return CPB_OK;
 }
-static int cpb_server_listener_select_get_fds(struct cpb_server *s, struct cpb_server_listener *listener, struct cpb_server_listener_fdlist **fdlist_out) {
+static int cpb_server_listener_select_get_fds(struct cpb_server_listener *listener, struct cpb_server_listener_fdlist **fdlist_out) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
+    struct cpb_server *s = lis->server;
     int *fds = cpb_malloc(s->cpb, FD_SETSIZE * sizeof(int));
     if (!fds) {
         return CPB_NOMEM_ERR;
@@ -138,7 +148,7 @@ static int cpb_server_listener_select_get_fds(struct cpb_server *s, struct cpb_s
     fdlist->fds = fds;
     fdlist->len = 0;
     for (int i=0; i<FD_SETSIZE; i++) {
-        if (FD_ISSET(s->listen_socket_fd, &lis->active_fd_set)) {
+        if (FD_ISSET(i, &lis->active_fd_set)) {
             fdlist->fds[i] = i;
             fdlist->len++;
         }

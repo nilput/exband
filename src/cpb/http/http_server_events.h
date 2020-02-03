@@ -5,8 +5,6 @@
 
 extern struct cpb_event_handler_itable cpb_event_handler_http_itable;
 enum cpb_event_http_cmd {
-    CPB_HTTP_INIT, //just initialized with no data, .argp : rqstate
-    CPB_HTTP_CONTINUE, //forked in a persistent connection, .argp : rqstate
     CPB_HTTP_READ, /*ask it to read, .argp : rqstate*/
     CPB_HTTP_SEND, /*ask it to write, .argp : rqstate*/
     CPB_HTTP_DID_READ,  /*inform about async read result, .argp : rqstate*/

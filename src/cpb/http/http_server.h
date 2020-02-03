@@ -1,20 +1,18 @@
 #ifndef CPB_HTTP_SERVER_H
 #define CPB_HTTP_SERVER_H
 
-
-
-
 #include "../cpb_errors.h"
+#include "../cpb_eloop_env.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "cpb_request_state_recycle_array.h"
 
 
-#define LISTEN_BACKLOG 128
+#define LISTEN_BACKLOG 8192
 #define CPB_SOCKET_MAX 8192
-#define CPB_HTTP_MIN_DELAY 5 //ms
-
+#define CPB_SERVER_MAX_MODULES 11
+#define CPB_HTTP_MIN_DELAY 2 //ms
 
 
 define_cpb_or(int, struct cpb_or_socket);
@@ -25,12 +23,12 @@ define_cpb_or(int, struct cpb_or_socket);
         has a bunch of roles:  Accepts connections
                                Select (see whether there are sockets available for read/write, and schedule the appropriate handler to be ran in the event loop
 
-        Server schedules itself to be ran in the event loop too
+        Server schedules itself to be ran in one of the event loops
         it manages the lifetime of requests and stores their state
 */
 
 
-#define CPB_SERVER_MAX_MODULES 11
+
 
 struct cpb_http_server_config {
     int http_listen_port;
@@ -66,14 +64,17 @@ typedef void (*cpb_server_request_handler_func)(struct cpb_request_state *rqstat
 
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
-    struct cpb_eloop *eloop; //not owned, must outlive
+    struct cpb_eloop_env *elist; //not owned, must outlive
     //^will have many in the future
     struct cpb_http_server_config config; //owned
 
     int port;
     int listen_socket_fd;
 
-    struct cpb_server_listener *listener;
+    struct {
+        struct cpb_server_listener *listener;
+        struct cpb_request_state_recycle_array rq_cyc;
+    } loop_data[CPB_MAX_ELOOPS];
 
     /*we either have a handler module (dynamic library) or a simple request handler*/
     /*simple*/
@@ -87,9 +88,6 @@ struct cpb_server {
         void *dll_module_handle;
     } loaded_modules[CPB_SERVER_MAX_MODULES];
     int n_loaded_modules;
-
-    
-    struct cpb_request_state_recycle_array rq_cyc;
 
     struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
 };
@@ -109,11 +107,12 @@ struct cpb_request_state *cpb_server_current_writing_rqstate(struct cpb_server *
 struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s);
 
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd);
-void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate);
+//the eloop it was associated with
+void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, struct cpb_request_state *rqstate);
 
-struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port);
+struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, int port);
 /*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
-struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, struct cpb_http_server_config config);
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
 
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd);
@@ -123,11 +122,13 @@ int  cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http
 void cpb_server_deinit(struct cpb_server *s);
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);
-int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname);
+int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, int socket_fd, struct sockaddr_in clientname);
 
 
 /*for gluing the listeners*/
 void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiplexer *m);
 void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multiplexer *m);
+
+int cpb_server_listener_switch(struct cpb_server *s, const char *listener_name);
 
 #endif //CPB_HTTP_SERVER_H

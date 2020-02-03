@@ -30,10 +30,16 @@ Fast threadsafe queue for threads->eloop       [ ]
 Fast threadsafe queue for eloops->threadpool   [ ]
 DO a periodic clean up or a MRU based cleanup  \
    of buffer recycle lists                     [ ]
+DO a periodic clean up or a MRU based cleanup  \
+   of request recycle lists                    [ ]
 DO A performance testing setup, that targets   \
    the event loop and the threadpool, (without \
    actual http/io events, just measuring how   \
-   fast the communication is)                  [ ]
+   fast the communication is)                  [x]
 Increase buffer size integers to a larger      \
-type such as size_t,                           \
- and check for overflow conditions             [ ]
+type such as size_t, and check for             \
+overflow conditions                            [ ]
+ have an option of running multiple eloops,    \  
+ each having its own epoll listener and doing  \
+ io directly instead of having to communicate  \
+ with other threads                            [x]

@@ -3,14 +3,15 @@
 #include "../cpb.h"
 
 struct cpb_server;
+struct cpb_eloop;
 struct cpb_server_listener_fdlist;
 //select or epoll or whatever
 struct cpb_server_listener {
-    int (*listen)(struct cpb_server *s,  struct cpb_server_listener *lis);
-    int (*close_connection)(struct cpb_server *s, struct cpb_server_listener *lis, int socket_fd);
-    int (*new_connection)(struct cpb_server *s, struct cpb_server_listener *lis, int socket_fd);
-    int (*destroy)(struct cpb_server *s, struct cpb_server_listener *lis);
-    int (*get_fds)(struct cpb_server *s, struct cpb_server_listener *lis, struct cpb_server_listener_fdlist **fdlist_out);
+    int (*listen)(struct cpb_server_listener *lis);
+    int (*close_connection)(struct cpb_server_listener *lis, int socket_fd);
+    int (*new_connection)(struct cpb_server_listener *lis, int socket_fd);
+    int (*destroy)(struct cpb_server_listener *lis);
+    int (*get_fds)(struct cpb_server_listener *lis, struct cpb_server_listener_fdlist **fdlist_out);
 };
 
 struct cpb_server_listener_fdlist {

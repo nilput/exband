@@ -6,7 +6,11 @@
 
 #include "cpb_assert.h"
 #include "cpb_errors.h"
-#define RQSTATE_EVENT(f, fmt, ...) 
+#ifdef TRACK_RQSTATE_EVENTS
+    #define RQSTATE_EVENT(f, fmt, ...) fprintf(f, "[%.6f]" fmt, cpb_time(), __VA_ARGS__)
+#else
+    #define RQSTATE_EVENT(f, fmt, ...) 
+#endif
 
 #if defined(ENABLE_DBGPERF)
     #include "dbgperf/dbgperf.h"

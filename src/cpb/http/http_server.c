@@ -11,6 +11,7 @@
 #include <errno.h> 
 
 #include "../cpb_errors.h"
+#include "../cpb_eloop_env.h"
 #include "http_server.h"
 #include "http_server_internal.h"
 #include "http_server_events.h"
@@ -64,10 +65,10 @@ static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_h
 }
 
 
-struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, struct cpb_http_server_config config) {
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config) {
     struct cpb_error err = {0};
     s->cpb = cpb_ref;
-    s->eloop = eloop;
+    s->elist = elist;
     s->request_handler   = default_handler;
     s->handler_module    = NULL;
     s->module_request_handler = NULL;
@@ -77,7 +78,7 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
 
 
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
-        cpb_http_multiplexer_init(&s->mp[i], NULL, i);
+        cpb_http_multiplexer_init(&s->mp[i], NULL, -1, i);
     }
     /* Create the socket and set it up to accept connections. */
     struct cpb_or_socket or_socket = make_socket(s->config.http_listen_port);
@@ -87,49 +88,60 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     }
     else if (or_socket.value >= CPB_SOCKET_MAX) {
         err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-        goto err0;
+        goto err1;
     }
     
     int socket_fd = or_socket.value;
     s->listen_socket_fd = socket_fd;
 
     if (listen(s->listen_socket_fd, LISTEN_BACKLOG) < 0) { 
-        err = cpb_make_error(CPB_LISTEN_ERR);
-        goto err1;
+        fprintf(stderr, "Listen(%d backlog) failed, trying with 128", LISTEN_BACKLOG);
+        if (listen(s->listen_socket_fd, 128) < 0) {
+            err = cpb_make_error(CPB_LISTEN_ERR);
+            goto err1;
+        }
     }
-
-    int rv = cpb_server_listener_select_new(s, &s->listener);
+    int rv = CPB_OK;
+    for (int i=0; i<s->elist->nloops; i++) {
+        s->loop_data[i].listener = NULL;
+        if ((rv = cpb_request_state_recycle_array_init(cpb_ref, &s->loop_data[i].rq_cyc)) != CPB_OK) {
+            err = cpb_make_error(rv);
+            for (int j = i-1; j >= 0; j--) {
+                cpb_request_state_recycle_array_deinit(cpb_ref,  &s->loop_data[j].rq_cyc);
+            }
+            goto err1;
+        }
+    }
+    //initialize s->loop_data[*].listener
+    rv = cpb_server_listener_switch(s, "select");
     if (rv != CPB_OK) {
         err = cpb_make_error(rv);
-        goto err1;
+        goto err2;
     }
+    
 
     for (int i=0; i<config.n_modules; i++) {
         int error = cpb_http_server_module_load(cpb_ref, s, config.module_specs[i].module_spec.str, config.module_specs[i].module_args.str, &s->loaded_modules[s->n_loaded_modules].module, &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
         if (error != CPB_OK) {
             err = cpb_make_error(CPB_MODULE_LOAD_ERROR);
-            goto err3;
+            goto err4;
         }
+        s->n_loaded_modules++;
     }
     
-
-    
-    if ((rv = cpb_request_state_recycle_array_init(cpb_ref, &s->rq_cyc)) != CPB_OK) {
-        err = cpb_make_error(rv);
-        goto err3;
-    }
-
-    return err;
-/*
+    return cpb_make_error(CPB_OK);
 err4:
-    cpb_request_state_recycle_array_deinit(cpb_ref, &s->rq_cyc)
-*/  
-err3:
     for (int i=0; i<s->n_loaded_modules; i++) {
         cpb_http_server_module_unload(s->cpb, s->loaded_modules[i].module, s->loaded_modules[i].dll_module_handle);
     }
+err3:
+    for (int i=0; i<s->elist->nloops; i++) {
+        s->loop_data[i].listener->destroy(s->loop_data[i].listener);
+    }
 err2:
-    s->listener->destroy(s, s->listener);
+    for (int i = 0; i < s->elist->nloops; i++) {
+        cpb_request_state_recycle_array_deinit(cpb_ref,  &s->loop_data[i].rq_cyc);
+    }
 err1:
     close(s->listen_socket_fd);
 err0:
@@ -148,10 +160,10 @@ int cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_
     return CPB_OK;
 }
 
-struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop *eloop, int port) {
+struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, int port) {
     struct cpb_http_server_config config = cpb_http_server_config_default(cpb_ref);
     config.http_listen_port = port;
-    struct cpb_error err = cpb_server_init_with_config(s, cpb_ref, eloop, config);
+    struct cpb_error err = cpb_server_init_with_config(s, cpb_ref, elist, config);
     if (err.error_code != CPB_OK) {
         cpb_http_server_config_deinit(cpb_ref, &config);
     }
@@ -164,10 +176,27 @@ struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, in
     return cpb_server_get_multiplexer_i(s, socket_fd);
 }
 
+
+struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s) {
+    return cpb_eloop_env_get_any(s->elist);
+}
+
+//this is bad
+static int cpb_server_find_eloop(struct cpb_server *s, struct cpb_eloop *eloop) {
+    for (int i=0; i<s->elist->nloops; i++) {
+        if (s->elist->loops[i].loop == eloop)
+            return i;
+    }
+    return -1;
+}
+
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd) {
     dp_register_event(__FUNCTION__);
     struct cpb_request_state *st = NULL;
-    if (cpb_request_state_recycle_array_pop(server->cpb, &server->rq_cyc, &st) != CPB_OK) {
+    int eloop_idx = cpb_server_find_eloop(server, eloop);
+    if (eloop_idx == -1)
+        return CPB_INVALID_ARG_ERR;
+    if (cpb_request_state_recycle_array_pop(server->cpb, &server->loop_data[eloop_idx].rq_cyc, &st) != CPB_OK) {
         st = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
     }
     if (!st) {
@@ -182,20 +211,21 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
     dp_end_event(__FUNCTION__);
     return st;
 }
-void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_request_state *rqstate) {
+void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, struct cpb_request_state *rqstate) {
     dp_register_event(__FUNCTION__);
     cpb_request_state_deinit(rqstate, server->cpb);
-    if (cpb_request_state_recycle_array_push(server->cpb, &server->rq_cyc, rqstate) != CPB_OK) {
+    int eloop_idx = cpb_server_find_eloop(server, eloop);
+    if (eloop_idx == -1) {
+        cpb_free(server->cpb, rqstate);
+    }    
+    if (cpb_request_state_recycle_array_push(server->cpb, &server->loop_data[eloop_idx].rq_cyc, rqstate) != CPB_OK) {
         cpb_free(server->cpb, rqstate);
     }
     dp_end_event(__FUNCTION__);
 }
 
-struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s) {
-    return s->eloop;
-}
 
-int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sockaddr_in clientname) {
+int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, int socket_fd, struct sockaddr_in clientname) {
     int flags = fcntl(socket_fd, F_GETFL, 0);
     cpb_assert_h(flags != -1, "");
     if ((flags = fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK)) == -1) {
@@ -206,28 +236,31 @@ int cpb_server_init_multiplexer(struct cpb_server *s, int socket_fd, struct sock
     if (mp == NULL)
         return CPB_SOCKET_ERR;
 
-    struct cpb_eloop *eloop =  cpb_server_get_any_eloop(s);
+    int eloop_idx = cpb_server_find_eloop(s, eloop);
+    if (eloop_idx == -1) {
+        return CPB_INVALID_ARG_ERR;
+    }
+    struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    cpb_assert_h(eloop_idx < s->elist->nloops, "");
+    cpb_eloop_env_get_any(s->elist);
     cpb_assert_h(!!eloop, "");
-    cpb_http_multiplexer_init(mp, eloop, socket_fd);
+    cpb_http_multiplexer_init(mp, eloop, eloop_idx, socket_fd);
 
     mp->state = CPB_MP_ACTIVE;
     
     mp->clientname = clientname;
     struct cpb_request_state *rqstate = cpb_server_new_rqstate(s, mp->eloop, socket_fd);
     fprintf(stderr,
-            "Server: connection from host %s, port %hu.\n",
+            "Server: connection from host %s, port %hu. assigned to eloop: %d/%d\n",
             inet_ntoa (clientname.sin_addr),
-            ntohs (clientname.sin_port));
+            ntohs (clientname.sin_port), eloop_idx, s->elist->nloops);
     
-    s->listener->new_connection(s, s->listener, socket_fd);
+    
+    listener->new_connection(listener, socket_fd);
     
     mp->creading = rqstate;
     cpb_http_multiplexer_queue_response(mp, rqstate);
     
-    struct cpb_event ev;
-    rqstate->is_read_scheduled = 1;
-    cpb_event_http_init(&ev, CPB_HTTP_INIT, rqstate, 0);
-    cpb_eloop_append(mp->eloop, ev);
     
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
     
@@ -258,39 +291,26 @@ void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
     }
 }
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
+    int eloop_idx = s->mp[socket_fd].eloop_idx;
+    struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    listener->close_connection(listener, socket_fd);
     close(socket_fd);
-    s->listener->close_connection(s, s->listener, socket_fd);
     cpb_http_multiplexer_deinit(s->mp + socket_fd);
 }
 
 void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiplexer *m) {
-    struct cpb_event ev;
-    cpb_assert_h((!!m) && m->state == CPB_MP_ACTIVE, "");
-    cpb_assert_h(!!m->creading, "");
-    cpb_assert_h(!m->creading->is_read_scheduled, "");
-    
-    m->creading->is_read_scheduled = 1;
-    cpb_event_http_init(&ev, CPB_HTTP_READ, m->creading, 0);
-    cpb_eloop_append(m->eloop, ev);
-
-    RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because we found out "
-                    "read is available for socket %d\n", m->creading, m->socket_fd);
-    
+    cpb_server_on_read_available_i(s, m);
 }
 void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multiplexer *m) {
-    struct cpb_event ev;
-    cpb_event_http_init(&ev, CPB_HTTP_SEND, m->next_response, 0);
-    cpb_eloop_append(m->eloop, ev);
-    m->next_response->is_send_scheduled = 1;
+    cpb_server_on_write_available_i(s, m);
 }
 
-struct cpb_error cpb_server_listen_once(struct cpb_server *s) {
+struct cpb_error cpb_server_listen_once(struct cpb_server *s, int eloop_idx) {
     struct cpb_error err = {0};
     dp_register_event(__FUNCTION__);
-    cpb_assert_h(!!s->listener, "");
-    
-
-    s->listener->listen(s, s->listener);
+    struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    cpb_assert_h(!!listener, "");
+    listener->listen(listener);
     
 ret:
     dp_end_event(__FUNCTION__);
@@ -300,28 +320,34 @@ ret:
 struct cpb_event_handler_itable cpb_server_event_handler;
 void cpb_server_ev_listen_loop(struct cpb_event ev) {
     struct cpb_server *s = ev.msg.u.iip.argp;
-    cpb_server_listen_once(s);
+    int eloop_idx = ev.msg.u.iip.arg1;
+    cpb_server_listen_once(s, eloop_idx);
     struct cpb_event new_ev = {
                                .itable = &cpb_server_event_handler,
                                .msg = {
-                                .u.iip.argp = s
+                                .u.iip.argp = s,
+                                .u.iip.arg1 = eloop_idx,
                                 }
                               };
-    struct cpb_eloop *eloop = cpb_server_get_any_eloop(s);
+    struct cpb_eloop *eloop = s->elist->loops[eloop_idx].loop;
     cpb_assert_h(!!eloop, "");
     cpb_eloop_append_delayed(eloop, new_ev, CPB_HTTP_MIN_DELAY, 1);
 }
 
 struct cpb_error cpb_server_listen(struct cpb_server *s) {
-    struct cpb_event new_ev = {.itable = &cpb_server_event_handler,
-                           .msg = {
-                               .u = {
-                                .iip = {
-                                        .argp = s
+    //TODO: error handling
+    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
+        struct cpb_event new_ev = {.itable = &cpb_server_event_handler,
+                            .msg = {
+                                .u = {
+                                    .iip = {
+                                        .argp = s,
+                                        .arg1 = eloop_idx,
+                                    }
                                 }
-                               }
-                           }};
-    cpb_server_ev_listen_loop(new_ev);
+                            }};
+        cpb_server_ev_listen_loop(new_ev);
+    }
     return cpb_make_error(CPB_OK);
 }
 
@@ -336,13 +362,15 @@ struct cpb_event_handler_itable cpb_server_event_handler = {
 
 void cpb_server_deinit(struct cpb_server *s) {
 
-    cpb_request_state_recycle_array_deinit(s->cpb, &s->rq_cyc);
-
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
         cpb_http_multiplexer_deinit(&s->mp[i]);
     }
     cpb_http_server_config_deinit(s->cpb, &s->config);
-    s->listener->destroy(s, s->listener);
+    for (int i=0; i<s->elist->nloops; i++) {
+        s->loop_data[i].listener->destroy(s->loop_data[i].listener);
+        cpb_request_state_recycle_array_deinit(s->cpb, &s->loop_data[i].rq_cyc);
+    }
+    
     for (int i=0; i<s->n_loaded_modules; i++) {
         cpb_http_server_module_unload(s->cpb, s->loaded_modules[i].module, s->loaded_modules[i].dll_module_handle);
     }
@@ -352,4 +380,72 @@ void cpb_server_deinit(struct cpb_server *s) {
 int cpb_server_set_request_handler(struct cpb_server *s, void (*handler)(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason)) {
     s->request_handler = handler;
     return CPB_OK;
+}
+
+int cpb_server_listener_switch(struct cpb_server *s, const char *listener_name) {
+    struct cpb_server_listener_fdlist *fdlist = NULL;
+    int rv = CPB_OK;
+
+    struct cpb_server_listener *new_listeners[CPB_MAX_ELOOPS];
+    int succeeded = 0;
+
+    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
+        struct cpb_eloop *eloop = s->elist->loops[eloop_idx].loop;
+        struct cpb_server_listener *old_listener = s->loop_data[eloop_idx].listener;
+        if (old_listener != NULL) {
+            rv = old_listener->get_fds(old_listener, &fdlist);
+            if (rv != CPB_OK) {
+                goto rollback;
+            }
+        }
+        
+        struct cpb_server_listener *new_listener = NULL;
+        if (strcasecmp(listener_name, "epoll") == 0) {        
+            struct cpb_server_listener *epoll_listener = NULL;
+            rv = cpb_server_listener_epoll_new(s, eloop, &epoll_listener);
+            if (rv != CPB_OK) {
+                cpb_server_listener_fdlist_destroy(s->cpb, fdlist);
+                goto rollback;
+            }
+            new_listener = epoll_listener;
+        }
+        else if (strcasecmp(listener_name, "select") == 0) {
+            struct cpb_server_listener *select_listener = NULL;
+            rv = cpb_server_listener_select_new(s, eloop, &select_listener);
+            if (rv != CPB_OK) {
+                cpb_server_listener_fdlist_destroy(s->cpb, fdlist);
+                goto rollback;
+            }
+            new_listener = select_listener;
+        }
+        else {
+            cpb_server_listener_fdlist_destroy(s->cpb, fdlist);
+            goto rollback;
+        }
+        
+        if (fdlist) {
+            for (int i=0; i<fdlist->len; i++) {
+                new_listener->new_connection(new_listener, fdlist->fds[i]);
+            }
+        }
+        
+        if (fdlist) {
+            cpb_server_listener_fdlist_destroy(s->cpb, fdlist);
+        }
+        new_listeners[succeeded] = new_listener;
+
+        succeeded++;
+    }
+    cpb_assert_h(succeeded == s->elist->nloops, "");
+    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
+        if (s->loop_data[eloop_idx].listener)
+            s->loop_data[eloop_idx].listener->destroy(s->loop_data[eloop_idx].listener);
+        s->loop_data[eloop_idx].listener = new_listeners[eloop_idx];
+    }    
+    return CPB_OK;
+rollback:
+    for (int i=0; i<succeeded; i++) {
+        new_listeners[i]->destroy(new_listeners[i]);
+    }
+    return rv;
 }

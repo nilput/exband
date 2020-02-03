@@ -1,0 +1,3 @@
+have main listener listening on server for new connections
+have listeners in each eloop
+allow server to manage multiple event loops and assign connections to them

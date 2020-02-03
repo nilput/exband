@@ -4,7 +4,7 @@
 #include "cpb.h"
 #include "cpb_errors.h"
 #include "cpb_eloop.h"
-#include "cpb_threadpool.h"
+#include "cpb_eloop_env.h"
 #include "http/http_server.h"
 #include "http/http_server_listener_epoll.h"
 
@@ -20,18 +20,20 @@ void ordie(int code) {
 
 struct cpb cpb_state;
 struct cpb_server server;
-struct cpb_eloop eloop;
+struct cpb_eloop_env elist;
 
-void int_handler(int dummy) {
-    fprintf(stderr, "Got Ctrl-C, killing server\n");
+void int_handler(int sig) {
+    if (sig == SIGTERM)
+        fprintf(stderr, "Got Ctrl-C, killing server\n");
+    else 
+        fprintf(stderr, "Got SIG %d, killing server\n", sig);
     fflush(stderr);
     cpb_server_deinit(&server);
-    cpb_eloop_deinit(&eloop);
+    cpb_eloop_env_deinit(&elist);
     cpb_deinit(&cpb_state);
-    dp_end_event("main");
     dp_dump();
 
-    if (dummy != SIGABRT)
+    if (sig != SIGABRT)
         exit(1);
 }
 void set_handlers() {
@@ -39,13 +41,14 @@ void set_handlers() {
    signal(SIGTERM, int_handler);
    signal(SIGHUP,  int_handler);
    signal(SIGSTOP, int_handler);
-   signal(SIGABRT, int_handler);
-   signal(SIGSEGV, int_handler);
+   //signal(SIGABRT, int_handler);
+   //signal(SIGSEGV, int_handler);
    signal(SIGPIPE, SIG_IGN);
 }
 
 struct cpb_config {
     int tp_threads; //threadpool threads
+    int nloops; //number of event loops
 };
 
 
@@ -53,6 +56,7 @@ struct cpb_config cpb_config_default(struct cpb *cpb_ref) {
     (void) cpb_ref;
     struct cpb_config conf = {0};
     conf.tp_threads = 4;
+    conf.nloops = 1;
     return conf;
 }
 
@@ -82,7 +86,12 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
     }
     fclose(f);
     f = NULL;
-    struct ini_pair *p = ini_get_value(c, "threadpool_size");
+    struct ini_pair *p = ini_get_value(c, "n_event_loops");
+    if (p) {
+        int count = atoi(c->input.str + p->value.index);
+        config_out->nloops = count;
+    }
+    p = ini_get_value(c, "threadpool_size");
     if (p) {
         int count = atoi(c->input.str + p->value.index);
         config_out->tp_threads = count;
@@ -170,35 +179,37 @@ int main(int argc, char *argv[]) {
 
     
     
-    struct cpb_threadpool tp;
-    rv = cpb_threadpool_init(&tp, &cpb_state);
+    rv = cpb_eloop_env_init(&elist, &cpb_state, cpb_config.nloops);
     ordie(rv);
-    rv = cpb_threadpool_set_nthreads(&tp, cpb_config.tp_threads);
-    fprintf(stderr, "spawning %d threads\n", cpb_config.tp_threads);
+    fprintf(stderr, "spawning %d eloop%c\n", cpb_config.nloops, cpb_config.nloops != 1 ? 's' : ' ');
+    
+    rv = cpb_threadpool_set_nthreads(&elist.tp, cpb_config.tp_threads);
+    fprintf(stderr, "spawning %d thread%c\n", cpb_config.tp_threads, cpb_config.tp_threads != 1 ? 's' : ' ');
     ordie(rv);
     
-
-    rv = cpb_eloop_init(&eloop, &cpb_state, &tp, 2);
-    ordie(rv);
     fprintf(stderr, "Listening on port %d\n", cpb_http_server_config.http_listen_port);
-    erv = cpb_server_init_with_config(&server, &cpb_state, &eloop, cpb_http_server_config);
+    erv = cpb_server_init_with_config(&server, &cpb_state, &elist, cpb_http_server_config);
     ordie(erv.error_code);
 
     if (cpb_strcasel_eq(cpb_http_server_config.polling_backend.str, cpb_http_server_config.polling_backend.len, "epoll", 5)) {
         fprintf(stderr, "using epoll\n");
-        erv.error_code = cpb_server_listener_switch_to_epoll(&server);
+        erv.error_code = cpb_server_listener_switch(&server, "epoll");
         ordie(erv.error_code);
     }
     
     erv = cpb_server_listen(&server);
     ordie(erv.error_code);
-    erv = cpb_eloop_run(&eloop);
+
+    erv = cpb_eloop_env_run(&elist);
     ordie(erv.error_code);
 
-    cpb_threadpool_deinit(&tp);
+    erv = cpb_eloop_env_join(&elist);
+    ordie(erv.error_code);
+
+    cpb_eloop_env_deinit(&elist);
+
     cpb_server_deinit(&server);
     ordie(rv);
-    cpb_eloop_deinit(&eloop);
     cpb_deinit(&cpb_state);
     dp_end_event(__FUNCTION__);
     dp_dump();
