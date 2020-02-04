@@ -249,6 +249,7 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
     mp->state = CPB_MP_ACTIVE;
     
     mp->clientname = clientname;
+
     struct cpb_request_state *rqstate = cpb_server_new_rqstate(s, mp->eloop, socket_fd);
     fprintf(stderr,
             "Server: connection from host %s, port %hu. assigned to eloop: %d/%d\n",

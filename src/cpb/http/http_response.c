@@ -18,17 +18,8 @@ int cpb_response_body_buffer_ensure(struct cpb_response_state *rsp, size_t cap) 
     }
     return CPB_OK;
 }
-
 //Takes ownership of both name and value
-int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {
-    int idx = cpb_response_get_header_index(rsp, name->str, name->len);
-    if (idx != -1) {
-        struct cpb_str *old_value = &rsp->headers.headers[idx].value;
-        cpb_str_deinit(rsp->req_state->server->cpb, old_value);
-        cpb_str_deinit(rsp->req_state->server->cpb, name);
-        rsp->headers.headers[idx].value = *value;
-        return CPB_OK;
-    }
+int cpb_response_add_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {
     if (rsp->headers.len + 1 >= CPB_HTTP_RESPONSE_HEADER_MAX) {
         cpb_str_deinit(rsp->req_state->server->cpb, name);
         cpb_str_deinit(rsp->req_state->server->cpb, value);
@@ -41,6 +32,19 @@ int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name
     rsp->headers_bytes += name->len + 2 /*": "*/ + value->len + 2 /*crlf*/;
 
     return CPB_OK;
+}
+
+//Takes ownership of both name and value
+int cpb_response_set_header(struct cpb_response_state *rsp, struct cpb_str *name, struct cpb_str *value) {
+    int idx = cpb_response_get_header_index(rsp, name->str, name->len);
+    if (idx != -1) {
+        struct cpb_str *old_value = &rsp->headers.headers[idx].value;
+        cpb_str_deinit(rsp->req_state->server->cpb, old_value);
+        cpb_str_deinit(rsp->req_state->server->cpb, name);
+        rsp->headers.headers[idx].value = *value;
+        return CPB_OK;
+    }
+    return cpb_response_add_header(rsp, name, value);
 }
 
 int cpb_response_redirect_and_end(struct cpb_response_state *rsp, int status_code, const char *location) {

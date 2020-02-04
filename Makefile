@@ -9,9 +9,11 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/cpb_threadpool.c
 
 debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 debug: all
+debug-no-assert: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DCPB_NO_ASSERTS -fno-inline-small-functions
+debug-no-assert: all
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function 
 release: all
-fast-release: CFLAGS += -flto -g -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
+fast-release: CFLAGS += -flto -mtune=native -march=native -O2 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 fast-release: all
 no-release: CFLAGS += -g -O1 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 no-release: all

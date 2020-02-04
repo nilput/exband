@@ -8,13 +8,13 @@ enum cpb_http_multiplexer_state {
     CPB_MP_DEAD, //should never be seen
 };
 struct cpb_http_multiplexer {
+    enum cpb_http_multiplexer_state state CPB_ALIGN(64); 
     int eloop_idx;
-    struct cpb_eloop *eloop;
-    enum cpb_http_multiplexer_state state;
     int socket_fd;
     struct sockaddr_in clientname;
     struct cpb_request_state *creading; //the current request reading from client
     struct cpb_request_state *next_response; //queue of responses (linkedlist)
+    struct cpb_eloop *eloop;
 };
 static void cpb_http_multiplexer_init(struct cpb_http_multiplexer *mp, struct cpb_eloop *eloop, int eloop_idx, int socket_fd) {
     mp->state = CPB_MP_EMPTY;

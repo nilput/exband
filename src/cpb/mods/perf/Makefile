@@ -4,7 +4,7 @@ LDFLAGS := -L $(CPB_LIB_DIR) -Wl,-rpath=\$$ORIGIN/
 LDLIBS := -lcpb
 debug: CFLAGS += -O0 -g3
 debug: all
-release: CFLAGS += -O2
+release: CFLAGS += -O2 -march=native -mtune=native -DCPB_NO_ASSERTS
 release: all
 san: CFLAGS += -fsanitizer=address -g3 -O0
 san: all

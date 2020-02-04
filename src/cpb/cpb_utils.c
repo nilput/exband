@@ -1,8 +1,10 @@
+#define _GNU_SOURCE
 #include "cpb_utils.h"
 #include "cpb_errors.h"
 #include "cpb_str.h"
 #include <unistd.h>
 #include <sys/time.h>
+
 #include <string.h>
 #include <stdio.h>
 int cpb_sleep(int ms) {
@@ -21,6 +23,15 @@ int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int
         return hidx;
     if (hidx + nlen > hlen)
         return -1;
+
+#define USE_GNU_MEMMEM
+#ifdef USE_GNU_MEMMEM
+    void *f = memmem(haystack + hidx, hlen - hidx, needle, nlen);
+    if (f == NULL)
+        return -1;
+    return f - (void *)haystack;
+#else
+    memmem()    
     char *f = memchr(haystack + hidx, needle[0], hlen - hidx);
     while (f != NULL) {
         int f_idx = f - haystack;
@@ -33,6 +44,7 @@ int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int
         f = memchr(haystack + hidx, needle[0], hlen - hidx);
     }
     return -1;
+#endif
 }
 
 int cpb_itoa(char *dest, int dest_size, int *written, int num) {

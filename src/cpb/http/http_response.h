@@ -5,7 +5,7 @@
 #include "../cpb_str.h"
 #include "http_server_events.h"
 #include "http_status.h"
-#define HTTP_HEADERS_BUFFER_INIT_SIZE 2048
+#define HTTP_HEADERS_BUFFER_INIT_SIZE 512
 #define HTTP_OUTPUT_BUFFER_INIT_SIZE 2048
 #define CPB_HTTP_RESPONSE_HEADER_MAX 32
 #define HTTP_STATUS_MAX_SZ 128

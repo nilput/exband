@@ -24,6 +24,10 @@
     #define dp_useless(n)
 #endif
 
+#define CPB_ALIGN(bytes)  __attribute__((aligned(bytes)))
+//#define CPB_ALIGN(bytes)
+
+
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

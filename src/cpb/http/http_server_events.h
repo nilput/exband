@@ -25,5 +25,6 @@ static int cpb_event_http_init(struct cpb_event *ev, int cmd, void *object, int 
     ev->msg.u.iip.argp = object;
     return CPB_OK;
 }
+int cpb_handle_http_event(struct cpb_event ev);
 
 #endif// CPB_HTTP_EVENTS_H

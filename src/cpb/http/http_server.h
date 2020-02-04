@@ -89,7 +89,7 @@ struct cpb_server {
     } loaded_modules[CPB_SERVER_MAX_MODULES];
     int n_loaded_modules;
 
-    struct cpb_http_multiplexer mp[CPB_SOCKET_MAX];
+    struct cpb_http_multiplexer mp[CPB_SOCKET_MAX] CPB_ALIGN(64);
 };
 
 /*
