@@ -62,16 +62,15 @@ static const char *cpb_error_code_name(int error_code) {
     }
     return NULL;
 }
-static void cpb_error_print(int error_code) {
+static inline void cpb_error_print(int error_code) {
     fprintf(stderr, "An Error occured: %s\n", cpb_error_code_name(error_code));
 }
-static void cpb_error_debug(int error_code) {
+static inline void cpb_error_debug(int error_code) {
     #ifdef CPB_DEBUG
         cpb_error_print(error_code);
     #endif
-    return;
 }
-static struct cpb_error cpb_make_error(int error_code) {
+static inline struct cpb_error cpb_make_error(int error_code) {
     struct cpb_error err;
     if (error_code != CPB_OK) 
         cpb_error_debug(error_code);

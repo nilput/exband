@@ -32,6 +32,9 @@
 #if 0
     #define USE_GNU_MEMMEM
 #endif
+#if 0
+    #define CPB_SET_TCPNODELAY
+#endif
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

@@ -18,6 +18,13 @@ double cpb_time() {
         return 0;
     return tv.tv_sec + (tv.tv_usec / 1000000.0);
 }
+int cpb_memchr(const char *haystack, int hidx, int hlen, char needle) {
+    char *f = memchr(haystack + hidx, needle, hlen - hidx);
+    if (f != NULL)
+        return f - haystack;
+    return -1;
+}
+
 int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen) {
     if (nlen == 0)
         return hidx;

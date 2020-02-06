@@ -231,7 +231,9 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
     if ((flags = fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK)) == -1) {
         return CPB_SOCKET_ERR;
     }
-    setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (int [1]){1}, sizeof(int));
+    #ifdef CPB_SET_TCPNODELAY
+        setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (int [1]){1}, sizeof(int));
+    #endif
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
     if (mp == NULL)
         return CPB_SOCKET_ERR;
@@ -258,6 +260,7 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
     listener->new_connection(listener, socket_fd);
     
     mp->creading = rqstate;
+    mp->wants_read = 1;
     cpb_http_multiplexer_queue_response(mp, rqstate)
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
     
@@ -270,6 +273,8 @@ void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
         deschedule all requests and defer destroying them, so that in case they're scheduled for read/write it's okay
     */
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
+    mp->wants_read  = 0;
+    mp->wants_write = 0;
     mp->state = CPB_MP_CANCELLING;
     if (mp->creading) {
         mp->creading->is_cancelled = 1;
@@ -304,7 +309,7 @@ void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multipl
     cpb_server_on_write_available_i(s, m);
 }
 
-struct cpb_error cpb_server_listen_once(struct cpb_server *s, int eloop_idx) {
+static inline struct cpb_error cpb_server_listen_once(struct cpb_server *s, int eloop_idx) {
     struct cpb_error err = {0};
 
     struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
@@ -319,19 +324,11 @@ ret:
 void cpb_server_event_listen_loop(struct cpb_event ev) {
     struct cpb_server *s = ev.msg.u.iip.argp;
     int eloop_idx = ev.msg.u.iip.arg1;
-    
-
-    cpb_server_listen_once(s, eloop_idx);
-    struct cpb_event new_ev = {
-                               .handle = cpb_server_event_listen_loop,
-                               .msg = {
-                                .u.iip.argp = s,
-                                .u.iip.arg1 = eloop_idx,
-                                }
-                              };
     struct cpb_eloop *eloop = s->elist->loops[eloop_idx].loop;
     cpb_assert_h(!!eloop, "");
-    cpb_eloop_append_delayed(eloop, new_ev, CPB_HTTP_MIN_DELAY, 1);
+    
+    cpb_server_listen_once(s, eloop_idx);
+    cpb_eloop_append_delayed(eloop, ev, CPB_HTTP_MIN_DELAY, 1);
 }
 
 struct cpb_error cpb_server_listen(struct cpb_server *s) {

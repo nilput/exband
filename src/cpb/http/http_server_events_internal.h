@@ -246,7 +246,11 @@ static struct cpb_error cpb_request_on_bytes_read(struct cpb_request_state *rqst
                 goto ret;
             }
         }
-        
+        else {
+            struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+            mp->creading = NULL;
+            mp->wants_read = 0;
+        }
         cpb_request_on_request_done(rqstate);
     }
    
@@ -378,7 +382,6 @@ static void cpb_request_async_write_runner(struct cpb_thread *thread, struct cpb
                                 rqstate->resp.output_buffer + offset,
                                 total_bytes - current_written_bytes);
     
-
         if (written == -1) {
             if (errno != EWOULDBLOCK && errno != EAGAIN) {
                 rv =  CPB_WRITE_ERR;
@@ -544,6 +547,7 @@ static int cpb_response_end_i(struct cpb_request_state *rqstate) {
         //   need to confirm this solves i
         RQSTATE_EVENT(stderr, "Scheduled rqstate %p for send because cpb_response_end() was called, socket %d\n", rqstate, m->socket_fd);
         rqstate->is_send_scheduled = 1;
+        m->wants_write = 0;
         struct cpb_event ev;
         cpb_event_http_init(rqstate->server, &ev, CPB_HTTP_SEND, rqstate, 0);
         ev.handle(ev);
@@ -627,6 +631,10 @@ static void on_http_send_sync(struct cpb_event ev) {
     RQSTATE_EVENT(stderr, "Handling CPB_HTTP_SEND for rqstate %p\n", rqstate);    
 
     err = cpb_response_write(rqstate);
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+    cpb_assert_h(mp->next_response == rqstate, "");
+    cpb_assert_h(!mp->wants_write, "");
+    mp->wants_write = 1;
     rqstate->is_send_scheduled = 0;
     if (err.error_code != CPB_OK) {
         cpb_request_handle_socket_error(rqstate);
@@ -725,12 +733,17 @@ static void on_http_cancel(struct cpb_event ev) {
         cpb_request_on_request_done(tmp);
     }
     mp->next_response = NULL;
+    mp->wants_read  = 0;
+    mp->wants_write = 0;
     cpb_server_close_connection(s, socket_fd);
 }
 
 static void on_http_read_io_error(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
     cpb_assert_h(rqstate->is_read_scheduled, "");
+    
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+    mp->wants_read = 1;
     rqstate->is_read_scheduled = 0;
     cpb_request_handle_socket_error(rqstate);
 }
@@ -739,12 +752,14 @@ static void on_http_read_io_error(struct cpb_event ev) {
 static void on_http_write_io_error(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
     cpb_assert_h(rqstate->is_send_scheduled, "");
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     rqstate->is_send_scheduled = 0;
+    mp->wants_write = 1;
     cpb_request_handle_socket_error(rqstate);
 }
 
 
-static int cpb_event_http_init(struct cpb_server *s, struct cpb_event *ev, int cmd, void *object, int arg) {
+static inline int cpb_event_http_init(struct cpb_server *s, struct cpb_event *ev, int cmd, void *object, int arg) {
     switch (cmd) {
         case CPB_HTTP_READ:               ev->handle = s->on_read;                 break;
         case CPB_HTTP_SEND:               ev->handle = s->on_send;                 break;
@@ -763,7 +778,7 @@ static int cpb_event_http_init(struct cpb_server *s, struct cpb_event *ev, int c
     return CPB_OK;
 }
 
-static void cpb_server_on_read_available_i(struct cpb_server *s, struct cpb_http_multiplexer *m) {
+static inline void cpb_server_on_read_available_i(struct cpb_server *s, struct cpb_http_multiplexer *m) {
     struct cpb_event ev;
     cpb_assert_h((!!m) && m->state == CPB_MP_ACTIVE, "");
     cpb_assert_h(!!m->creading, "");
@@ -777,7 +792,7 @@ static void cpb_server_on_read_available_i(struct cpb_server *s, struct cpb_http
                     "read is available for socket %d\n", m->creading, m->socket_fd);
     
 }
-static void cpb_server_on_write_available_i(struct cpb_server *s, struct cpb_http_multiplexer *m) {
+static inline void cpb_server_on_write_available_i(struct cpb_server *s, struct cpb_http_multiplexer *m) {
     struct cpb_event ev;
     int flags = s->config.http_use_aio;
     cpb_event_http_init(s, &ev, CPB_HTTP_SEND, m->next_response, flags);

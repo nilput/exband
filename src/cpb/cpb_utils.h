@@ -3,6 +3,7 @@
 
 int cpb_sleep(int ms);
 int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen);
+int cpb_memchr(const char *haystack, int hidx, int hlen, char needle);
 int cpb_itoa(char *dest, int dest_size, int *written, int num);
 int cpb_atoi(char *str, int len, int *dest);
 int cpb_atoi_hex(char *str, int len, int *dest);

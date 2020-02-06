@@ -214,7 +214,6 @@ char *module_get_arg(struct pastebin_module *mod, char *mod_args, char *arg_name
     return NULL;
 }
 
-
 static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_state *rqstate, char *param_name) {
     struct cpb_str str;
     cpb_str_init_empty(&str);

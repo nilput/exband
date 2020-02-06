@@ -32,7 +32,6 @@ static void dp_die(const char *s){
 	exit(1);
 }
 
-
 struct timer_info{
     struct timespec tstart;
     struct timespec tend;
@@ -95,7 +94,6 @@ static void timer_fprint(FILE *file, struct timer_info *timer)
     fprintf(stderr,"time: %.5f\n", timerdt(timer));
 }
 
-
 static struct dp_info *dp_init(void){
 	struct dp_info *dp = (struct dp_info *) dp_data;
 	if (!dp){
@@ -126,7 +124,6 @@ static struct dp_info *dp_init(void){
 	}
 	return (struct dp_info *) dp_data;
 }
-
 
 
 //source: stackoverflow
@@ -341,7 +338,6 @@ void dp_timed_log(const char *fmt, ...){
     dp_timed_logv(fmt, ap);
     va_end(ap);
 }
-
 
 //keys must be freed
 static void dp_sort_info(struct dp_info *dp, char ***keys_out){

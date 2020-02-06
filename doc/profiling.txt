@@ -2,6 +2,11 @@ options:
     kcachegrind + valgrind: meh
     dplog : umm, idk
     oprofile: YES
+    perfl: YES!
 
+OPROFILE:
 https://linuxhint.com/oprofile-tutorial/
 opreport --demangle=smart --symbols
+
+PERF:
+https://developer.ibm.com/tutorials/migrate-from-oprofile-to-perf/

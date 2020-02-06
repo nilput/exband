@@ -16,8 +16,6 @@ Event loop
 #define CPB_ELOOP_TASK_BUFFER_COUNT 256
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
 #define CPB_ELOOP_DEVENT_BUFFER_COUNT 32
-// 4 : 1 ratio between delayed events being popped and regular event (priority to due delayed events)
-#define CPB_ELOOP_DELAYED_MAX 4
 struct cpb_event; //fwd
 struct cpb_threadpool;
 
@@ -69,7 +67,6 @@ struct cpb_eloop {
 
     struct cpb_delayed_event_node* devents;
     int devents_len;
-    int ndelayed_processed;
     int ntasks;
     int tasks_flush_min_delay_ms;
     double tasks_flush_ts;
@@ -187,11 +184,9 @@ static struct cpb_delayed_event *cpb_eloop_d_peek_next(struct cpb_eloop *eloop) 
 }
 static int cpb_eloop_pop_next(struct cpb_eloop *eloop, double cpb_cur_time, struct cpb_event *ev_out) {
     struct cpb_delayed_event *dev = cpb_eloop_d_peek_next(eloop);
-    if (eloop->ndelayed_processed < CPB_ELOOP_DELAYED_MAX && dev != NULL && dev->due <= cpb_cur_time) {
-        eloop->ndelayed_processed++;
+    if (dev != NULL && dev->due <= cpb_cur_time) {
         return cpb_eloop_d_pop_next(eloop, ev_out);
     }
-    eloop->ndelayed_processed = 0;
     return cpb_eloop_q_pop_next(eloop, ev_out);
 }
 
@@ -199,14 +194,12 @@ static int cpb_eloop_len(struct cpb_eloop *eloop) {
     return cpb_eloop_q_len(eloop) + cpb_eloop_d_len(eloop);
 }
 
-
 static int cpb_eloop_resize(struct cpb_eloop *eloop, int sz);
 static int cpb_eloop_init(struct cpb_eloop *eloop, int eloop_id, struct cpb* cpb_ref, struct cpb_threadpool *tp, int sz) {
     memset(eloop, 0, sizeof *eloop);
     eloop->threadpool = tp;
     eloop->devents_len = 0;
     eloop->cpb = cpb_ref;
-    eloop->ndelayed_processed = 0;
     eloop->eloop_id = eloop_id;
 
     eloop->ntasks = 0;
@@ -421,7 +414,6 @@ static int cpb_eloop_stop(struct cpb_eloop *eloop) {
     return cpb_eloop_ts_append(eloop, ev);
 }
 
-
 //recieves events from other threads
 static int cpb_eloop_receive(struct cpb_eloop *eloop) {
     /*TODO: pop many*/
@@ -475,7 +467,6 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
 
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
-        
 
     again:
         if (rv == CPB_OK) {
@@ -485,14 +476,7 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
             if (!ev.handle)
                 return cpb_make_error(CPB_EOF);
             ev.handle(ev);
-            #if 0
-                if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
 
-                    cpb_eloop_receive(eloop);
-
-                    nprocessed = 0;
-                }
-            #endif
         }
         else {
             if (rv != CPB_OUT_OF_RANGE_ERR) {
@@ -500,6 +484,7 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 struct cpb_error err = cpb_make_error(rv);
                 return err;
             }
+            cpb_eloop_receive(eloop);
             cur_time = cpb_time();
 
             rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
@@ -524,10 +509,6 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
             }
             #endif
             cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
-
-
-            cpb_eloop_receive(eloop);
-            nprocessed = 0;
 
         }
     }

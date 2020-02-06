@@ -19,23 +19,15 @@ static struct cpb_http_header *cpb_request_get_header(struct cpb_request_state *
     return NULL;
 }
 //TODO: use fast functions like memchr / strstr
-static int cpb_str_next_crlf(char *s, int idx, int len) {
+static inline int cpb_str_next_crlf(char *s, int idx, int len) {
     if (len >= 2 && s[idx] == '\r' && s[idx+1] == '\n')
         idx += 2;
-    for (int i=idx; i<len-1; i++) {
-        if (s[i] == '\r' && s[i+1] == '\n')
-            return i;
-    }
-    return -1;
+    return cpb_memmem(s, idx, len, "\r\n", 2);
 }
-static int cpb_str_next_lws(char *s, int idx, int len) {
-    for (int i=idx; i<len-1; i++) {
-        if (s[i] == ' ')
-            return i;
-    }
-    return -1;
+static inline int cpb_str_next_lws(char *s, int idx, int len) {
+    return cpb_memchr(s, idx, len, ' ');
 }
-static int cpb_str_next_nonws(char *s, int idx, int len, int do_stay_in_crlf_line) {
+static inline int cpb_str_next_nonws(char *s, int idx, int len, int do_stay_in_crlf_line) {
     for (int i=idx; i<(idx+len); i++) {
         if (s[i] != ' ' && s[i] != '\t') {
             return i;
@@ -47,7 +39,7 @@ static int cpb_str_next_nonws(char *s, int idx, int len, int do_stay_in_crlf_lin
     }
     return -1;
 }
-static int cpb_str_crlf_line_len(char *s, int idx, int len) {
+static inline int cpb_str_crlf_line_len(char *s, int idx, int len) {
     int next_crlf = cpb_str_next_crlf(s, idx, len);
     if (next_crlf == -1)
         return len - idx;
@@ -139,6 +131,9 @@ static int cpb_request_http_parse_chunked_encoding(struct cpb_request_state *rqs
     return CPB_OK;
 }
 
+static inline int cpb_isdigit(int c) {
+    return c >= '0' && c <= '9';
+}
 static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate) {
     char *ibuff   =  rqstate->input_buffer;
     int ibuff_len =  rqstate->input_buffer_len;
@@ -156,10 +151,10 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
     //TODO: optimize
     struct method_lookup { int method; char *name; int namelen; };
     struct method_lookup methods_lookup[] = {
-        {CPB_HTTP_M_HEAD,     "head",    4},
         {CPB_HTTP_M_GET,      "get",     3},
         {CPB_HTTP_M_POST,     "post",    4},
         {CPB_HTTP_M_PUT,      "put",     3},
+        {CPB_HTTP_M_HEAD,     "head",    4},
         {CPB_HTTP_M_PATCH,    "patch",   5},
         {CPB_HTTP_M_DELETE,   "delete",  6},
         {CPB_HTTP_M_TRACE,    "trace",   5},
@@ -168,7 +163,8 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
     int methods_lookup_len = sizeof(methods_lookup) / sizeof(struct method_lookup);
     rqstate->method = CPB_HTTP_M_OTHER;
     for (int i=0; i<methods_lookup_len; i++) {
-        if (cpb_strcasel_eq(ibuff + rqstate->method_s.index, rqstate->method_s.len, methods_lookup[i].name, methods_lookup[i].namelen)) {
+        if (rqstate->method_s.len == methods_lookup[i].namelen &&
+            cpb_strcasel_eq(ibuff + rqstate->method_s.index, rqstate->method_s.len, methods_lookup[i].name, methods_lookup[i].namelen)) {
             rqstate->method = methods_lookup[i].method;
             break;
         }
@@ -187,9 +183,9 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
     rqstate->version_s.len = line_len - rqstate->version_s.index;
     if ( rqstate->version_s.len < 8                                       ||
         !cpb_strcasel_eq(ibuff + rqstate->version_s.index, 5, "HTTP/", 5) ||
-        !isdigit(ibuff[rqstate->version_s.index + 5])                     ||
+        !cpb_isdigit(ibuff[rqstate->version_s.index + 5])                     ||
          ibuff[rqstate->version_s.index + 6] != '.'                       ||
-        !isdigit(ibuff[rqstate->version_s.index + 7])                       )
+        !cpb_isdigit(ibuff[rqstate->version_s.index + 7])                       )
     {
         return cpb_make_error(CPB_HTTP_ERROR);
     }

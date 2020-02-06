@@ -7,10 +7,10 @@
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "cpb_request_state_recycle_array.h"
-#define LISTEN_BACKLOG 32000
+#define LISTEN_BACKLOG 8000
 #define CPB_SOCKET_MAX 8192
 #define CPB_SERVER_MAX_MODULES 11
-#define CPB_HTTP_MIN_DELAY 1//ms
+#define CPB_HTTP_MIN_DELAY 0//ms
 define_cpb_or(int, struct cpb_or_socket);
 
 /*

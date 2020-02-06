@@ -11,8 +11,8 @@
 #include "http_server_events_internal.h"
 
 
-#define MAX_EVENTS 16000
-#define EPOLL_TIMEOUT 2
+#define MAX_EVENTS 2048
+#define EPOLL_TIMEOUT 5
 
 /*
 TODO: Optimization: Switch to edge triggered
@@ -88,28 +88,28 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
     if (n < 0) {
         return CPB_EPOLL_WAIT_ERROR;
     }
+
+    int incoming_connections = 0;
     
     for (int i=0; i<n; i++) {
         struct epoll_event *ev = lis->events + i;
         struct cpb_http_multiplexer *m = cpb_server_get_multiplexer_i(s, ev->data.fd);
-        if (m->state != CPB_MP_ACTIVE)
+        if (m->state != CPB_MP_ACTIVE) {
+            if (ev->data.fd == s->listen_socket_fd)
+                incoming_connections = 1;
             continue; //can be stdin or whatever
-        cpb_assert_h(!!m->creading, "");
+        }
         cpb_assert_h(!!m->next_response, "");
-        int istate = m->creading->istate;;
-        int read_sched = m->creading->is_read_scheduled;
-        int rstate     = m->next_response->resp.state;;
-        int send_sched = m->next_response->is_send_scheduled;
-        if ( (ev->events & EPOLLIN)         &&
-             istate != CPB_HTTP_I_ST_DONE   &&
-            !read_sched                        )
+        cpb_assert_h(m->wants_read || (!m->creading /*destroyed*/) || m->creading->is_read_scheduled, "");
+        if ( (ev->events & EPOLLIN) &&
+              m->wants_read           )
         {
             /* Data arriving on an already-connected socket. */
             cpb_server_on_read_available_i(s, m);
         }
+        
         if ((ev->events & EPOLLOUT)           &&
-             rstate == CPB_HTTP_R_ST_SENDING  &&
-            !send_sched                         )
+             m->wants_write                     )
         {
             cpb_server_on_write_available_i(s, m);
         }
@@ -117,26 +117,28 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
     }
 
     /* Service Connection requests. */
-    int new_socket;
-    struct sockaddr_in clientname;
-    socklen_t size = sizeof(&clientname);
-    while (1) {
-        new_socket = accept(s->listen_socket_fd,
-                    (struct sockaddr *) &clientname,
-                    &size);
-        if (new_socket < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                err = cpb_make_error(CPB_ACCEPT_ERR);
+    if (incoming_connections) {
+        int new_socket;
+        struct sockaddr_in clientname;
+        socklen_t size = sizeof(&clientname);
+        while (1) {
+            new_socket = accept(s->listen_socket_fd,
+                        (struct sockaddr *) &clientname,
+                        &size);
+            if (new_socket < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                    err = cpb_make_error(CPB_ACCEPT_ERR);
+                }
+                goto ret;
             }
-            goto ret;
+            if (new_socket >= CPB_SOCKET_MAX) {
+                err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+                goto ret;
+            }
+            struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer_i(s, new_socket);
+            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
+            int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
         }
-        if (new_socket >= CPB_SOCKET_MAX) {
-            err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-            goto ret;
-        }
-        struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer_i(s, new_socket);
-        cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
-        int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
     }
 
 
