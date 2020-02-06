@@ -10,17 +10,9 @@
 #include "cpb_event_perf_act.h"
 #include "cpb_event_perf_gen.h"
 
-#ifndef CPB_ASYNCHRONOUS_IO
-#define CPB_ASYNCHRONOUS_IO 1
-#endif
 
 static void handle_perf_act_event(struct cpb_event ev);
-static void destroy_perf_act_event(struct cpb_event ev);
 
-struct cpb_event_handler_itable cpb_event_handler_perf_act_itable = {
-    .handle = handle_perf_act_event,
-    .destroy = destroy_perf_act_event,
-};
 
 
 static void cpb_perf_act_handle_fatal_error(struct cpb_perf_act_state *rqstate) {
@@ -101,7 +93,6 @@ void cpb_perf_act_lifetime(struct cpb_perf_act_state *rqstate) {
     
 }
 
-static void handle_http_event(struct cpb_event ev);
 void cpb_perf_act_on_request_done(struct cpb_perf_act_state *rqstate) {
     cpb_perf_act_lifetime(rqstate);
 }
@@ -112,7 +103,7 @@ void cpb_perf_act_on_response_done(struct cpb_perf_act_state *rqstate) {
 int cpb_perf_act_end(struct cpb_response_state *rsp) {
     
     struct cpb_event ev;
-    cpb_event_act_init(&ev, CPB_PERF_ACT_SEND, rsp->req_state, 0);
+    cpb_event_act_init(&ev, CPB_PERF_ACT_SEND, rsp, 0);
     
     return CPB_OK;
 }
@@ -138,25 +129,13 @@ static void handle_perf_act_event(struct cpb_event ev) {
         struct cpb_perf_act_state *rqstate = ev.msg.u.iip.argp;
         if (cmd == CPB_PERF_ACT_INIT || cmd == CPB_PERF_ACT_CONTINUE || cmd == CPB_PERF_ACT_READ) {
             
-            if (CPB_ASYNCHRONOUS_IO) {
-                cpb_perf_act_async_read_from_client(rqstate);
-            }
-            else {
-                err = cpb_perf_act_read_from_client(rqstate);
-            }
+            cpb_perf_act_async_read_from_client(rqstate);
+        
         }
         else if (cmd == CPB_PERF_ACT_SEND) {
             
-            if (CPB_ASYNCHRONOUS_IO) {
-                cpb_perf_act_async_write(rqstate);
-            }
-            else {
-                int rv = cpb_perf_act_write(rqstate);
-                if (rv != CPB_OK) {
-                    err = cpb_make_error(rv);
-                    goto ret;
-                }
-            }
+            cpb_perf_act_async_write(rqstate);
+            
         }
         else if (cmd == CPB_PERF_ACT_DID_READ) {
             int len  = ev.msg.u.iip.arg1;
@@ -199,6 +178,7 @@ ret:
     /*TODO: print error or do something with it*/
     return;
 }
-static void destroy_perf_act_event(struct cpb_event ev) {
-}
 
+void cpb_perf_handle_perf_act_event(struct cpb_event ev) {
+    handle_perf_act_event(ev);
+}

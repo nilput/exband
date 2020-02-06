@@ -35,7 +35,7 @@ static int cpb_eloop_env_init(struct cpb_eloop_env *elist, struct cpb *cpb_ref, 
         if (!p)
             goto err1;
         elist->loops[i].loop = p;
-        err = cpb_eloop_init(elist->loops[i].loop, cpb_ref, &elist->tp, 256);
+        err = cpb_eloop_init(elist->loops[i].loop, i, cpb_ref, &elist->tp, 256);
         if (err != CPB_OK) {
             cpb_free(cpb_ref, p);
             goto err1;
@@ -57,6 +57,11 @@ static struct cpb_eloop * cpb_eloop_env_get_any(struct cpb_eloop_env *elist) {
     if (++elist->rr >= elist->nloops)
         elist->rr = 0; // %= elist->nloops
     return eloop;
+}
+static struct cpb_eloop * cpb_eloop_env_stop(struct cpb_eloop_env *elist) {
+    for (int i=0; i<elist->nloops; i++) {
+        cpb_eloop_stop(elist->loops[i].loop);
+    }
 }
 
 static void *cpb_eloop_env_thread_runner(void *p) {

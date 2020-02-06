@@ -39,12 +39,16 @@ static int cpb_buffer_list_resize(struct cpb *cpb_ref, struct cpb_buffer_list *b
 }
 //can be made faster
 static int buffer_size_bits(size_t buffer_size) {
+#ifdef __GNUC__
+    return __builtin_clzll(1) - __builtin_clzll(buffer_size) + 1;
+#else
     int nbits = 0;
     while (buffer_size > 0) {
         buffer_size /= 2;
         nbits++;
     }
     return nbits;
+#endif
 }
 
 static int cpb_buffer_recycle_list_push(struct cpb *cpb_ref, struct cpb_buffer_recycle_list *buff_cyc, void *buff, size_t buff_sz) {

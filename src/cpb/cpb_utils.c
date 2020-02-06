@@ -24,14 +24,13 @@ int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int
     if (hidx + nlen > hlen)
         return -1;
 
-#define USE_GNU_MEMMEM
+
 #ifdef USE_GNU_MEMMEM
     void *f = memmem(haystack + hidx, hlen - hidx, needle, nlen);
     if (f == NULL)
         return -1;
     return f - (void *)haystack;
 #else
-    memmem()    
     char *f = memchr(haystack + hidx, needle[0], hlen - hidx);
     while (f != NULL) {
         int f_idx = f - haystack;

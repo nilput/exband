@@ -24,8 +24,14 @@
     #define dp_useless(n)
 #endif
 
-#define CPB_ALIGN(bytes)  __attribute__((aligned(bytes)))
-//#define CPB_ALIGN(bytes)
+#if 1
+    #define CPB_ALIGN(bytes)  __attribute__((aligned(bytes)))
+#else
+    #define CPB_ALIGN(bytes)
+#endif
+#if 0
+    #define USE_GNU_MEMMEM
+#endif
 
 
 struct cpb {

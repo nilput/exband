@@ -12,7 +12,7 @@
 #define LISTEN_BACKLOG 8192
 #define CPB_SOCKET_MAX 8192
 #define CPB_SERVER_MAX_MODULES 11
-#define CPB_HTTP_MIN_DELAY 2 //ms
+#define CPB_HTTP_MIN_DELAY 1//ms
 
 
 define_cpb_or(int, struct cpb_or_socket);
@@ -65,8 +65,9 @@ typedef void (*cpb_server_request_handler_func)(struct cpb_request_state *rqstat
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_eloop_env *elist; //not owned, must outlive
-    //^will have many in the future
-    struct cpb_http_server_config config; //owned
+
+    void (*on_read)(struct cpb_event ev);
+    void (*on_send)(struct cpb_event ev);
 
     int port;
     int listen_socket_fd;
@@ -82,6 +83,8 @@ struct cpb_server {
     /*dynamically loaded*/
     struct cpb_http_server_module  *handler_module; //must be present in loaded_modules too
     cpb_module_request_handler_func module_request_handler;
+
+    struct cpb_http_server_config config; //owned
 
     struct {
         struct cpb_http_server_module *module;

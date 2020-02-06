@@ -43,3 +43,7 @@ overflow conditions                            [ ]
  each having its own epoll listener and doing  \
  io directly instead of having to communicate  \
  with other threads                            [x]
+
+dont add epollout for socket immediately, only \
+ do that if writing proves to be a problem for \
+ a particular socket                           [ ]

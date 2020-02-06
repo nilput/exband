@@ -22,7 +22,7 @@ struct cpb_perf_gen {
 
 //analogous to CPB_HTTP_MIN_DELAY
 #define cpb_perf_gen_MIN_DELAY 5
-static struct cpb_event_handler_itable cpb_perf_gen_event_handler;
+
 #define PER_LOOP 5000
 //analogous to server_listen_once
 static void cpb_perf_gen_once(struct cpb_perf_gen *t) {
@@ -48,7 +48,7 @@ static void cpb_perf_gen_loop(struct cpb_event ev) {
     struct cpb_perf_gen *t = ev.msg.u.iip.argp;
     cpb_perf_gen_once(t);
     struct cpb_event new_ev = {
-                               .itable = &cpb_perf_gen_event_handler,
+                               .handle = cpb_perf_gen_loop,
                                .msg = {
                                 .u.iip.argp = t
                                 }
@@ -66,21 +66,13 @@ static void cpb_perf_gen_init(struct cpb_perf_gen *t, struct cpb_eloop *eloop, s
 }
 static struct cpb_error cpb_perf_gen_begin(struct cpb_perf_gen *t) {
     struct cpb_event new_ev = {
-                               .itable = &cpb_perf_gen_event_handler,
+                               .handle = cpb_perf_gen_loop,
                                .msg.u.iip.argp = t
                               };
     cpb_perf_gen_loop(new_ev);
     return cpb_make_error(CPB_OK);
 }
 
-static void cpb_perf_gen_event_destroy(struct cpb_event ev) {
-    struct cpb_perf_gen *t = ev.msg.u.iip.argp;
-}
-
-static struct cpb_event_handler_itable cpb_perf_gen_event_handler = {
-    .handle = cpb_perf_gen_loop,
-    .destroy = cpb_perf_gen_event_destroy,
-};
 
 
 #endif // CPB_EVENT_PERF_TEST_H

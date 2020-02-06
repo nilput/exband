@@ -7,7 +7,7 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_response.c src/cpb/htt
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/http/http_server_listener_epoll.c src/cpb/http/http_server_module.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/cpb/cpb_threadpool.c
 
-debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable
+debug: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all
 debug-no-assert: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DCPB_NO_ASSERTS -fno-inline-small-functions
 debug-no-assert: all

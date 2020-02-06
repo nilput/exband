@@ -28,9 +28,12 @@ void int_handler(int sig) {
     else 
         fprintf(stderr, "Got SIG %d, killing server\n", sig);
     fflush(stderr);
+    cpb_eloop_env_stop(&elist);
+    cpb_eloop_env_join(&elist);
     cpb_server_deinit(&server);
     cpb_eloop_env_deinit(&elist);
     cpb_deinit(&cpb_state);
+    
     dp_dump();
 
     if (sig != SIGABRT)
@@ -63,7 +66,13 @@ struct cpb_config cpb_config_default(struct cpb *cpb_ref) {
 void cpb_config_deinit(struct cpb *cpb_ref, struct cpb_config *config) {
 }
 
-
+void stop() {
+    cpb_eloop_env_deinit(&elist);
+    cpb_server_deinit(&server);
+    cpb_deinit(&cpb_state);
+    dp_end_event(__FUNCTION__);
+    dp_dump();
+}
 
 //assumes config_out parameters were not initialized
 static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct cpb_config *config_out, struct cpb_http_server_config *http_server_config_out) {
@@ -205,12 +214,6 @@ int main(int argc, char *argv[]) {
 
     erv = cpb_eloop_env_join(&elist);
     ordie(erv.error_code);
+    stop();
 
-    cpb_eloop_env_deinit(&elist);
-
-    cpb_server_deinit(&server);
-    ordie(rv);
-    cpb_deinit(&cpb_state);
-    dp_end_event(__FUNCTION__);
-    dp_dump();
 }

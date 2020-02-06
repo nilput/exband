@@ -12,14 +12,14 @@
 
 #include "../cpb_errors.h"
 #include "../cpb_eloop_env.h"
-#include "http_server.h"
 #include "http_server_internal.h"
-#include "http_server_events.h"
+#include "http_server_events_internal.h"
 #include "http_parse.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
 
 #include "http_server_listener_select.h"
+#include "http_server_listener_epoll.h"
 
 #include "http_server_module_internal.h"
 
@@ -54,8 +54,8 @@ static struct cpb_or_socket make_socket (uint16_t port)
 }
 
 static void default_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
-    cpb_response_append_body(&rqstate->resp, "Not found\r\n", 11);
-    cpb_response_end(&rqstate->resp);
+    cpb_response_append_body(rqstate, "Not found\r\n", 11);
+    cpb_response_end(rqstate);
 }
 static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_handler_reason reason) {
     cpb_assert_h(rqstate->server && rqstate->server->handler_module && rqstate->server->module_request_handler, "");
@@ -63,6 +63,7 @@ static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_h
     struct cpb_server *s = rqstate->server;
     int ignored = s->module_request_handler(s->handler_module, rqstate, reason);
 }
+
 
 
 struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config) {
@@ -75,6 +76,15 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     s->n_loaded_modules = 0;
 
     s->config = config;
+
+    if (config.http_use_aio) {
+        s->on_read = on_http_read_async;
+        s->on_send = on_http_send_async;
+    }
+    else {
+        s->on_read = on_http_read_sync;
+        s->on_send = on_http_send_sync;
+    }
 
 
     for (int i=0; i<CPB_SOCKET_MAX; i++) {
@@ -182,20 +192,18 @@ struct cpb_eloop * cpb_server_get_any_eloop(struct cpb_server *s) {
 }
 
 //this is bad
-static int cpb_server_find_eloop(struct cpb_server *s, struct cpb_eloop *eloop) {
-    for (int i=0; i<s->elist->nloops; i++) {
-        if (s->elist->loops[i].loop == eloop)
-            return i;
-    }
-    return -1;
+static int cpb_server_eloop_id(struct cpb_server *s, struct cpb_eloop *eloop) {
+    cpb_assert_h(eloop->eloop_id >= 0 && eloop->eloop_id < s->elist->nloops, "");
+    return eloop->eloop_id;
 }
 
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd) {
     dp_register_event(__FUNCTION__);
     struct cpb_request_state *st = NULL;
-    int eloop_idx = cpb_server_find_eloop(server, eloop);
-    if (eloop_idx == -1)
-        return CPB_INVALID_ARG_ERR;
+    int eloop_idx = cpb_server_eloop_id(server, eloop);
+    if (eloop_idx == -1) {
+        return NULL;
+    }
     if (cpb_request_state_recycle_array_pop(server->cpb, &server->loop_data[eloop_idx].rq_cyc, &st) != CPB_OK) {
         st = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
     }
@@ -214,7 +222,7 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, struct cpb_request_state *rqstate) {
     dp_register_event(__FUNCTION__);
     cpb_request_state_deinit(rqstate, server->cpb);
-    int eloop_idx = cpb_server_find_eloop(server, eloop);
+    int eloop_idx = cpb_server_eloop_id(server, eloop);
     if (eloop_idx == -1) {
         cpb_free(server->cpb, rqstate);
     }    
@@ -236,7 +244,7 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
     if (mp == NULL)
         return CPB_SOCKET_ERR;
 
-    int eloop_idx = cpb_server_find_eloop(s, eloop);
+    int eloop_idx = cpb_server_eloop_id(s, eloop);
     if (eloop_idx == -1) {
         return CPB_INVALID_ARG_ERR;
     }
@@ -271,7 +279,7 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
 //this must be called from the eloop thread
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
     /*
-        deschedule all requests and defer destroying them
+        deschedule all requests and defer destroying them, so that in case they're scheduled for read/write it's okay
     */
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
     mp->state = CPB_MP_CANCELLING;
@@ -285,7 +293,8 @@ void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
     }
     struct cpb_event ev;
     int rv;
-    cpb_event_http_init(&ev, CPB_HTTP_CANCEL, s, socket_fd);
+    RQSTATE_EVENT(stderr, "Server marked requests as cancelled for socket %d, and scheduled HTTP_CANCEL event\n", mp->socket_fd);
+    cpb_event_http_init(s, &ev, CPB_HTTP_CANCEL, s, socket_fd);
     if ((rv = cpb_eloop_append(mp->eloop, ev)) != CPB_OK) {
         //HMM, what to do
         abort();
@@ -294,9 +303,10 @@ void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd) {
 void cpb_server_close_connection(struct cpb_server *s, int socket_fd) {
     int eloop_idx = s->mp[socket_fd].eloop_idx;
     struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    cpb_http_multiplexer_deinit(s->mp + socket_fd);
     listener->close_connection(listener, socket_fd);
     close(socket_fd);
-    cpb_http_multiplexer_deinit(s->mp + socket_fd);
+    RQSTATE_EVENT(stderr, "Server closed connection on socket %d\n", socket_fd);
 }
 
 void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiplexer *m) {
@@ -318,13 +328,12 @@ ret:
     return err;
 }
 
-struct cpb_event_handler_itable cpb_server_event_handler;
-void cpb_server_ev_listen_loop(struct cpb_event ev) {
+void cpb_server_event_listen_loop(struct cpb_event ev) {
     struct cpb_server *s = ev.msg.u.iip.argp;
     int eloop_idx = ev.msg.u.iip.arg1;
     cpb_server_listen_once(s, eloop_idx);
     struct cpb_event new_ev = {
-                               .itable = &cpb_server_event_handler,
+                               .handle = cpb_server_event_listen_loop,
                                .msg = {
                                 .u.iip.argp = s,
                                 .u.iip.arg1 = eloop_idx,
@@ -338,7 +347,7 @@ void cpb_server_ev_listen_loop(struct cpb_event ev) {
 struct cpb_error cpb_server_listen(struct cpb_server *s) {
     //TODO: error handling
     for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
-        struct cpb_event new_ev = {.itable = &cpb_server_event_handler,
+        struct cpb_event new_ev = {.handle = cpb_server_event_listen_loop,
                             .msg = {
                                 .u = {
                                     .iip = {
@@ -347,19 +356,12 @@ struct cpb_error cpb_server_listen(struct cpb_server *s) {
                                     }
                                 }
                             }};
-        cpb_server_ev_listen_loop(new_ev);
+        cpb_server_event_listen_loop(new_ev);
     }
     return cpb_make_error(CPB_OK);
 }
 
-void cpb_server_ev_destroy(struct cpb_event ev) {
-    struct cpb_server *s = ev.msg.u.iip.argp;
-}
 
-struct cpb_event_handler_itable cpb_server_event_handler = {
-    .handle = cpb_server_ev_listen_loop,
-    .destroy = cpb_server_ev_destroy,
-};
 
 void cpb_server_deinit(struct cpb_server *s) {
 

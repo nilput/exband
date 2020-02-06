@@ -8,10 +8,11 @@
 
 #include "http_server.h"
 #include "http_server_internal.h"
+#include "http_server_events_internal.h"
 
 
 #define MAX_EVENTS 8192
-#define EPOLL_TIMEOUT 3
+#define EPOLL_TIMEOUT 5
 
 /*
 TODO: Optimization: Switch to edge triggered
@@ -87,29 +88,28 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
     if (n < 0) {
         return CPB_EPOLL_WAIT_ERROR;
     }
-    int incoming_connections = 0;
     
     for (int i=0; i<n; i++) {
         struct epoll_event *ev = lis->events + i;
-        if (ev->data.fd == s->listen_socket_fd) {
-            incoming_connections = 1;
-            continue;
-        }
         struct cpb_http_multiplexer *m = cpb_server_get_multiplexer_i(s, ev->data.fd);
         if (m->state != CPB_MP_ACTIVE)
             continue; //can be stdin or whatever
         cpb_assert_h(!!m->creading, "");
-        if ( (ev->events & EPOLLIN)                      &&
-             m->creading->istate != CPB_HTTP_I_ST_DONE   &&
-            !m->creading->is_read_scheduled                ) 
+        cpb_assert_h(!!m->next_response, "");
+        int istate = m->creading->istate;;
+        int read_sched = m->creading->is_read_scheduled;
+        int rstate     = m->next_response->resp.state;;
+        int send_sched = m->next_response->is_send_scheduled;
+        if ( (ev->events & EPOLLIN)         &&
+             istate != CPB_HTTP_I_ST_DONE   &&
+            !read_sched                        )
         {
             /* Data arriving on an already-connected socket. */
             cpb_server_on_read_available_i(s, m);
         }
-        if ((ev->events & EPOLLOUT)                                 &&
-             m->next_response                                       &&
-             m->next_response->resp.state == CPB_HTTP_R_ST_SENDING  &&
-            !m->next_response->is_send_scheduled                      )
+        if ((ev->events & EPOLLOUT)           &&
+             rstate == CPB_HTTP_R_ST_SENDING  &&
+            !send_sched                         )
         {
             cpb_server_on_write_available_i(s, m);
         }
@@ -117,32 +117,28 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
     }
 
     /* Service Connection requests. */
-    if (incoming_connections) {
-        int new_socket;
-        struct sockaddr_in clientname;
-        socklen_t size = sizeof(&clientname);
-        while (1) {
-            new_socket = accept(s->listen_socket_fd,
-                        (struct sockaddr *) &clientname,
-                        &size);
-            if (new_socket < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    err = cpb_make_error(CPB_ACCEPT_ERR);
-                    goto ret;
-                }
-                else {
-                    break;
-                }
+    int new_socket;
+    struct sockaddr_in clientname;
+    socklen_t size = sizeof(&clientname);
+    while (1) {
+        new_socket = accept(s->listen_socket_fd,
+                    (struct sockaddr *) &clientname,
+                    &size);
+        if (new_socket < 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                err = cpb_make_error(CPB_ACCEPT_ERR);
             }
-            if (new_socket >= CPB_SOCKET_MAX) {
-                err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-                goto ret;
-            }
-            struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer_i(s, new_socket);
-            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
-            int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
+            goto ret;
         }
+        if (new_socket >= CPB_SOCKET_MAX) {
+            err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
+            goto ret;
+        }
+        struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer_i(s, new_socket);
+        cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
+        int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
     }
+
 
     
     ret:

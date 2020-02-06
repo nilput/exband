@@ -197,5 +197,9 @@ static int cpb_request_http_check_validity(struct cpb_request_state *rqstate) {
     return CPB_OK;
 }
 
+static struct cpb_response_state *cpb_request_get_response(struct cpb_request_state *rqstate) {
+    return &rqstate->resp;
+}
+
 
 #endif// CPB_HTTP_REQUEST_H

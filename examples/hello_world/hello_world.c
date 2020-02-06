@@ -19,8 +19,8 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
         struct cpb_str key,value;
         cpb_str_init_const_str(&key, "Content-Type");
         cpb_str_init_const_str(&value, "text/html");
-        cpb_response_append_body_cstr(&rqstate->resp, "<!DOCTYPE html>");
-        cpb_response_append_body_cstr(&rqstate->resp, "<html>"
+        cpb_response_append_body_cstr(rqstate, "<!DOCTYPE html>");
+        cpb_response_append_body_cstr(rqstate, "<html>"
                                                       "<head>"
                                                       "    <title>CPBIN!</title>"
                                                       "</head>"
@@ -30,28 +30,28 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
                 rqstate->body_handling = CPB_HTTP_B_BUFFER;
             }
             else {
-                cpb_response_append_body_cstr(&rqstate->resp, "You posted: <br>");
-                cpb_response_append_body_cstr(&rqstate->resp, "<p>");
+                cpb_response_append_body_cstr(rqstate, "You posted: <br>");
+                cpb_response_append_body_cstr(rqstate, "<p>");
 
                 /*XSS!*/
                 if (rqstate->body_decoded.str)
-                    cpb_response_append_body_cstr(&rqstate->resp, rqstate->body_decoded.str);
+                    cpb_response_append_body_cstr(rqstate, rqstate->body_decoded.str);
 
-                cpb_response_append_body_cstr(&rqstate->resp, "</p>");
-                cpb_response_append_body_cstr(&rqstate->resp, "</body>"
+                cpb_response_append_body_cstr(rqstate, "</p>");
+                cpb_response_append_body_cstr(rqstate, "</body>"
                                                               "</html>");
-                cpb_response_end(&rqstate->resp);
+                cpb_response_end(rqstate);
             }
         }
         else {
-            cpb_response_set_header(&rqstate->resp, &key, &value);
-            cpb_response_append_body_cstr(&rqstate->resp, "<p> Post something! </p> <br>");
-            cpb_response_append_body_cstr(&rqstate->resp, "<form action=\"\" method=\"POST\">"
+            cpb_response_set_header(rqstate, &key, &value);
+            cpb_response_append_body_cstr(rqstate, "<p> Post something! </p> <br>");
+            cpb_response_append_body_cstr(rqstate, "<form action=\"\" method=\"POST\">"
                                                           "Text: <input type=\"text\" name=\"text\"><br>"
                                                           "</form>");
-            cpb_response_append_body_cstr(&rqstate->resp, "</body>"
+            cpb_response_append_body_cstr(rqstate, "</body>"
                                                           "</html>");
-            cpb_response_end(&rqstate->resp);
+            cpb_response_end(rqstate);
         }
         
     }
@@ -71,29 +71,29 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
                                         "<form action=\"/reset/\"><button>reset</button></form>"
                                         "</body>"
                                         "</html>", mod->count++);
-        cpb_response_append_body_cstr(&rqstate->resp, tmp.str);
+        cpb_response_append_body_cstr(rqstate, tmp.str);
         cpb_str_deinit(mod->cpb_ref, &tmp);
-        cpb_response_end(&rqstate->resp);
+        cpb_response_end(rqstate);
     }
     else if (cpb_str_streqc(mod->cpb_ref, &path, "/reset") || cpb_str_startswithc(mod->cpb_ref, &path, "/reset/")) {
         mod->count = 0;
-        cpb_response_redirect_and_end(&rqstate->resp, 307, "/count/");
+        cpb_response_redirect_and_end(rqstate, 307, "/count/");
     }
     else {
         struct cpb_str key,value;
         cpb_str_init_const_str(&key, "Content-Type");
         cpb_str_init_const_str(&value, "text/plain");
-        cpb_response_set_header(&rqstate->resp, &key, &value);
-        cpb_response_append_body(&rqstate->resp, "Hello World!\r\n", 14);
+        cpb_response_set_header(rqstate, &key, &value);
+        cpb_response_append_body(rqstate, "Hello World!\r\n", 14);
         struct cpb_str str;
         
         cpb_str_init(mod->cpb_ref, &str);
         
         cpb_sprintf(mod->cpb_ref, &str, "Requested URL: '%s'", path.str);
         
-        cpb_response_append_body(&rqstate->resp, str.str, str.len);
+        cpb_response_append_body(rqstate, str.str, str.len);
         cpb_str_deinit(mod->cpb_ref, &str);
-        cpb_response_end(&rqstate->resp);
+        cpb_response_end(rqstate);
     }
     
     cpb_str_deinit(mod->cpb_ref, &path);   

@@ -17,35 +17,35 @@ static void form(struct cpb_request_state *rqstate) {
     struct cpb_str key,value;
     cpb_str_init_const_str(&key, "Content-Type");
     cpb_str_init_const_str(&value, "text/html");
-    cpb_response_append_body_cstr(&rqstate->resp, "<!DOCTYPE html>");
-    cpb_response_append_body_cstr(&rqstate->resp, "<html>"
+    cpb_response_append_body_cstr(rqstate, "<!DOCTYPE html>");
+    cpb_response_append_body_cstr(rqstate, "<html>"
                                                     "<head>"
                                                     "    <title>CPBIN!</title>"
                                                     "<style> *{margin: auto; margin-top: 10px; text-align: center; font-family: monospace; padding: 10px;}\nbody{max-width: 960px;} textarea{ text-align: left; padding: 0;}</style>"
                                                     "</head>"
                                                     "<body>");
-    cpb_response_set_header(&rqstate->resp, &key, &value);
-    cpb_response_append_body_cstr(&rqstate->resp, "<p>POWERED BY CPBIN HTTP SERVER</p> <br>");
-    cpb_response_append_body_cstr(&rqstate->resp, "<form action=\"/\" method=\"POST\">"
+    cpb_response_set_header(rqstate, &key, &value);
+    cpb_response_append_body_cstr(rqstate, "<p>POWERED BY CPBIN HTTP SERVER</p> <br>");
+    cpb_response_append_body_cstr(rqstate, "<form action=\"/\" method=\"POST\">"
                                                     "<textarea name=\"f\" rows=\"20\" cols=\"80\" required=""></textarea> <br>"
                                                     "<button> PASTE </button> <br>"
                                                     "</form>");
-    cpb_response_append_body_cstr(&rqstate->resp, "</body>"
+    cpb_response_append_body_cstr(rqstate, "</body>"
                                                     "</html>");
-    cpb_response_end(&rqstate->resp);
+    cpb_response_end(rqstate);
 }
 
 static void info(struct pastebin_module *mod, struct cpb_request_state *rqstate) {
     struct cpb_str key,value;
     cpb_str_init_const_str(&key, "Content-Type");
     cpb_str_init_const_str(&value, "text/plain");
-    cpb_response_set_header(&rqstate->resp, &key, &value);
+    cpb_response_set_header(rqstate, &key, &value);
     struct cpb_str str;
     cpb_str_init(mod->cpb_ref, &str);
     cpb_sprintf(mod->cpb_ref, &str, "curl -F 'f=<-' %s", mod->site_link.str);
-    cpb_response_append_body(&rqstate->resp, str.str, str.len);
+    cpb_response_append_body(rqstate, str.str, str.len);
     cpb_str_deinit(mod->cpb_ref, &str);
-    cpb_response_end(&rqstate->resp);
+    cpb_response_end(rqstate);
 }
 
 void randkey(char *out, int len) {
@@ -58,7 +58,7 @@ void randkey(char *out, int len) {
 
 
 static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
-    struct pastebin_module *mod = module;
+    struct pastebin_module *mod = (struct pastebin_module *)module;
     sqlite3_close(mod->db);
     cpb_str_deinit(cpb, &mod->site_link);
     cpb_free(cpb, module);
@@ -292,16 +292,16 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
             int rc = exec_sql_returning_one(mod->db, insert_stmt, values, 2, out, 1, &nresults, &stmt);
             sqlite3_finalize(stmt);
             if (rc == SQLITE_DONE) {
-                cpb_response_append_body_cstr(&rqstate->resp, mod->site_link.str);
-                cpb_response_append_body_cstr(&rqstate->resp, "/");
-                cpb_response_append_body_cstr(&rqstate->resp, key_buff);
-                cpb_response_append_body_cstr(&rqstate->resp, "\r\n");
-                cpb_response_end(&rqstate->resp);
+                cpb_response_append_body_cstr(rqstate, mod->site_link.str);
+                cpb_response_append_body_cstr(rqstate, "/");
+                cpb_response_append_body_cstr(rqstate, key_buff);
+                cpb_response_append_body_cstr(rqstate, "\r\n");
+                cpb_response_end(rqstate);
             }
             else {
-                cpb_response_set_status_code(&rqstate->resp, 500);
-                cpb_response_append_body_cstr(&rqstate->resp, "Error!...");
-                cpb_response_end(&rqstate->resp);
+                cpb_response_set_status_code(rqstate, 500);
+                cpb_response_append_body_cstr(rqstate, "Error!...");
+                cpb_response_end(rqstate);
             }
             cpb_str_deinit(mod->cpb_ref, &posted_value);
             
@@ -328,22 +328,22 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
             sqlite3_stmt *stmt = NULL;
             int rc = exec_sql_returning_one(mod->db, select_stmt, key, 1, value, 1, &nresults, &stmt);
             if (rc == SQLITE_DONE) {
-                cpb_response_set_status_code(&rqstate->resp, 404);
+                cpb_response_set_status_code(rqstate, 404);
             }
             else if (rc == SQLITE_ROW) {
                 cpb_assert_h(nresults == 1, "unexpected no. results");
                 if (nresults != 1 || (value[0].len && !value[0].value) || value[0].value_type != SQLITE_BLOB) {
-                    cpb_response_set_status_code(&rqstate->resp, 500);
-                    cpb_response_append_body_cstr(&rqstate->resp, "Error!...");
+                    cpb_response_set_status_code(rqstate, 500);
+                    cpb_response_append_body_cstr(rqstate, "Error!...");
                 }
-                cpb_response_append_body(&rqstate->resp, value[0].value, value[0].len);
+                cpb_response_append_body(rqstate, value[0].value, value[0].len);
             }
             else {
-                cpb_response_set_status_code(&rqstate->resp, 500);
-                cpb_response_append_body_cstr(&rqstate->resp, "Error!");
+                cpb_response_set_status_code(rqstate, 500);
+                cpb_response_append_body_cstr(rqstate, "Error!");
             }
             sqlite3_finalize(stmt);
-            cpb_response_end(&rqstate->resp);
+            cpb_response_end(rqstate);
         }
         else {
             info(mod, rqstate);

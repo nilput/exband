@@ -6,7 +6,6 @@ struct cpb_perf_act_state {
     struct cpb_eloop *eloop; //not owned, must outlive
 };
 
-extern struct cpb_event_handler_itable cpb_event_handler_perf_act_itable;
 enum cpb_event_perf_act_cmd {
     CPB_PERF_ACT_INIT, //just initialized with no data, .argp : rqstate
     CPB_PERF_ACT_CONTINUE, //forked in a persistent connection, .argp : rqstate
@@ -22,9 +21,12 @@ enum cpb_event_perf_act_cmd {
 };
 
 struct cpb_request_state;
+
+void cpb_perf_handle_perf_act_event(struct cpb_event ev);
+
 //doesnt add itself to eloop
 static int cpb_event_act_init(struct cpb_event *ev, int cmd, void *object, int arg) {
-    ev->itable = &cpb_event_handler_perf_act_itable;
+    ev->handle = cpb_perf_handle_perf_act_event;
     ev->msg.u.iip.arg1 = arg;
     ev->msg.u.iip.arg2 = cmd;
     ev->msg.u.iip.argp = object;
