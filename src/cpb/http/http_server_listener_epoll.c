@@ -11,8 +11,8 @@
 #include "http_server_events_internal.h"
 
 
-#define MAX_EVENTS 8192
-#define EPOLL_TIMEOUT 5
+#define MAX_EVENTS 16000
+#define EPOLL_TIMEOUT 2
 
 /*
 TODO: Optimization: Switch to edge triggered

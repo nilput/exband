@@ -29,7 +29,7 @@
 #else
     #define CPB_ALIGN(bytes)
 #endif
-#if 0
+#if 1
     #define USE_GNU_MEMMEM
 #endif
 

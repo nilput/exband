@@ -46,13 +46,40 @@ int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int
 #endif
 }
 
-int cpb_itoa(char *dest, int dest_size, int *written, int num) {
-    int rv = snprintf(dest, dest_size, "%d", num);
-    if (rv >= dest_size) {
+struct itoar {
+    int err;
+    int rem;
+};
+static struct itoar itoar(int err, int rem) {
+    return (struct itoar){err, rem};
+}
+struct itoar cpb_itoa_1(char *dest, int dest_size, int written, int *written_out, int num) {
+    if (num == 0) {
+        return itoar(0, 0);
+    }
+    if (dest_size < 2) {
+        return itoar(CPB_OUT_OF_RANGE_ERR, 0);
+    }
+    struct itoar next = cpb_itoa_1(dest+1, dest_size-1, written + 1, num);
+}
+int cpb_itoa(char *dest, int dest_size, int *written_out, int num) {
+    if (!dest_size) {
         return CPB_OUT_OF_RANGE_ERR;
     }
-    *written = rv;
+    if (num == 0) {
+    *dest = '0';
+    *written_out = 0;
     return CPB_OK;
+    }
+    int written = 0;
+    if (num < 0) {
+        written++;
+        *dest = '-';
+        dest++;
+        dest_size--;
+        num = -num;
+    }
+    return cpb_itoa_1(dest, dest_size, 0, written, num).err;
 }
 int cpb_atoi(char *str, int len, int *dest) {
     char *end = NULL;

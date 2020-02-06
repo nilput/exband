@@ -11,13 +11,13 @@ Event loop
 #include "cpb_event.h"
 #include "cpb_threadpool.h"
 #include "cpb_buffer_recycle_list.h"
-#define ELOOP_SLEEP_TIME 2
-#define CPB_ELOOP_TMP_EVENTS_SZ 256
+#define ELOOP_SLEEP_TIME 1
+#define CPB_ELOOP_TMP_EVENTS_SZ 512
 #define CPB_ELOOP_TASK_BUFFER_COUNT 256
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
-#define CPB_ELOOP_DEVENT_BUFFER_COUNT 64
+#define CPB_ELOOP_DEVENT_BUFFER_COUNT 32
 // 4 : 1 ratio between delayed events being popped and regular event (priority to due delayed events)
-#define CPB_ELOOP_DELAYED_MAX 4 
+#define CPB_ELOOP_DELAYED_MAX 16
 
 
 struct cpb_event; //fwd
