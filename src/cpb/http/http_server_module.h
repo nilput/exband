@@ -22,6 +22,4 @@ typedef int (*cpb_http_server_module_init_func)(struct cpb *cpb, struct cpb_serv
 struct cpb_request_state;
 typedef int (*cpb_module_request_handler_func)(struct cpb_http_server_module *module, struct cpb_request_state *rqstate, int reason);
 int  cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_server_module *mod, cpb_module_request_handler_func func);
-
-
 #endif //CPB_HTTP_SERVER_MODULE_H

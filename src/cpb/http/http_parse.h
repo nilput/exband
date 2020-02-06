@@ -200,8 +200,6 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
     if (rqstate->http_major > 1 || rqstate->http_minor > 1)
         return cpb_make_error(CPB_HTTP_ERROR);
 
-    
-
     int headers_begin = rqstate->status_s.index+rqstate->status_s.len + 2;
     cpb_assert_s(cpb_str_is_just_preceeded_by_crlf(ibuff, headers_begin, ibuff_len), "");
     int n_headers = 0;
@@ -233,8 +231,6 @@ static struct cpb_error cpb_request_http_parse(struct cpb_request_state *rqstate
         }
         rqstate->headers.headers[n_headers].key = key; 
         rqstate->headers.headers[n_headers].value = value;
-
-        
 
         n_headers++;
         process_relevant_header(rqstate, ibuff, key, value, n_headers-1);

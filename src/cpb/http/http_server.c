@@ -26,8 +26,6 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-
-
 static struct cpb_or_socket make_socket (uint16_t port)
 {
     int sock = socket (PF_INET, SOCK_STREAM, 0);
@@ -63,9 +61,6 @@ static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_h
     struct cpb_server *s = rqstate->server;
     int ignored = s->module_request_handler(s->handler_module, rqstate, reason);
 }
-
-
-
 struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config) {
     struct cpb_error err = {0};
     s->cpb = cpb_ref;
@@ -160,9 +155,6 @@ err0:
     }
     return err;
 }
-
-
-        
 int cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_server_module *mod, cpb_module_request_handler_func func) {
     s->request_handler = module_handler;
     s->handler_module = mod;
@@ -198,7 +190,7 @@ static int cpb_server_eloop_id(struct cpb_server *s, struct cpb_eloop *eloop) {
 }
 
 struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, int socket_fd) {
-    dp_register_event(__FUNCTION__);
+
     struct cpb_request_state *st = NULL;
     int eloop_idx = cpb_server_eloop_id(server, eloop);
     if (eloop_idx == -1) {
@@ -208,7 +200,7 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
         st = cpb_malloc(server->cpb, sizeof(struct cpb_request_state));
     }
     if (!st) {
-        dp_end_event(__FUNCTION__);
+
         return NULL;
     }
     int rv;
@@ -216,11 +208,11 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
         cpb_free(server->cpb, st);
         return NULL;
     }
-    dp_end_event(__FUNCTION__);
+
     return st;
 }
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, struct cpb_request_state *rqstate) {
-    dp_register_event(__FUNCTION__);
+
     cpb_request_state_deinit(rqstate, server->cpb);
     int eloop_idx = cpb_server_eloop_id(server, eloop);
     if (eloop_idx == -1) {
@@ -229,7 +221,7 @@ void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *elo
     if (cpb_request_state_recycle_array_push(server->cpb, &server->loop_data[eloop_idx].rq_cyc, rqstate) != CPB_OK) {
         cpb_free(server->cpb, rqstate);
     }
-    dp_end_event(__FUNCTION__);
+
 }
 
 
@@ -263,14 +255,10 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
             "Server: connection from host %s, port %hu. assigned to eloop: %d/%d\n",
             inet_ntoa (clientname.sin_addr),
             ntohs (clientname.sin_port), eloop_idx, s->elist->nloops);
-    
-    
     listener->new_connection(listener, socket_fd);
     
     mp->creading = rqstate;
-    cpb_http_multiplexer_queue_response(mp, rqstate);
-    
-    
+    cpb_http_multiplexer_queue_response(mp, rqstate)
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
     
     return CPB_OK;
@@ -318,19 +306,21 @@ void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multipl
 
 struct cpb_error cpb_server_listen_once(struct cpb_server *s, int eloop_idx) {
     struct cpb_error err = {0};
-    dp_register_event(__FUNCTION__);
+
     struct cpb_server_listener *listener = s->loop_data[eloop_idx].listener;
     cpb_assert_h(!!listener, "");
     listener->listen(listener);
     
 ret:
-    dp_end_event(__FUNCTION__);
+
     return err;
 }
 
 void cpb_server_event_listen_loop(struct cpb_event ev) {
     struct cpb_server *s = ev.msg.u.iip.argp;
     int eloop_idx = ev.msg.u.iip.arg1;
+    
+
     cpb_server_listen_once(s, eloop_idx);
     struct cpb_event new_ev = {
                                .handle = cpb_server_event_listen_loop,
@@ -360,9 +350,6 @@ struct cpb_error cpb_server_listen(struct cpb_server *s) {
     }
     return cpb_make_error(CPB_OK);
 }
-
-
-
 void cpb_server_deinit(struct cpb_server *s) {
 
     for (int i=0; i<CPB_SOCKET_MAX; i++) {

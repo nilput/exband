@@ -15,16 +15,12 @@ def chunk_data(data, chunk_size):
 
     ret += "0\r\n\r\n"
     return ret
-
-
 host = '127.0.0.1:8085'
 conn = http.client.HTTPConnection(host)
 url = "/post/"
 conn.putrequest('POST', url)
 conn.putheader('Transfer-Encoding', 'chunked')
 conn.endheaders()
-
-
 body = 'hello world! ' * 7
 size_per_chunk = len(body) // 6
 

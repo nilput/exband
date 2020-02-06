@@ -6,6 +6,4 @@ struct cpb_event {
     void (*handle)(struct cpb_event event);
     struct cpb_msg msg;
 };
-
-
 #endif // CPB_EVENT_H

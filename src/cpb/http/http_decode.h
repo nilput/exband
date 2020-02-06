@@ -181,8 +181,6 @@ static int cpb_decode_header_params(struct cpb *cpb_ref, struct cpb_header_param
         }
         cpb_str_rtrim(cpb_ref, &params_out->buff);
         int key_len = params_out->buff.len - key_index;
-
-
         params_out->buff.len++; //keep old nul terminator
         int value_index = params_out->buff.len;
         if ((rv = strappend_process_quotes(cpb_ref, &params_out->buff, src + eq_idx + 1, part_end - eq_idx - 1, &remainder_idx)) != CPB_OK) {

@@ -8,9 +8,7 @@
 #include "cmocka.h"
 #include "../../src/cpb/cpb.h"
 #include "../../src/cpb/cpb_str.h"
-#include "../../src/cpb/http/http_decode.h"
-
-
+#include "../../src/cpb/http/http_decode.h
 struct encdec {
         unsigned char *enc;
         int enclen;
@@ -30,9 +28,7 @@ struct encdec_keys_values {
         int nvalues;
 };
 
-#include "test_decode_data.h"
-
-
+#include "test_decode_data.h
 struct test_state {
     struct cpb cpb;
 };

@@ -29,11 +29,9 @@
 #else
     #define CPB_ALIGN(bytes)
 #endif
-#if 1
+#if 0
     #define USE_GNU_MEMMEM
 #endif
-
-
 struct cpb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

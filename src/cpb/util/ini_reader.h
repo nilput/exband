@@ -72,8 +72,6 @@ static struct ini_config *ini_parse(struct cpb *cpb, FILE *f) {
 
     c->sections_len = 1;
     c->sections_cap = 1;
-    
-    
 
     c->sections = cpb_realloc(cpb, c->sections, sizeof(c->sections[0]) * c->sections_cap);
     if (!c->sections) {

@@ -3,9 +3,9 @@
 struct cpb_msg {
     union {
         struct {
+            void *argp;
             int arg1;
             int arg2;
-            void *argp;
         } iip;
         struct {
             int arg1;

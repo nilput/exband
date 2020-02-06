@@ -10,15 +10,11 @@
 #include "cpb_thread.h"
 
 #define CPB_THREAD_TASK_BUFFER_COUNT 16
-
-
 int cpb_hw_cpu_count();
 int cpb_hw_bind_to_core(int core_id);
 int cpb_hw_bind_not_to_core(int core_id);
 int cpb_hw_thread_sched_important();
 int cpb_hw_thread_sched_background();
-
-
 struct cpb_taskqueue {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_task *tasks;
@@ -39,8 +35,6 @@ struct cpb_threadpool {
     struct cpb_taskqueue taskq;
 };
 
-
-
 static int cpb_taskqueue_deinit(struct cpb_taskqueue *tq); //fwd
 static int cpb_taskqueue_init(struct cpb_taskqueue *tq, struct cpb* cpb_ref, int sz);
 
@@ -59,9 +53,6 @@ static int cpb_threadpool_init(struct cpb_threadpool *tp, struct cpb* cpb_ref) {
     }
     return err;
 }
-
-
-
 static void cpb_threadpool_deinit(struct cpb_threadpool *tp) {
     for (int i=0; i<tp->nthreads; i++) {
         /*ASSUMES THREAD STOPPED EXECUTING*/

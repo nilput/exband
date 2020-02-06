@@ -7,9 +7,6 @@
 #include "../cpb_errors.h"
 
 #include "http_server.h"
-
-
-
 struct cpb_server_listener_select {
     struct cpb_server_listener head;
     struct cpb_server *server; //not owned, must outlive

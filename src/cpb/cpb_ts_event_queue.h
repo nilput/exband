@@ -16,8 +16,6 @@ struct cpb_ts_event_queue {
     int tail; //tail == head means full, tail == head - 1 means full
     int cap;
 };
-
-
 static int cpb_ts_event_queue_len_u(struct cpb_ts_event_queue *tq) {
     if (tq->tail >= tq->head) {
         return tq->tail - tq->head;

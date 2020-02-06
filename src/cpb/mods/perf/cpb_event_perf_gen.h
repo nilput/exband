@@ -72,7 +72,4 @@ static struct cpb_error cpb_perf_gen_begin(struct cpb_perf_gen *t) {
     cpb_perf_gen_loop(new_ev);
     return cpb_make_error(CPB_OK);
 }
-
-
-
 #endif // CPB_EVENT_PERF_TEST_H

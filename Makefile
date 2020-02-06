@@ -20,14 +20,10 @@ no-release: all
 san: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=address
 san: all
 san-thread: CFLAGS += -DCPB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=thread
-san-thread: all
-
-
+san-thread: al
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DCPB_NO_ASSERTS
 profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
-profile: server_main libcpb.so
-
-
+profile: server_main libcpb.s
 
 libcpb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)

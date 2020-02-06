@@ -7,9 +7,7 @@
 
 #include "cmocka.h"
 #include "../../src/cpb/cpb.h"
-#include "../../src/cpb/cpb_buffer_recycle_list.h"
-
-
+#include "../../src/cpb/cpb_buffer_recycle_list.h
 
 struct test_state {
     struct cpb cpb;
@@ -27,9 +25,7 @@ void test_buffer_recycle_list(void **state)
     struct cpb_buffer_recycle_list buff_cyc;
     int rv;
     rv = cpb_buffer_recycle_list_init(cpb_ref, &buff_cyc);
-    assert_true(rv == CPB_OK);
-    
-
+    assert_true(rv == CPB_OK)
     void *buff;
     size_t buff_sz;
 

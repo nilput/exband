@@ -62,9 +62,6 @@ static const char *cpb_error_code_name(int error_code) {
     }
     return NULL;
 }
-
-
-
 static void cpb_error_print(int error_code) {
     fprintf(stderr, "An Error occured: %s\n", cpb_error_code_name(error_code));
 }

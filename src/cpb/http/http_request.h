@@ -4,14 +4,8 @@
 #include "http_response.h"
 #include <stdbool.h>
 
-
-
 #define CPB_HTTP_HEADER_MAX 32
 #define HTTP_INPUT_BUFFER_INITIAL_SIZE 2048
-
-
-
-
 enum CPB_HTTP_METHOD {
     CPB_HTTP_M_HEAD,
     CPB_HTTP_M_GET,
@@ -68,8 +62,6 @@ struct cpb_request_state {
 
     unsigned char http_major;
     unsigned char http_minor;
-
-
     int socket_fd;
     int input_buffer_len;
     int input_buffer_cap;
@@ -103,14 +95,10 @@ struct cpb_request_state {
     struct cpb_str_slice body_s; //beginning after crlfcrlf
     
     struct cpb_str body_decoded; //TODO: temporary, get rid of this, currently we copy the body to this no matteer what encoding
-
-    
     struct cpb_response_state resp;
 
     //only relevant when used as a linked list
     struct cpb_request_state * next_rqstate;
-
-    
 };
 
 //boolean

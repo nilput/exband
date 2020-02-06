@@ -7,14 +7,10 @@
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "cpb_request_state_recycle_array.h"
-
-
 #define LISTEN_BACKLOG 32000
 #define CPB_SOCKET_MAX 8192
 #define CPB_SERVER_MAX_MODULES 11
 #define CPB_HTTP_MIN_DELAY 1//ms
-
-
 define_cpb_or(int, struct cpb_or_socket);
 
 /*
@@ -26,9 +22,6 @@ define_cpb_or(int, struct cpb_or_socket);
         Server schedules itself to be ran in one of the event loops
         it manages the lifetime of requests and stores their state
 */
-
-
-
 
 struct cpb_http_server_config {
     int http_listen_port;
@@ -126,8 +119,6 @@ void cpb_server_deinit(struct cpb_server *s);
 
 struct cpb_http_multiplexer *cpb_server_get_multiplexer(struct cpb_server *s, int socket_fd);
 int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, int socket_fd, struct sockaddr_in clientname);
-
-
 /*for gluing the listeners*/
 void cpb_server_on_read_available(struct cpb_server *s, struct cpb_http_multiplexer *m);
 void cpb_server_on_write_available(struct cpb_server *s, struct cpb_http_multiplexer *m);

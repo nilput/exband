@@ -17,9 +17,7 @@ Event loop
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
 #define CPB_ELOOP_DEVENT_BUFFER_COUNT 32
 // 4 : 1 ratio between delayed events being popped and regular event (priority to due delayed events)
-#define CPB_ELOOP_DELAYED_MAX 16
-
-
+#define CPB_ELOOP_DELAYED_MAX 4
 struct cpb_event; //fwd
 struct cpb_threadpool;
 
@@ -60,9 +58,6 @@ static struct cpb_event cpb_eloop_make_eloop_event(struct cpb_eloop *eloop, enum
     ev.msg.u.iip.arg2 = 0;
     return ev;
 }
-
-
-
 struct cpb_eloop {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_threadpool *threadpool; //not owned, must outlive
@@ -75,13 +70,9 @@ struct cpb_eloop {
     struct cpb_delayed_event_node* devents;
     int devents_len;
     int ndelayed_processed;
-
-    
     int ntasks;
     int tasks_flush_min_delay_ms;
     double tasks_flush_ts;
-    
-
     struct cpb_event* events;
     int head;
     int tail; //tail == head means full, tail == head - 1 means full
@@ -402,22 +393,16 @@ static int cpb_eloop_push_task(struct cpb_eloop *eloop, struct cpb_task task, in
 
 /*Threadsafe append event*/
 static int cpb_eloop_ts_append(struct cpb_eloop *eloop, struct cpb_event event) {
-    dp_register_event(__FUNCTION__);
     int rv = cpb_ts_event_queue_append(&eloop->tsq, event);
-    dp_end_event(__FUNCTION__);
     return rv;
 }
 /*Threadsafe pop event*/
 static int cpb_eloop_ts_pop(struct cpb_eloop *eloop, struct cpb_event *event_out) {
-    dp_register_event(__FUNCTION__);
     int rv = cpb_ts_event_queue_pop_next(&eloop->tsq, event_out);
-    dp_end_event(__FUNCTION__);
     return rv;
 }
 static int cpb_eloop_ts_pop_many(struct cpb_eloop *eloop, struct cpb_event *events_out, int *nevents, int max_events) {
-    dp_register_event(__FUNCTION__);
     int rv = cpb_ts_event_queue_pop_many(&eloop->tsq, events_out, nevents, max_events);
-    dp_end_event(__FUNCTION__);
     return rv;
 }
 
@@ -488,10 +473,10 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
         struct cpb_event ev;
         
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
-        dp_register_event("eloop_pop_next");
+
         int rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
         
-        dp_end_event("eloop_pop_next");
+
     again:
         if (rv == CPB_OK) {
             //handle event
@@ -502,9 +487,9 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
             ev.handle(ev);
             #if 0
                 if (nprocessed++ > CPB_ELOOP_NPROCESS_OFFLOAD) {
-                    dp_register_event("eloop_offload");
+
                     cpb_eloop_receive(eloop);
-                    dp_end_event("eloop_offload");
+
                     nprocessed = 0;
                 }
             #endif
@@ -516,9 +501,9 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 return err;
             }
             cur_time = cpb_time();
-            dp_register_event("eloop_pop_next");
+
             rv = cpb_eloop_pop_next(eloop, cur_time, &ev);
-            dp_end_event("eloop_pop_next");
+
             if (rv == CPB_OK) {
                 goto again;
             }
@@ -538,14 +523,12 @@ static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
                 return err;
             }
             #endif
-        
-            dp_register_event("eloop_sleep");
             cpb_sleep(cpb_eloop_sleep_till(eloop) * 1024);
-            dp_end_event("eloop_sleep");
-            dp_register_event("eloop_offload_2");
+
+
             cpb_eloop_receive(eloop);
             nprocessed = 0;
-            dp_end_event("eloop_offload_2");
+
         }
     }
     

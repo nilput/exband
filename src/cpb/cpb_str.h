@@ -23,8 +23,6 @@ struct cpb_str_slice {
     int index;
     int len;
 };
-
-
 //returned str is not null terminated!
 static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, const char *base) {
     struct cpb_str s;

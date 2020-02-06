@@ -23,7 +23,4 @@ static void cpb_server_listener_fdlist_destroy(struct cpb *cpb, struct cpb_serve
         cpb_free(cpb, fdlist->fds);
     cpb_free(cpb, fdlist);
 }
-
-
-
 #endif // CPB_HTTP_SERVER_LISTENER_H

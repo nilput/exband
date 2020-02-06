@@ -69,8 +69,6 @@ int read_samples() {
 
 static void parse_test(struct perf_module *mod) {
     struct cpb_eloop *eloop = cpb_server_get_any_eloop(mod->server);
-    
-    
     read_samples();
     if (nsamples == 0) {
         printf("Found no request samples\n");
@@ -99,6 +97,24 @@ static void parse_test(struct perf_module *mod) {
     }
 }
 
+static void itoa_test(int use_printf) {
+    char buff[64];
+    unsigned magic = 0;
+    srand(2312);
+    int num = random();
+    for (int i=0; i<10000000; i++) {
+        if (use_printf) {
+            snprintf(buff, 64, "%d", num);
+        }
+        else {
+            int n;
+            cpb_itoa(buff, 64, &n, num);
+        }
+        magic += buff[0];
+    }
+    printf("magic: %u\n", magic);
+}
+
 static void handle_args(struct perf_module *mod, char *module_args) {
     char *tok = module_args;
     char buff[64];
@@ -111,6 +127,14 @@ static void handle_args(struct perf_module *mod, char *module_args) {
         }
         else if (strcmp(buff, "--parse") == 0) {
             parse_test(mod);
+            raise(SIGTERM);
+        }
+        else if (strcmp(buff, "--itoa-printf") == 0) {
+            itoa_test(1);
+            raise(SIGTERM);
+        }
+        else if (strcmp(buff, "--itoa-cpb") == 0) {
+            itoa_test(0);
             raise(SIGTERM);
         }
     }

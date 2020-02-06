@@ -20,9 +20,7 @@ To handle pipelined GET requests, and keep-alive connections, we do the followin
         -> Request #3   [ Pipelining ]
         -> Request #4   [            ]
            Response #3  [            ]
-           Response #4  [            ]
-    
-
+           Response #4  [            
 on connection:
    multiplexer = new_http_multiplexer(server, socket)
    first_rqstate = new_request_state()
@@ -35,9 +33,7 @@ on request parsed and beginning of new request:
    multiplexer = get_http_multiplexer(server, socket)
    forked_rqstate = fork_request_state(old_request_state)
    multiplexer.set_currently_reading(forked_rqstate)
-   multiplexer.queue_response(forked_rqstate)
-
-
+   multiplexer.queue_response(forked_rqstate
 request life time:
     request_state_created
         -> can be destroyed when its response is sent

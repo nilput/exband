@@ -79,9 +79,11 @@ static struct cpb_error cpb_eloop_env_run(struct cpb_eloop_env *elist) {
 }
 static struct cpb_error  cpb_eloop_env_join(struct cpb_eloop_env *elist) {
     for (int i=0; i<elist->nloops; i++) {
-        int rv = cpb_thread_join(elist->loops[i].thread);
-        cpb_thread_destroy(elist->loops[i].thread, elist->cpb_ref);
-        elist->loops[i].thread = NULL;
+        if (elist->loops[i].thread) {
+            int rv = cpb_thread_join(elist->loops[i].thread);
+            cpb_thread_destroy(elist->loops[i].thread, elist->cpb_ref);
+            elist->loops[i].thread = NULL;
+        }
     }
     
     return cpb_make_error(CPB_OK);

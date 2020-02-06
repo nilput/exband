@@ -53,8 +53,6 @@ struct cpb_config {
     int tp_threads; //threadpool threads
     int nloops; //number of event loops
 };
-
-
 struct cpb_config cpb_config_default(struct cpb *cpb_ref) {
     (void) cpb_ref;
     struct cpb_config conf = {0};
@@ -70,7 +68,6 @@ void stop() {
     cpb_eloop_env_deinit(&elist);
     cpb_server_deinit(&server);
     cpb_deinit(&cpb_state);
-    dp_end_event(__FUNCTION__);
     dp_dump();
 }
 
@@ -167,8 +164,6 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
 
 int main(int argc, char *argv[]) {
     struct vgstate vg;
-
-    dp_register_event(__FUNCTION__);
     set_handlers();
     vg_init(&vg, argc, argv);
     
@@ -185,9 +180,6 @@ int main(int argc, char *argv[]) {
     if (rv != CPB_OK) {
         fprintf(stderr, "failed to load configuration");
     }
-
-    
-    
     rv = cpb_eloop_env_init(&elist, &cpb_state, cpb_config.nloops);
     ordie(rv);
     fprintf(stderr, "spawning %d eloop%c\n", cpb_config.nloops, cpb_config.nloops != 1 ? 's' : ' ');

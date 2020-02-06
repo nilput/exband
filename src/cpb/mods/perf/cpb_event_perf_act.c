@@ -9,11 +9,7 @@
 #include "../../http/http_parse.h"
 #include "cpb_event_perf_act.h"
 #include "cpb_event_perf_gen.h"
-
-
 static void handle_perf_act_event(struct cpb_event ev);
-
-
 
 static void cpb_perf_act_handle_fatal_error(struct cpb_perf_act_state *rqstate) {
 
@@ -22,9 +18,6 @@ static void cpb_perf_act_handle_fatal_error(struct cpb_perf_act_state *rqstate) 
 struct cpb_error cpb_perf_act_read_from_client(struct cpb_perf_act_state *rqstate) {
     return cpb_make_error(CPB_OK);
 }
-
-
-
 void cpb_perf_act_async_read_from_client_runner(struct cpb_thread *thread, struct cpb_task *task) {
     struct cpb_perf_act_state *rqstate = task->msg.u.iip.argp;
     struct cpb_event ev;
@@ -47,8 +40,6 @@ struct cpb_error cpb_perf_act_async_read_from_client(struct cpb_perf_act_state *
     task.msg.u.iip.arg2 = 0;
     task.msg.u.iip.argp = rqstate;
     int rv = cpb_eloop_push_task(rqstate->eloop, task, 10);
-    
-
     return cpb_make_error(rv);
 }
 void cpb_perf_act_async_write_runner(struct cpb_thread *thread, struct cpb_task *task) {

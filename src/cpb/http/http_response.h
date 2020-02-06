@@ -68,8 +68,6 @@ static int cpb_response_state_init(struct cpb_response_state *resp_state, struct
     resp_state->output_buffer_cap = 0;
     resp_state->headers_bytes = 2;    /*final crlf*/
     resp_state->body_begin_index = 0;
-
-
     resp_state->status_begin_index = -1;
     resp_state->status_len = 0;
     resp_state->headers_begin_index = -1;
@@ -117,16 +115,12 @@ static int cpb_response_get_header_index(struct cpb_request_state *rqstate, cons
 int cpb_response_set_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
 //Takes ownership of both name and value
 int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
-
-
 static size_t cpb_response_body_available_bytes(struct cpb_request_state *rqstate) {
     struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
 }
 
 int cpb_response_body_buffer_ensure(struct cpb_request_state *rqstate, size_t cap);
-    
-
 //the bytes are copied to output buffer
 static int cpb_response_append_body(struct cpb_request_state *rqstate, char *s, int len) {
     struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
@@ -174,8 +168,6 @@ static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struc
         rsp->body_begin_index = new_body_index;
     }
     rsp->headers_begin_index = rsp->body_begin_index - rsp->headers_bytes;
-
-
     //prepare status
     cpb_assert_h(rsp->headers_begin_index >= 0, "");
     int status_len = 0;
@@ -187,8 +179,6 @@ static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struc
     rsp->status_len = status_len;
     rsp->status_begin_index = rsp->headers_begin_index - rsp->status_len;
     memcpy(rsp->output_buffer + rsp->status_begin_index, statusbuff, status_len);
-
-
     //prepare headers
     for (int i=0; i<rsp->headers.len; i++) {
         struct cpb_response_header *h = &rsp->headers.headers[i];
@@ -206,8 +196,6 @@ static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struc
     memcpy(rsp->output_buffer + rsp->headers_begin_index + rsp->headers_len, "\r\n", 2);
     rsp->headers_len += 2;
     cpb_assert_h(rsp->headers_bytes == rsp->headers_len, "headers size mismatch");
-
-    
 
     rsp->state = CPB_HTTP_R_ST_READY_HEADERS;
     return CPB_OK;
