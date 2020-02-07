@@ -33,4 +33,4 @@ server_main: $(SERVER_MAIN_DEPS) libcpb.so
 all : server_main libcpb.so
 server_main: $(SERVER_MAIN_DEPS)
 clean: 
-	@rm -f server_main libcpb.so 2>/dev/null
+	@rm -f server_main libcpb.so oprofile_data perf.data* 2>/dev/null || true

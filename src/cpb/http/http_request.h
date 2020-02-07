@@ -59,9 +59,6 @@ struct cpb_http_header_map {
 struct cpb_request_state {
     struct cpb_server *server; //not owned, must outlive
     struct cpb_eloop *eloop;  //not owned, must outlive
-
-    unsigned char http_major;
-    unsigned char http_minor;
     int socket_fd;
     int input_buffer_len;
     int input_buffer_cap;
@@ -75,6 +72,9 @@ struct cpb_request_state {
     
     bool is_forked; //just a sanity check
     bool is_cancelled; //this can be done better
+    
+    unsigned char http_major;
+    unsigned char http_minor;
     
     int content_length; //only there in messages with a body AND (!is_chunked)
     int bytes_read; //doesn't care about encoding

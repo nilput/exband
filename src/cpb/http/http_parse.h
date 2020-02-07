@@ -24,6 +24,7 @@ static inline int cpb_str_next_crlf(char *s, int idx, int len) {
         idx += 2;
     return cpb_memmem(s, idx, len, "\r\n", 2);
 }
+//it seems using memchr is slower because we're dealing with small distances until next match
 static inline int cpb_str_next_lws(char *s, int idx, int len) {
     return cpb_memchr(s, idx, len, ' ');
 }

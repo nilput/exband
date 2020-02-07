@@ -445,43 +445,6 @@ static struct cpb_error cpb_response_async_write(struct cpb_request_state *rqsta
 }
 
 
-static struct cpb_error cpb_response_write(struct cpb_request_state *rqstate) {
-    struct cpb_response_state *rsp = &rqstate->resp;
-    int rv = CPB_OK;
-    if (rsp->state != CPB_HTTP_R_ST_SENDING) {
-        rv = CPB_INVALID_STATE_ERR;
-        goto ret;
-    }
-
-    int total_bytes  = rsp->status_len + rsp->headers_len + rsp->body_len;
-
-    int current_written_bytes = rsp->written_bytes;
-    struct cpb_event ev;
-
-    if (current_written_bytes < total_bytes) {
-        size_t offset =  rsp->status_begin_index + current_written_bytes;
-
-        ssize_t written = write(rqstate->socket_fd,
-                                    rsp->output_buffer + offset,
-                                    total_bytes - current_written_bytes);
-
-        if (written == -1) {
-            if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                rv =  CPB_WRITE_ERR;
-                goto ret;
-            }
-        }
-        else {
-            current_written_bytes += written;
-        }
-    }
-    struct cpb_error cerr = cpb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
-    
-    ret:
-
-    return cerr;
-}
-
 static int cpb_response_end_i(struct cpb_request_state *rqstate) {
     struct cpb_response_state *rsp = &rqstate->resp;
     struct cpb_http_multiplexer *m = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
@@ -625,21 +588,43 @@ static void on_http_read_async(struct cpb_event ev) {
 
 static void on_http_send_sync(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
+    struct cpb_response_state *rsp = &rqstate->resp;
     struct cpb_error err = cpb_make_error(CPB_OK);
     cpb_assert_h(rqstate->is_send_scheduled, "");
     cpb_assert_h(rqstate->resp.state == CPB_HTTP_R_ST_SENDING, "HTTP_SEND scheduled on an unready response");
     RQSTATE_EVENT(stderr, "Handling CPB_HTTP_SEND for rqstate %p\n", rqstate);    
 
-    err = cpb_response_write(rqstate);
+    int total_bytes  = rsp->status_len + rsp->headers_len + rsp->body_len;
+    int current_written_bytes = rsp->written_bytes;
+
+    if (current_written_bytes < total_bytes) {
+        size_t offset =  rsp->status_begin_index + current_written_bytes;
+
+        ssize_t written = write(rqstate->socket_fd,
+                                    rsp->output_buffer + offset,
+                                    total_bytes - current_written_bytes);
+
+        if (written == -1) {
+            if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                err =  cpb_make_error(CPB_WRITE_ERR);
+                goto ret;
+            }
+        }
+        else {
+            current_written_bytes += written;
+        }
+    }
+    err = cpb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
+    
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     cpb_assert_h(mp->next_response == rqstate, "");
     cpb_assert_h(!mp->wants_write, "");
-    mp->wants_write = 1;
-    rqstate->is_send_scheduled = 0;
     if (err.error_code != CPB_OK) {
         cpb_request_handle_socket_error(rqstate);
         goto ret;
     }
+    mp->wants_write = 1;
+    rqstate->is_send_scheduled = 0;
     if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
         cpb_request_on_response_done(rqstate);
     }

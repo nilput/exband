@@ -234,6 +234,9 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
     #ifdef CPB_SET_TCPNODELAY
         setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (int [1]){1}, sizeof(int));
     #endif
+    #ifdef CPB_SET_TCPQUICKACK
+        setsockopt(socket_fd, IPPROTO_TCP, TCP_QUICKACK, (int [1]){1}, sizeof(int));
+    #endif
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer(s, socket_fd);
     if (mp == NULL)
         return CPB_SOCKET_ERR;

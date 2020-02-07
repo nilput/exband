@@ -6,7 +6,7 @@
 #include "../cpb.h"
 #include "../cpb_errors.h"
 
-#include "http_server.h"
+#include "http_server_internal.h"
 struct cpb_server_listener_select {
     struct cpb_server_listener head;
     struct cpb_server *server; //not owned, must outlive
@@ -87,24 +87,19 @@ static int cpb_server_listener_select_listen(struct cpb_server_listener *listene
     }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {
-        if (i == s->listen_socket_fd)
-            continue;
-        struct cpb_http_multiplexer *m = cpb_server_get_multiplexer(s, i);
-        if (m->state == CPB_MP_EMPTY)
-            continue; //can be stdin or whatever
-        cpb_assert_h(!!m->creading, "");
-        if ( FD_ISSET(i, &lis->read_fd_set)              &&
-             m->creading->istate != CPB_HTTP_I_ST_DONE &&
-            !m->creading->is_read_scheduled              ) 
+        struct cpb_http_multiplexer *m = cpb_server_get_multiplexer_i(s, i);
+        if (m->state == CPB_MP_EMPTY || m->eloop != lis->eloop)
+            continue; //can be stdin or whatever, or owned by another thread
+        cpb_assert_h(m->wants_read || (!m->creading /*destroyed*/) || m->creading->is_read_scheduled, "");
+        if ( FD_ISSET(i, &lis->read_fd_set) &&
+             m->wants_read                    )
         {
             /* Data arriving on an already-connected socket. */
             cpb_server_on_read_available(s, m);
         
         }
-        if ( FD_ISSET(i, &lis->write_fd_set)                         &&
-             m->next_response                                      &&
-             m->next_response->resp.state == CPB_HTTP_R_ST_SENDING &&
-            !m->next_response->is_send_scheduled                      )
+        if ( FD_ISSET(i, &lis->write_fd_set)   &&
+             m->wants_write                      )
         {
             cpb_server_on_write_available(s, m);
         }

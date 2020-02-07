@@ -29,11 +29,17 @@
 #else
     #define CPB_ALIGN(bytes)
 #endif
-#if 0
+#if 1
     #define USE_GNU_MEMMEM
 #endif
-#if 0
+#if 1
     #define CPB_SET_TCPNODELAY
+#endif
+#if 1
+    #define CPB_SET_TCPQUICKACK
+#endif
+#if 1
+    #define CPB_SCHED
 #endif
 struct cpb {
     //this can be used for custom allocators in the future
