@@ -1,24 +1,27 @@
-future plan:
+processes:
+    We can have 1 processes, in this case:
+        the server will start on this process and listen for and handles http events
+        it'll spawn event loops threads
+    We can have n_processes > 1, in this case:
+        main process:
+            will do bind/listen but will not handle http events,
+            will not spawn event loops threads
+            only monitor other worker processes
+        worker processes:
+            handle http events,
+            spawn event loops threads
 eloops:
     1 per cpu core
-    its internal events queues will not be threadsafe
-    but it will have a seperate threadsafe queue for receiving communication from threadpool
-    one task per eloop queue iteration will be taking all receive events from
-    the threadsafe queue to the non threadsafe queue
+    its internal event queues will not be threadsafe
+    but it will have a seperate threadsafe queue for receiving communication from other threads
+    one task per eloop queue iteration will be taking all receive events from the threadsafe queue to the non threadsafe queue
 threadpool:
     1 per cpb, should have nthreads way more than n cpu cores
 threadpool -> eloop communication:
-    eloop offloads writes and reads to the threadpool as tasks
+    eloop recieve writes and reads to the threadpool as tasks
     threadpool knows which eloop handles events on the task
     and submits results to its threadsafe queue on completion
 
-considerations:
-    How to do this in a way that doesn't restrict us to one way of doing things namely threads, what abstractions might be used
 Todo list:
-    implement TS queue in eloops                                                [ ]
-    take received events from TS queue to non TS queue                          [ ]
-    use threadpool for HTTP read/write                                          [ ]
-    run multiple eloops                                                         [ ]
-    figure out optimal number of threads for threadpool                         [ ]
     Have a fast Multiwrite Mulitread  TS queue implementation for threadpool    [ ]
     Have a fast Multiwrite Singleread TS queue implementation for eloop         [ ]

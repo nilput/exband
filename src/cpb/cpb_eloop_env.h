@@ -1,6 +1,7 @@
 #ifndef CPB_ELOOP_ENV_H
 #define CPB_ELOOP_ENV_H
-#define CPB_MAX_ELOOPS 128
+
+#include "cpb_config.h"
 #include "cpb_eloop.h"
 #include "cpb_thread.h"
 #include "cpb_threadpool.h"
@@ -67,13 +68,26 @@ static struct cpb_eloop * cpb_eloop_env_stop(struct cpb_eloop_env *elist) {
 static void *cpb_eloop_env_thread_runner(void *p) {
     struct cpb_thread *t = p;
     struct cpb_eloop *eloop = t->data;
+    #ifdef CPB_SCHED
+        if (t->bind_cpu != -1) {
+            
+            int ncores = cpb_hw_cpu_count();
+            if (ncores > 0) { 
+                t->bind_cpu %= ncores;
+                cpb_hw_bind_to_core(t->bind_cpu);
+            }
+            cpb_hw_thread_sched_important();
+        }
+    #endif
     cpb_eloop_run(eloop);
     return NULL;
 }
 
-static struct cpb_error cpb_eloop_env_run(struct cpb_eloop_env *elist) {
+//cpu offset is used for cpu affinity, it's not important (can be 0)
+static struct cpb_error cpb_eloop_env_run(struct cpb_eloop_env *elist, int cpu_offset) {
     for (int i=0; i<elist->nloops; i++) {
         cpb_thread_new(elist->cpb_ref, i, &elist->tp, cpb_eloop_env_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
+        elist->loops[i].thread->bind_cpu = cpu_offset + i;
     }
     return cpb_make_error(CPB_OK);
 }

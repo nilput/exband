@@ -16,3 +16,4 @@ vgcore*
 oprofile_data
 cpbin.bundle
 perf.data*
+.gdb_history

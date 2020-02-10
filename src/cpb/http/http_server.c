@@ -12,6 +12,7 @@
 
 #include "../cpb_errors.h"
 #include "../cpb_eloop_env.h"
+#include "../cpb_pcontrol.h"
 #include "http_server_internal.h"
 #include "http_server_events_internal.h"
 #include "http_parse.h"
@@ -61,7 +62,14 @@ static void module_handler(struct cpb_request_state *rqstate, enum cpb_request_h
     struct cpb_server *s = rqstate->server;
     int ignored = s->module_request_handler(s->handler_module, rqstate, reason);
 }
-struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config) {
+
+static void server_postfork(void *data) {
+    struct cpb_server *s = data;
+    //make sure epoll fd isnt inherited
+    fprintf(stderr, "server_postfork %d\n", getpid());
+    cpb_server_listener_switch(s, s->config.polling_backend.str);
+}
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_pcontrol *pcontrol, struct cpb_eloop_env *elist, struct cpb_http_server_config config) {
     struct cpb_error err = {0};
     s->cpb = cpb_ref;
     s->elist = elist;
@@ -69,6 +77,7 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
     s->handler_module    = NULL;
     s->module_request_handler = NULL;
     s->n_loaded_modules = 0;
+    s->pcontrol = pcontrol;
 
     s->config = config;
 
@@ -133,6 +142,10 @@ struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *c
         }
         s->n_loaded_modules++;
     }
+
+    if (cpb_pcontrol_add_postfork_hook(s->pcontrol, server_postfork, s) != CPB_OK) {
+        goto err4;
+    }
     
     return cpb_make_error(CPB_OK);
 err4:
@@ -162,10 +175,10 @@ int cpb_server_set_module_request_handler(struct cpb_server *s, struct cpb_http_
     return CPB_OK;
 }
 
-struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, int port) {
+struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_pcontrol *pcontrol, struct cpb_eloop_env *elist, int port) {
     struct cpb_http_server_config config = cpb_http_server_config_default(cpb_ref);
     config.http_listen_port = port;
-    struct cpb_error err = cpb_server_init_with_config(s, cpb_ref, elist, config);
+    struct cpb_error err = cpb_server_init_with_config(s, cpb_ref, pcontrol, elist, config);
     if (err.error_code != CPB_OK) {
         cpb_http_server_config_deinit(cpb_ref, &config);
     }
@@ -257,9 +270,9 @@ int cpb_server_init_multiplexer(struct cpb_server *s, struct cpb_eloop *eloop, i
 
     struct cpb_request_state *rqstate = cpb_server_new_rqstate(s, mp->eloop, socket_fd);
     fprintf(stderr,
-            "Server: connection from host %s, port %hu. assigned to eloop: %d/%d\n",
+            "Server: connection from host %s, port %hu. assigned to eloop: %d/%d, process: %d\n",
             inet_ntoa (clientname.sin_addr),
-            ntohs (clientname.sin_port), eloop_idx, s->elist->nloops);
+            ntohs (clientname.sin_port), eloop_idx, s->elist->nloops, getpid());
     listener->new_connection(listener, socket_fd);
     
     mp->creading = rqstate;
@@ -336,6 +349,11 @@ void cpb_server_event_listen_loop(struct cpb_event ev) {
 
 struct cpb_error cpb_server_listen(struct cpb_server *s) {
     //TODO: error handling
+    if (!cpb_pcontrol_is_single_process(s->pcontrol) &&
+        !cpb_pcontrol_is_worker(s->pcontrol) ) 
+    {
+        return cpb_make_error(CPB_OK);
+    }
     for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
         struct cpb_event new_ev = {.handle = cpb_server_event_listen_loop,
                             .msg = {

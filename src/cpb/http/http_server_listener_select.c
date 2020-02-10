@@ -59,31 +59,7 @@ static int cpb_server_listener_select_listen(struct cpb_server_listener *listene
 
     /* Service Connection requests. */
     if (FD_ISSET(s->listen_socket_fd, &lis->read_fd_set)) {
-        //TOOD: this should accept in a loop
-        int new_socket;
-        struct sockaddr_in clientname;
-        socklen_t size = sizeof(&clientname);
-        while (1) {
-            new_socket = accept(s->listen_socket_fd,
-                        (struct sockaddr *) &clientname,
-                        &size);
-            if (new_socket < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    err = cpb_make_error(CPB_ACCEPT_ERR);
-                    goto ret;
-                }
-                else {
-                    break;
-                }
-            }
-            if (new_socket >= CPB_SOCKET_MAX) {
-                err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-                goto ret;
-            }
-            struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer(s, new_socket);
-            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
-            int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
-        }
+        cpb_server_accept_new_connections(s, lis->eloop);
     }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {
@@ -128,6 +104,7 @@ static int cpb_server_listener_select_new_connection(struct cpb_server_listener 
 static int cpb_server_listener_select_get_fds(struct cpb_server_listener *listener, struct cpb_server_listener_fdlist **fdlist_out) {
     struct cpb_server_listener_select *lis = (struct cpb_server_listener_select *) listener;
     struct cpb_server *s = lis->server;
+
     int *fds = cpb_malloc(s->cpb, FD_SETSIZE * sizeof(int));
     if (!fds) {
         return CPB_NOMEM_ERR;

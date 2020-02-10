@@ -453,12 +453,6 @@ static int cpb_eloop_receive(struct cpb_eloop *eloop) {
 }
 
 static struct cpb_error cpb_eloop_run(struct cpb_eloop *eloop) {
-    #ifdef CPB_SCHED
-        int ncores = cpb_hw_cpu_count();
-        if (ncores > 0)
-            cpb_hw_bind_to_core(eloop->eloop_id % ncores);
-        cpb_hw_thread_sched_important();
-    #endif
     #define CPB_ELOOP_NPROCESS_OFFLOAD 64
     int nprocessed = 0;
 

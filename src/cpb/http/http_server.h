@@ -2,15 +2,13 @@
 #define CPB_HTTP_SERVER_H
 
 #include "../cpb_errors.h"
-#include "../cpb_eloop_env.h"
+#include "../cpb_config.h"
 #include "http_request.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "cpb_request_state_recycle_array.h"
-#define LISTEN_BACKLOG 8000
-#define CPB_SOCKET_MAX 8192
-#define CPB_SERVER_MAX_MODULES 11
-#define CPB_HTTP_MIN_DELAY 0//ms
+
+
 define_cpb_or(int, struct cpb_or_socket);
 
 /*
@@ -22,6 +20,9 @@ define_cpb_or(int, struct cpb_or_socket);
         Server schedules itself to be ran in one of the event loops
         it manages the lifetime of requests and stores their state
 */
+
+struct cpb_pcontrol;
+struct cpb_eloop_env;
 
 struct cpb_http_server_config {
     int http_listen_port;
@@ -48,8 +49,7 @@ static void cpb_http_server_config_deinit(struct cpb *cpb_ref, struct cpb_http_s
         cpb_str_deinit(cpb_ref, &config->module_specs[i].module_spec);
         cpb_str_deinit(cpb_ref, &config->module_specs[i].module_args);
     }
-    cpb_str_deinit(cpb_ref, &config->polling_backend);
-    
+    cpb_str_deinit(cpb_ref, &config->polling_backend);    
 }
 
 
@@ -58,6 +58,7 @@ typedef void (*cpb_server_request_handler_func)(struct cpb_request_state *rqstat
 struct cpb_server {
     struct cpb *cpb; //not owned, must outlive
     struct cpb_eloop_env *elist; //not owned, must outlive
+    struct cpb_pcontrol *pcontrol; //not owned, must outlive
 
     void (*on_read)(struct cpb_event ev);
     void (*on_send)(struct cpb_event ev);
@@ -106,9 +107,10 @@ struct cpb_request_state *cpb_server_new_rqstate(struct cpb_server *server, stru
 //the eloop it was associated with
 void cpb_server_destroy_rqstate(struct cpb_server *server, struct cpb_eloop *eloop, struct cpb_request_state *rqstate);
 
-struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, int port);
+struct cpb_error cpb_server_init(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_pcontrol *pcontrol, struct cpb_eloop_env *elist, int port);
 /*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
-struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_eloop_env *elist, struct cpb_http_server_config config);
+
+struct cpb_error cpb_server_init_with_config(struct cpb_server *s, struct cpb *cpb_ref, struct cpb_pcontrol *pcontrol, struct cpb_eloop_env *elist, struct cpb_http_server_config config);
 struct cpb_error cpb_server_listen(struct cpb_server *s);
 
 void cpb_server_cancel_requests(struct cpb_server *s, int socket_fd);

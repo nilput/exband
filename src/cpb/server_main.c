@@ -5,6 +5,7 @@
 #include "cpb_errors.h"
 #include "cpb_eloop.h"
 #include "cpb_eloop_env.h"
+#include "cpb_pcontrol.h"
 #include "http/http_server.h"
 #include "http/http_server_listener_epoll.h"
 
@@ -18,9 +19,10 @@ void ordie(int code) {
     }
 }
 
-struct cpb cpb_state;
-struct cpb_server server;
-struct cpb_eloop_env elist;
+static struct cpb           cpb_state;
+static struct cpb_eloop_env elist;
+static struct cpb_pcontrol  pcontrol;
+static struct cpb_server    server;
 
 void int_handler(int sig) {
     if (sig == SIGTERM)
@@ -29,20 +31,12 @@ void int_handler(int sig) {
         fprintf(stderr, "Got SIG %d, killing server\n", sig);
     fflush(stderr);
     cpb_eloop_env_stop(&elist);
-    cpb_eloop_env_join(&elist);
-    cpb_server_deinit(&server);
-    cpb_eloop_env_deinit(&elist);
-    cpb_deinit(&cpb_state);
-    
-    dp_dump();
-
-    if (sig != SIGABRT)
-        exit(1);
+    cpb_pcontrol_stop(&pcontrol);
 }
 void set_handlers() {
-   signal(SIGINT,  int_handler);
+   //signal(SIGINT,  int_handler);
    signal(SIGTERM, int_handler);
-   signal(SIGHUP,  int_handler);
+   //signal(SIGHUP,  int_handler);
    signal(SIGSTOP, int_handler);
    //signal(SIGABRT, int_handler);
    //signal(SIGSEGV, int_handler);
@@ -52,12 +46,14 @@ void set_handlers() {
 struct cpb_config {
     int tp_threads; //threadpool threads
     int nloops; //number of event loops
+    int nproc;  //number of processes
 };
 struct cpb_config cpb_config_default(struct cpb *cpb_ref) {
     (void) cpb_ref;
     struct cpb_config conf = {0};
     conf.tp_threads = 4;
     conf.nloops = 1;
+    conf.nproc = 1;
     return conf;
 }
 
@@ -96,6 +92,11 @@ static int load_configurations(struct vgstate *vg, struct cpb *cpb_ref, struct c
     if (p) {
         int count = atoi(c->input.str + p->value.index);
         config_out->nloops = count;
+    }
+    p = ini_get_value(c, "n_processes");
+    if (p) {
+        int count = atoi(c->input.str + p->value.index);
+        config_out->nproc = count;
     }
     p = ini_get_value(c, "threadpool_size");
     if (p) {
@@ -182,6 +183,8 @@ int main(int argc, char *argv[]) {
     }
     rv = cpb_eloop_env_init(&elist, &cpb_state, cpb_config.nloops);
     ordie(rv);
+    rv = cpb_pcontrol_init(&pcontrol, cpb_config.nproc);
+    ordie(rv);
     fprintf(stderr, "spawning %d eloop%c\n", cpb_config.nloops, cpb_config.nloops != 1 ? 's' : ' ');
     
     rv = cpb_threadpool_set_nthreads(&elist.tp, cpb_config.tp_threads);
@@ -189,7 +192,7 @@ int main(int argc, char *argv[]) {
     ordie(rv);
     
     fprintf(stderr, "Listening on port %d\n", cpb_http_server_config.http_listen_port);
-    erv = cpb_server_init_with_config(&server, &cpb_state, &elist, cpb_http_server_config);
+    erv = cpb_server_init_with_config(&server, &cpb_state, &pcontrol, &elist, cpb_http_server_config);
     ordie(erv.error_code);
 
     if (cpb_strcasel_eq(cpb_http_server_config.polling_backend.str, cpb_http_server_config.polling_backend.len, "epoll", 5)) {
@@ -197,15 +200,26 @@ int main(int argc, char *argv[]) {
         erv.error_code = cpb_server_listener_switch(&server, "epoll");
         ordie(erv.error_code);
     }
+    while (cpb_pcontrol_running(&pcontrol)) {
+        if (cpb_pcontrol_is_single_process(&pcontrol) || cpb_pcontrol_is_worker(&pcontrol)) {
+            if (!cpb_pcontrol_is_single_process(&pcontrol)) {
+                rv = cpb_pcontrol_child_setup(&pcontrol, &elist);
+                ordie(rv);
+            }
+            erv = cpb_server_listen(&server);
+            ordie(erv.error_code);
+            erv = cpb_eloop_env_run(&elist, cpb_pcontrol_worker_id(&pcontrol));
+            ordie(erv.error_code);
+            erv = cpb_eloop_env_join(&elist);
+            ordie(erv.error_code);
+        }
+        else if (cpb_pcontrol_is_master(&pcontrol)) {
+            cpb_pcontrol_maintain(&pcontrol);
+            cpb_sleep(50);
+        }
+    }
     
-    erv = cpb_server_listen(&server);
-    ordie(erv.error_code);
 
-    erv = cpb_eloop_env_run(&elist);
-    ordie(erv.error_code);
-
-    erv = cpb_eloop_env_join(&elist);
-    ordie(erv.error_code);
     stop();
 
 }

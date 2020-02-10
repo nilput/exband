@@ -2,7 +2,7 @@
 #include "cpb/http/http_server_module.h"
 #include "cpb/http/http_request.h"
 #include "cpb/http/http_decode.h"
-#include <sqlite3.h
+#include <sqlite3.h>
 struct pastebin_module {
     struct cpb_http_server_module head;
     struct cpb *cpb_ref;
@@ -67,7 +67,7 @@ struct sql_value {
     char *value;
     int len;
     int value_type; /*SQLITE_BLOB or SQLITE_TEXT*/
-}
+};
 /*after the results are used call sqlite3_finalize(*destroy_handle)*/
 static int exec_sql_returning_one(sqlite3 *db,
                                     char *stmt_sql,

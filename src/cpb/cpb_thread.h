@@ -6,9 +6,10 @@ struct cpb_threadpool;
 struct cpb_thread {
     //can be null if thread is not part of a threadpool
     struct cpb_threadpool *tp; //not owned, must outlive
+    int bind_cpu;
     int tid;
     void *data;
-
+    
     pthread_t thread;
 };
 
@@ -27,6 +28,7 @@ static int cpb_thread_new(struct cpb *cpb_ref, int tid, struct cpb_threadpool *t
     t->tid = tid;
     t->tp = tp;
     t->data = data;
+    t->bind_cpu = -1;
     int rv = pthread_create(&t->thread, NULL, run, t);
     if (rv != 0) {
         cpb_free(cpb_ref, t);

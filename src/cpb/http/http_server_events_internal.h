@@ -30,6 +30,24 @@ static void cpb_request_handle_http_error(struct cpb_request_state *rqstate) {
     cpb_server_cancel_requests(rqstate->server, rqstate->socket_fd);
 }
 
+static void mark_read_scheduled(struct cpb_request_state *rqstate, int mark) {
+    if (mark)
+        cpb_assert_h(!rqstate->is_read_scheduled, "");
+    else
+        cpb_assert_h(rqstate->is_read_scheduled, "");
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+    rqstate->is_read_scheduled = !!mark;
+    mp->wants_read = !mark;
+}
+static void mark_send_scheduled(struct cpb_request_state *rqstate, int mark) {
+    if (mark)
+        cpb_assert_h(!rqstate->is_send_scheduled, "");
+    else
+        cpb_assert_h(rqstate->is_send_scheduled, "");
+    struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+    rqstate->is_send_scheduled = !!mark;
+    mp->wants_write = !mark;
+}
 
 static void cpb_request_handle_fatal_error(struct cpb_request_state *rqstate) {
     //TODO should terminate connection not whole server
@@ -509,8 +527,7 @@ static int cpb_response_end_i(struct cpb_request_state *rqstate) {
         // ^ this was handled by adding is_read_scheduled and is_send_scheduled flags
         //   need to confirm this solves i
         RQSTATE_EVENT(stderr, "Scheduled rqstate %p for send because cpb_response_end() was called, socket %d\n", rqstate, m->socket_fd);
-        rqstate->is_send_scheduled = 1;
-        m->wants_write = 0;
+        mark_send_scheduled(rqstate, 1);
         struct cpb_event ev;
         cpb_event_http_init(rqstate->server, &ev, CPB_HTTP_SEND, rqstate, 0);
         ev.handle(ev);
@@ -566,9 +583,8 @@ static struct cpb_error cpb_request_read_from_client(struct cpb_request_state *r
 static void on_http_read_sync(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
     struct cpb_error err = cpb_make_error(CPB_OK);
-    cpb_assert_h(rqstate->is_read_scheduled, "");
+    mark_read_scheduled(rqstate, 0);
     RQSTATE_EVENT(stderr, "Handling CPB_HTTP_READ for rqstate %p\n", rqstate);
-    rqstate->is_read_scheduled = 0;
     err = cpb_request_read_from_client(rqstate);
     if (err.error_code != CPB_OK) {
         cpb_request_handle_http_error(rqstate);
@@ -623,8 +639,7 @@ static void on_http_send_sync(struct cpb_event ev) {
         cpb_request_handle_socket_error(rqstate);
         goto ret;
     }
-    mp->wants_write = 1;
-    rqstate->is_send_scheduled = 0;
+    mark_send_scheduled(rqstate, 0);
     if (rqstate->resp.state == CPB_HTTP_R_ST_DONE) {
         cpb_request_on_response_done(rqstate);
     }
@@ -658,16 +673,15 @@ static void on_http_input_buffer_full(struct cpb_event ev) {
         cpb_request_handle_socket_error(rqstate);
         err = cpb_make_error(rv);
     }
-    cpb_assert_h(rqstate->is_read_scheduled, "");
-    rqstate->is_read_scheduled = 0;
+    mark_read_scheduled(rqstate, 0);
     /*TODO: else reschedule?*/
 }
 static void on_http_did_read(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
     struct cpb_error err = cpb_make_error(CPB_OK);
     RQSTATE_EVENT(stderr, "Handling async read notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
-    cpb_assert_h(rqstate->is_read_scheduled, "");
-    rqstate->is_read_scheduled = 0;
+    mark_read_scheduled(rqstate, 0);
+    
     
     cpb_assert_h(rqstate->istate != CPB_HTTP_I_ST_DEAD, ""); 
     int len  = ev.msg.u.iip.arg1;
@@ -679,8 +693,7 @@ static void on_http_did_write(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
     struct cpb_error err = cpb_make_error(CPB_OK);
     RQSTATE_EVENT(stderr, "Handling async write notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
-    cpb_assert_h(rqstate->is_send_scheduled, "");
-    rqstate->is_send_scheduled = 0;
+    mark_send_scheduled(rqstate, 0);
     cpb_assert_h(rqstate->resp.state != CPB_HTTP_R_ST_DEAD, "");
     int len  = ev.msg.u.iip.arg1;
     err = cpb_response_on_bytes_written(rqstate, rqstate->resp.written_bytes, len);
@@ -728,18 +741,15 @@ static void on_http_read_io_error(struct cpb_event ev) {
     cpb_assert_h(rqstate->is_read_scheduled, "");
     
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-    mp->wants_read = 1;
-    rqstate->is_read_scheduled = 0;
+    mark_read_scheduled(rqstate, 0);
     cpb_request_handle_socket_error(rqstate);
 }
 
 
 static void on_http_write_io_error(struct cpb_event ev) {
     struct cpb_request_state *rqstate = ev.msg.u.iip.argp;
-    cpb_assert_h(rqstate->is_send_scheduled, "");
     struct cpb_http_multiplexer *mp = cpb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-    rqstate->is_send_scheduled = 0;
-    mp->wants_write = 1;
+    mark_send_scheduled(rqstate, 0);
     cpb_request_handle_socket_error(rqstate);
 }
 
@@ -767,11 +777,9 @@ static inline void cpb_server_on_read_available_i(struct cpb_server *s, struct c
     struct cpb_event ev;
     cpb_assert_h((!!m) && m->state == CPB_MP_ACTIVE, "");
     cpb_assert_h(!!m->creading, "");
-    cpb_assert_h(!m->creading->is_read_scheduled, "");
     
-    int flags = s->config.http_use_aio;
-    cpb_event_http_init(s, &ev, CPB_HTTP_READ, m->creading, flags);
-    m->creading->is_read_scheduled = 1;
+    cpb_event_http_init(s, &ev, CPB_HTTP_READ, m->creading, 0);
+    mark_read_scheduled(m->creading, 1);
     cpb_eloop_append(m->eloop, ev);
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because we found out "
                     "read is available for socket %d\n", m->creading, m->socket_fd);
@@ -779,11 +787,12 @@ static inline void cpb_server_on_read_available_i(struct cpb_server *s, struct c
 }
 static inline void cpb_server_on_write_available_i(struct cpb_server *s, struct cpb_http_multiplexer *m) {
     struct cpb_event ev;
-    int flags = s->config.http_use_aio;
-    cpb_event_http_init(s, &ev, CPB_HTTP_SEND, m->next_response, flags);
-    m->next_response->is_send_scheduled = 1;
+    cpb_event_http_init(s, &ev, CPB_HTTP_SEND, m->next_response, 0);
+    cpb_assert_h(!!m->next_response, "");
+    mark_send_scheduled(m->next_response, 1);
     cpb_eloop_append(m->eloop, ev);
     
 }
+
 
 #endif //CPB_HTTP_SERVER_EVENTS_INTERNAL

@@ -26,6 +26,7 @@ struct cpb_server_listener_epoll {
 
     int efd;
     struct epoll_event events[MAX_EVENTS];
+    int highest_fd;
 };
 
 static int cpb_server_listener_epoll_destroy(struct cpb_server_listener *listener);
@@ -46,6 +47,7 @@ int cpb_server_listener_epoll_new(struct cpb_server *s, struct cpb_eloop *eloop,
     lis->head.get_fds           = cpb_server_listener_epoll_get_fds;
     lis->server = s;
     lis->eloop = eloop;
+    lis->highest_fd = 0;
     
     lis->efd = epoll_create1(0);
     if (lis->efd < 0) {
@@ -99,6 +101,7 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
                 incoming_connections = 1;
             continue; //can be stdin or whatever
         }
+        cpb_assert_h(m->eloop == lis->eloop, "");
         cpb_assert_h(!!m->next_response, "");
         cpb_assert_h(m->wants_read || (!m->creading /*destroyed*/) || m->creading->is_read_scheduled, "");
         if ( (ev->events & EPOLLIN) &&
@@ -118,27 +121,7 @@ static int cpb_server_listener_epoll_listen(struct cpb_server_listener *listener
 
     /* Service Connection requests. */
     if (incoming_connections) {
-        int new_socket;
-        struct sockaddr_in clientname;
-        socklen_t size = sizeof(&clientname);
-        while (1) {
-            new_socket = accept(s->listen_socket_fd,
-                        (struct sockaddr *) &clientname,
-                        &size);
-            if (new_socket < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    err = cpb_make_error(CPB_ACCEPT_ERR);
-                }
-                goto ret;
-            }
-            if (new_socket >= CPB_SOCKET_MAX) {
-                err = cpb_make_error(CPB_OUT_OF_RANGE_ERR);
-                goto ret;
-            }
-            struct cpb_http_multiplexer *nm = cpb_server_get_multiplexer_i(s, new_socket);
-            cpb_assert_h(nm && (nm->state == CPB_MP_EMPTY || nm->state == CPB_MP_DEAD), "");
-            int rv = cpb_server_init_multiplexer(s, lis->eloop, new_socket, clientname);
-        }
+        cpb_server_accept_new_connections(s, lis->eloop);
     }
 
 
@@ -163,28 +146,63 @@ static int cpb_server_listener_epoll_close_connection(struct cpb_server_listener
 
     struct epoll_event event;
     epoll_ctl(lis->efd, EPOLL_CTL_DEL, socket_fd, &event);
+    if (socket_fd == lis->highest_fd)
+        lis->highest_fd--; //this is obviously not fool proof
 
     return CPB_OK;
 }
+#if 1
+    #define EPOLL_EVENTS (EPOLLIN | EPOLLOUT | EPOLLET)
+                          //read()   write()    ^edge triggered
+#else
+    #define EPOLL_EVENTS (EPOLLIN | EPOLLOUT)
+                          //read()   write() 
+#endif
+
 static int cpb_server_listener_epoll_new_connection(struct cpb_server_listener *listener, int socket_fd) {
     struct cpb_server_listener_epoll *lis = (struct cpb_server_listener_epoll *) listener;
     struct cpb_server *s = lis->server;
 
     struct epoll_event event;
     event.data.fd = socket_fd;
-
-    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                   //read()   write()    ^edge triggered
-
-    //event.events = EPOLLIN | EPOLLOUT;
-                   //read()   write() 
+    event.events = EPOLL_EVENTS;
 
     int rv = epoll_ctl(lis->efd, EPOLL_CTL_ADD, socket_fd, &event);
+    lis->highest_fd = lis->highest_fd < socket_fd ? socket_fd : lis->highest_fd;
     return rv >= 0 ? CPB_OK : CPB_EPOLL_ADD_ERROR;
 }
 static int cpb_server_listener_epoll_get_fds(struct cpb_server_listener *listener, struct cpb_server_listener_fdlist **fdlist_out) {
     struct cpb_server_listener_epoll *lis = (struct cpb_server_listener_epoll *) listener;
     struct cpb_server *s = lis->server;
-    *fdlist_out = NULL;
-    return CPB_UNSUPPORTED;
+
+    int *fds = NULL;
+    if (lis->highest_fd > 0) {
+        cpb_malloc(s->cpb, lis->highest_fd * sizeof(int));
+        if (!fds) {
+            return CPB_NOMEM_ERR;
+        }
+    }
+    struct cpb_server_listener_fdlist *fdlist = cpb_malloc(s->cpb, sizeof(struct cpb_server_listener_fdlist));
+    if (!fdlist) {
+        cpb_free(s->cpb, fdlist);
+        return CPB_NOMEM_ERR;
+    }
+    fdlist->fds = fds;
+    fdlist->len = 0;
+
+    for (int i=0; i<lis->highest_fd; i++) {
+        struct epoll_event event;
+        event.data.fd = i;
+        event.events = EPOLL_EVENTS;
+        int rv = epoll_ctl(lis->efd, EPOLL_CTL_ADD, i, &event);
+        
+        if (rv == -1 && errno == EEXIST) {
+            fdlist->fds[fdlist->len++] = i;
+        }
+        else if (rv == 0) {
+            epoll_ctl(lis->efd, EPOLL_CTL_DEL, i, &event);
+        }
+    }
+    *fdlist_out = fdlist;
+    return CPB_OK;
 }
