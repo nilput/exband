@@ -10,6 +10,10 @@
 #define CPB_SOCKET_MAX 8192
 #define CPB_SERVER_MAX_MODULES 11
 #define CPB_HTTP_MIN_DELAY 0//ms
+
+#define CPB_USE_READ_WRITE_FOR_TCP
+#undef  CPB_USE_READ_WRITE_FOR_TCP
+
 /*End Server configuration*/
 /*Pcontrol config*/
 #define CPB_MAX_PROCESSES 128

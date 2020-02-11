@@ -308,7 +308,11 @@ static void cpb_request_async_read_from_client_runner(struct cpb_thread *thread,
     struct cpb_event ev;
     int read_bytes;
 
+#ifdef CPB_USE_READ_WRITE_FOR_TCP
     nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
+#else
+    nbytes = recv(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes, MSG_DONTWAIT);
+#endif
 
     if (nbytes < 0) {
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
@@ -396,9 +400,16 @@ static void cpb_request_async_write_runner(struct cpb_thread *thread, struct cpb
         int sum = 0;
         dp_useless(sum);
 
+#ifdef CPB_USE_READ_WRITE_FOR_TCP
         ssize_t written = write(rqstate->socket_fd,
                                 rqstate->resp.output_buffer + offset,
                                 total_bytes - current_written_bytes);
+#else
+        ssize_t written = send(rqstate->socket_fd,
+                                            rsp->output_buffer + offset,
+                                            total_bytes - current_written_bytes,
+                                            MSG_DONTWAIT);
+#endif
     
         if (written == -1) {
             if (errno != EWOULDBLOCK && errno != EAGAIN) {
@@ -543,7 +554,12 @@ static struct cpb_error cpb_request_read_from_client(struct cpb_request_state *r
     int avbytes = cpb_request_input_buffer_size(rqstate) - rqstate->input_buffer_len - 1;
     int nbytes;
     struct cpb_error err = {0};
+    
+    #ifdef CPB_USE_READ_WRITE_FOR_TCP
     nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
+#else
+    nbytes = recv(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes, MSG_DONTWAIT);
+#endif
 
     if (nbytes < 0) {
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
@@ -615,11 +631,16 @@ static void on_http_send_sync(struct cpb_event ev) {
 
     if (current_written_bytes < total_bytes) {
         size_t offset =  rsp->status_begin_index + current_written_bytes;
-
+#ifdef CPB_USE_READ_WRITE_FOR_TCP
         ssize_t written = write(rqstate->socket_fd,
                                     rsp->output_buffer + offset,
                                     total_bytes - current_written_bytes);
-
+#else
+        ssize_t written = send(rqstate->socket_fd,
+                                    rsp->output_buffer + offset,
+                                    total_bytes - current_written_bytes,
+                                    MSG_DONTWAIT);
+#endif
         if (written == -1) {
             if (errno != EWOULDBLOCK && errno != EAGAIN) {
                 err =  cpb_make_error(CPB_WRITE_ERR);
