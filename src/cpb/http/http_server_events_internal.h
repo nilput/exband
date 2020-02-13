@@ -67,7 +67,7 @@ static void cpb_request_call_handler(struct cpb_request_state *rqstate, enum cpb
 static void cpb_request_lifetime(struct cpb_http_multiplexer *mp, struct cpb_request_state *rqstate) {
     if (!rqstate->is_read_scheduled && !rqstate->is_send_scheduled ) {
         //FIXME: if cancelled, are we sure no one else has a reference to it?
-        if (rqstate->istate == CPB_HTTP_I_ST_DONE || rqstate->is_cancelled) {
+        if ((rqstate->istate == CPB_HTTP_I_ST_DONE && rqstate->resp.state == CPB_HTTP_R_ST_DONE) || rqstate->is_cancelled) {
             if (!rqstate->is_cancelled)
                 cpb_assert_h(mp->creading != rqstate && mp->next_response != rqstate, "");
             cpb_server_destroy_rqstate(rqstate->server, mp->eloop, rqstate);

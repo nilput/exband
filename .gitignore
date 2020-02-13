@@ -17,3 +17,5 @@ oprofile_data
 cpbin.bundle
 perf.data*
 .gdb_history
+*.pyc
+src/cpb/mods/python/build/_cpb_ffi.*

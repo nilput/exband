@@ -25,7 +25,7 @@ int cpb_http_server_module_load(struct cpb *cpb_ref, struct cpb_server *server, 
         cpb_str_deinit(cpb_ref, &func_name);
         return err;
     }
-    void *handle = dlopen(dll_name.str, RTLD_LAZY);
+    void *handle = dlopen(dll_name.str, RTLD_LAZY | RTLD_GLOBAL);
     if (!handle) {
         char *e = dlerror();
         fprintf(stderr, "Failed to load lib: \"%s\": %s\n", dll_name.str, e ? e : "");

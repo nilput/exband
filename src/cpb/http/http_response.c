@@ -20,6 +20,13 @@ int cpb_response_body_buffer_ensure(struct cpb_request_state *rqstate, size_t ca
     }
     return CPB_OK;
 }
+
+int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *s) {
+    return cpb_response_append_body(rqstate, s, strlen(s));
+}
+
+
+
 //Takes ownership of both name and value
 int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value) {
     struct cpb_response_state *rsp = &rqstate->resp;
@@ -50,6 +57,31 @@ int cpb_response_set_header(struct cpb_request_state *rqstate, struct cpb_str *n
         return CPB_OK;
     }
     return cpb_response_add_header(rqstate, name, value);
+}
+
+int cpb_response_set_header_c(struct cpb_request_state *rqstate, char *name, char *value) {
+    struct cpb_str sname, svalue;
+    int rv;
+    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &sname, name)) != CPB_OK) {
+        return rv;
+    }
+    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &svalue, name)) != CPB_OK) {
+        cpb_str_deinit(rqstate->server->cpb, &sname);
+        return rv;
+    }
+    return cpb_response_set_header(rqstate, &sname, &svalue);
+}
+int cpb_response_add_header_c(struct cpb_request_state *rqstate, char *name, char *value) {
+    struct cpb_str sname, svalue;
+    int rv;
+    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &sname, name)) != CPB_OK) {
+        return rv;
+    }
+    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &svalue, name)) != CPB_OK) {
+        cpb_str_deinit(rqstate->server->cpb, &sname);
+        return rv;
+    }
+    return cpb_response_add_header(rqstate, &sname, &svalue);
 }
 
 int cpb_response_redirect_and_end(struct cpb_request_state *rqstate, int status_code, const char *location) {

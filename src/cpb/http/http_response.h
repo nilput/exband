@@ -115,6 +115,12 @@ static int cpb_response_get_header_index(struct cpb_request_state *rqstate, cons
 int cpb_response_set_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
 //Takes ownership of both name and value
 int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
+
+//doesnt take ownership
+int cpb_response_add_header_c(struct cpb_request_state *rqstate, char *name, char *value);
+//doesnt take ownership
+int cpb_response_set_header_c(struct cpb_request_state *rqstate, char *name, char *value);
+
 static size_t cpb_response_body_available_bytes(struct cpb_request_state *rqstate) {
     struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
@@ -139,10 +145,8 @@ static int cpb_response_append_body(struct cpb_request_state *rqstate, char *s, 
     rsp->body_len += len;
     return CPB_OK;
 }
-static int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *s) {
-    return cpb_response_append_body(rqstate, s, strlen(s));
-}
 
+int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *s);
 
 static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struct cpb_eloop *eloop) {
     struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
