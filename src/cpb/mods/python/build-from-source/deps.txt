@@ -1,0 +1,12 @@
+sudo apt install \
+libbz2-dev \
+libncursesw5-dev \
+libgdbm-dev \
+liblzma-dev \
+libsqlite3-dev \
+tk-dev \
+uuid-dev \
+libreadline-dev \
+zlib1g-dev \
+libffi-dev \
+libssl-dev

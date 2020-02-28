@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 from cffi import FFI
 ffibuilder = FFI()
 ffibuilder.cdef('struct cpb;')
