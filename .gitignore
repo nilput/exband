@@ -19,3 +19,4 @@ perf.data*
 .gdb_history
 *.pyc
 src/cpb/mods/python/build/_cpb_ffi.*
+.cipd
