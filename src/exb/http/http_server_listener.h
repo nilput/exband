@@ -1,26 +1,26 @@
-#ifndef CPB_HTTP_SERVER_LISTENER_H
-#define CPB_HTTP_SERVER_LISTENER_H
-#include "../cpb.h"
+#ifndef EXB_HTTP_SERVER_LISTENER_H
+#define EXB_HTTP_SERVER_LISTENER_H
+#include "../exb.h"
 
-struct cpb_server;
-struct cpb_eloop;
-struct cpb_server_listener_fdlist;
+struct exb_server;
+struct exb_eloop;
+struct exb_server_listener_fdlist;
 //select or epoll or whatever
-struct cpb_server_listener {
-    int (*listen)(struct cpb_server_listener *lis);
-    int (*close_connection)(struct cpb_server_listener *lis, int socket_fd);
-    int (*new_connection)(struct cpb_server_listener *lis, int socket_fd);
-    int (*destroy)(struct cpb_server_listener *lis);
-    int (*get_fds)(struct cpb_server_listener *lis, struct cpb_server_listener_fdlist **fdlist_out);
+struct exb_server_listener {
+    int (*listen)(struct exb_server_listener *lis);
+    int (*close_connection)(struct exb_server_listener *lis, int socket_fd);
+    int (*new_connection)(struct exb_server_listener *lis, int socket_fd);
+    int (*destroy)(struct exb_server_listener *lis);
+    int (*get_fds)(struct exb_server_listener *lis, struct exb_server_listener_fdlist **fdlist_out);
 };
 
-struct cpb_server_listener_fdlist {
+struct exb_server_listener_fdlist {
     int *fds;
     int len;
 };
-static void cpb_server_listener_fdlist_destroy(struct cpb *cpb, struct cpb_server_listener_fdlist *fdlist) {
+static void exb_server_listener_fdlist_destroy(struct exb *exb, struct exb_server_listener_fdlist *fdlist) {
     if (fdlist)
-        cpb_free(cpb, fdlist->fds);
-    cpb_free(cpb, fdlist);
+        exb_free(exb, fdlist->fds);
+    exb_free(exb, fdlist);
 }
-#endif // CPB_HTTP_SERVER_LISTENER_H
+#endif // EXB_HTTP_SERVER_LISTENER_H

@@ -1,92 +1,92 @@
 #include <stdlib.h>
 #include <stdio.h>
-#ifndef CPB_ERRORS_H
-#define CPB_ERRORS_H
+#ifndef EXB_ERRORS_H
+#define EXB_ERRORS_H
 
 #define CPERR(error_name)
-#define CPB_ERR_LIST \
-    CPERR(CPB_OK) \
-    CPERR(CPB_EOF) \
-    CPERR(CPB_CHILD) \
-    CPERR(CPB_NOT_FOUND) \
-    CPERR(CPB_INIT_ERROR) \
-    CPERR(CPB_MODULE_LOAD_ERROR) \
-    CPERR(CPB_SOCKET_ERR) \
-    CPERR(CPB_SELECT_ERR) \
-    CPERR(CPB_READ_ERR) \
-    CPERR(CPB_WRITE_ERR) \
-    CPERR(CPB_ACCEPT_ERR) \
-    CPERR(CPB_BIND_ERR) \
-    CPERR(CPB_OUT_OF_RANGE_ERR) \
-    CPERR(CPB_BUFFER_FULL_ERR) \
-    CPERR(CPB_INVALID_STATE_ERR) \
-    CPERR(CPB_INVALID_INT_ERR) \
-    CPERR(CPB_LISTEN_ERR) \
-    CPERR(CPB_HTTP_ERROR) \
-    CPERR(CPB_INVALID_ARG_ERR) \
-    CPERR(CPB_UNSUPPORTED) \
-    CPERR(CPB_MUTEX_LOCK_ERROR) \
-    CPERR(CPB_EPOLL_INIT_ERROR) \
-    CPERR(CPB_EPOLL_ADD_ERROR) \
-    CPERR(CPB_EPOLL_WAIT_ERROR) \
-    CPERR(CPB_FORK_ERROR) \
-    CPERR(CPB_MUTEX_ERROR) \
-    CPERR(CPB_THREAD_ERROR) \
-    CPERR(CPB_CONFIG_ERROR) \
-    CPERR(CPB_NOMEM_ERR) 
+#define EXB_ERR_LIST \
+    CPERR(EXB_OK) \
+    CPERR(EXB_EOF) \
+    CPERR(EXB_CHILD) \
+    CPERR(EXB_NOT_FOUND) \
+    CPERR(EXB_INIT_ERROR) \
+    CPERR(EXB_MODULE_LOAD_ERROR) \
+    CPERR(EXB_SOCKET_ERR) \
+    CPERR(EXB_SELECT_ERR) \
+    CPERR(EXB_READ_ERR) \
+    CPERR(EXB_WRITE_ERR) \
+    CPERR(EXB_ACCEPT_ERR) \
+    CPERR(EXB_BIND_ERR) \
+    CPERR(EXB_OUT_OF_RANGE_ERR) \
+    CPERR(EXB_BUFFER_FULL_ERR) \
+    CPERR(EXB_INVALID_STATE_ERR) \
+    CPERR(EXB_INVALID_INT_ERR) \
+    CPERR(EXB_LISTEN_ERR) \
+    CPERR(EXB_HTTP_ERROR) \
+    CPERR(EXB_INVALID_ARG_ERR) \
+    CPERR(EXB_UNSUPPORTED) \
+    CPERR(EXB_MUTEX_LOCK_ERROR) \
+    CPERR(EXB_EPOLL_INIT_ERROR) \
+    CPERR(EXB_EPOLL_ADD_ERROR) \
+    CPERR(EXB_EPOLL_WAIT_ERROR) \
+    CPERR(EXB_FORK_ERROR) \
+    CPERR(EXB_MUTEX_ERROR) \
+    CPERR(EXB_THREAD_ERROR) \
+    CPERR(EXB_CONFIG_ERROR) \
+    CPERR(EXB_NOMEM_ERR) 
 #undef CPERR
 #define CPERR(error_name) error_name,
-enum cpb_errors {
-   CPB_ERR_LIST
+enum exb_errors {
+   EXB_ERR_LIST
 };
 
 #undef CPERR
 #define CPERR(error_name) {error_name, #error_name,},
-struct cpb_error_str {
+struct exb_error_str {
     int error_code;
     const char *error_name;
 };
-static struct cpb_error_str cpb_error_str_list[] = {
-    CPB_ERR_LIST
+static struct exb_error_str exb_error_str_list[] = {
+    EXB_ERR_LIST
 };
-#define CPB_ERROR_LIST_COUNT (sizeof(cpb_error_str_list)/sizeof(struct cpb_error_str))
+#define EXB_ERROR_LIST_COUNT (sizeof(exb_error_str_list)/sizeof(struct exb_error_str))
 
-struct cpb_error {
+struct exb_error {
     int error_code;
     void *details;
 };
 
-static const char *cpb_error_code_name(int error_code) {
-    for (int i=0; i<CPB_ERROR_LIST_COUNT; i++) {
-        if (cpb_error_str_list[i].error_code == error_code) {
-            return cpb_error_str_list[i].error_name;
+static const char *exb_error_code_name(int error_code) {
+    for (int i=0; i<EXB_ERROR_LIST_COUNT; i++) {
+        if (exb_error_str_list[i].error_code == error_code) {
+            return exb_error_str_list[i].error_name;
         }
     }
     return NULL;
 }
-static inline void cpb_error_print(int error_code) {
-    fprintf(stderr, "An Error occured: %s\n", cpb_error_code_name(error_code));
+static inline void exb_error_print(int error_code) {
+    fprintf(stderr, "An Error occured: %s\n", exb_error_code_name(error_code));
 }
-static inline void cpb_error_debug(int error_code) {
-    #ifdef CPB_DEBUG
-        cpb_error_print(error_code);
+static inline void exb_error_debug(int error_code) {
+    #ifdef EXB_DEBUG
+        exb_error_print(error_code);
     #endif
 }
-static inline struct cpb_error cpb_make_error(int error_code) {
-    struct cpb_error err;
-    if (error_code != CPB_OK) 
-        cpb_error_debug(error_code);
+static inline struct exb_error exb_make_error(int error_code) {
+    struct exb_error err;
+    if (error_code != EXB_OK) 
+        exb_error_debug(error_code);
     err.details = NULL;
     err.error_code = error_code;
     return err;
 }
-static struct cpb_error cpb_prop_error(struct cpb_error src) {
+static struct exb_error exb_prop_error(struct exb_error src) {
     return src;
 }
 
-#define define_cpb_or(value_type, struct_name) \
+#define define_exb_or(value_type, struct_name) \
 struct_name { \
-    struct cpb_error error; \
+    struct exb_error error; \
     value_type value; \
 }
 #endif

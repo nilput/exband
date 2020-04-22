@@ -1,52 +1,52 @@
-#ifndef CPB_HTTP_REQUEST_H
-#define CPB_HTTP_REQUEST_H
-#include "../cpb_str.h"
+#ifndef EXB_HTTP_REQUEST_H
+#define EXB_HTTP_REQUEST_H
+#include "../exb_str.h"
 #include "http_response.h"
 #include <stdbool.h>
 
-#define CPB_HTTP_HEADER_MAX 32
+#define EXB_HTTP_HEADER_MAX 32
 #define HTTP_INPUT_BUFFER_INITIAL_SIZE 2048
-enum CPB_HTTP_METHOD {
-    CPB_HTTP_M_HEAD,
-    CPB_HTTP_M_GET,
-    CPB_HTTP_M_POST,
-    CPB_HTTP_M_PUT,
-    CPB_HTTP_M_PATCH, /*nonstandard?*/
-    CPB_HTTP_M_DELETE,
-    CPB_HTTP_M_TRACE,
-    CPB_HTTP_M_OPTIONS,
-    CPB_HTTP_M_OTHER,
+enum EXB_HTTP_METHOD {
+    EXB_HTTP_M_HEAD,
+    EXB_HTTP_M_GET,
+    EXB_HTTP_M_POST,
+    EXB_HTTP_M_PUT,
+    EXB_HTTP_M_PATCH, /*nonstandard?*/
+    EXB_HTTP_M_DELETE,
+    EXB_HTTP_M_TRACE,
+    EXB_HTTP_M_OPTIONS,
+    EXB_HTTP_M_OTHER,
 };
-enum cpb_http_input_state {
-    CPB_HTTP_I_ST_INIT,
+enum exb_http_input_state {
+    EXB_HTTP_I_ST_INIT,
 
-    CPB_HTTP_I_ST_WAITING_FOR_HEADERS,
-    CPB_HTTP_I_ST_WAITING_FOR_BODY,
+    EXB_HTTP_I_ST_WAITING_FOR_HEADERS,
+    EXB_HTTP_I_ST_WAITING_FOR_BODY,
 
-    CPB_HTTP_I_ST_DONE,
-    CPB_HTTP_I_ST_DEAD,
+    EXB_HTTP_I_ST_DONE,
+    EXB_HTTP_I_ST_DEAD,
 };
-enum cpb_http_parse_state {
-    CPB_HTTP_P_ST_INIT,
-    CPB_HTTP_P_ST_IN_CHUNKED_BODY, //Already Parsed headers
-    CPB_HTTP_P_ST_DONE,
-};
-
-enum cpb_http_request_body_handling {
-    CPB_HTTP_B_DISCARD,
-    CPB_HTTP_B_BUFFER,
-};
-enum cpb_request_handler_reason {
-    CPB_HTTP_HANDLER_HEADERS,
-    CPB_HTTP_HANDLER_BODY,
+enum exb_http_parse_state {
+    EXB_HTTP_P_ST_INIT,
+    EXB_HTTP_P_ST_IN_CHUNKED_BODY, //Already Parsed headers
+    EXB_HTTP_P_ST_DONE,
 };
 
-struct cpb_http_header {
-    struct cpb_str_slice key;
-    struct cpb_str_slice value;
+enum exb_http_request_body_handling {
+    EXB_HTTP_B_DISCARD,
+    EXB_HTTP_B_BUFFER,
 };
-struct cpb_http_header_map {
-    struct cpb_http_header headers[CPB_HTTP_HEADER_MAX];
+enum exb_request_handler_reason {
+    EXB_HTTP_HANDLER_HEADERS,
+    EXB_HTTP_HANDLER_BODY,
+};
+
+struct exb_http_header {
+    struct exb_str_slice key;
+    struct exb_str_slice value;
+};
+struct exb_http_header_map {
+    struct exb_http_header headers[EXB_HTTP_HEADER_MAX];
     int len;
 
     //Indices of headers that are relevant to the HTTP protocol, -1 means not present
@@ -56,9 +56,9 @@ struct cpb_http_header_map {
     int h_transfer_encoding_idx;
 };
 
-struct cpb_request_state {
-    struct cpb_server *server; //not owned, must outlive
-    struct cpb_eloop *eloop;  //not owned, must outlive
+struct exb_request_state {
+    struct exb_server *server; //not owned, must outlive
+    struct exb_eloop *eloop;  //not owned, must outlive
     int socket_fd;
     int input_buffer_len;
     int input_buffer_cap;
@@ -81,46 +81,46 @@ struct cpb_request_state {
     int parse_chunk_cursor; //only in chunked requests
     int next_request_cursor;
     
-    enum cpb_http_input_state istate; //what portion did we receive yet
-    enum cpb_http_parse_state pstate; //what portion did we parse
-    enum cpb_http_request_body_handling body_handling;
-    enum CPB_HTTP_METHOD method;
-    struct cpb_http_header_map headers;
+    enum exb_http_input_state istate; //what portion did we receive yet
+    enum exb_http_parse_state pstate; //what portion did we parse
+    enum exb_http_request_body_handling body_handling;
+    enum EXB_HTTP_METHOD method;
+    struct exb_http_header_map headers;
     
-    struct cpb_str_slice method_s;
-    struct cpb_str_slice path_s;
-    struct cpb_str_slice version_s;
-    struct cpb_str_slice status_s; //excluding its crlf
-    struct cpb_str_slice headers_s; //excluding status's crlf and excluding final crlfcrlf
-    struct cpb_str_slice body_s; //beginning after crlfcrlf
+    struct exb_str_slice method_s;
+    struct exb_str_slice path_s;
+    struct exb_str_slice version_s;
+    struct exb_str_slice status_s; //excluding its crlf
+    struct exb_str_slice headers_s; //excluding status's crlf and excluding final crlfcrlf
+    struct exb_str_slice body_s; //beginning after crlfcrlf
     
-    struct cpb_str body_decoded; //TODO: temporary, get rid of this, currently we copy the body to this no matteer what encoding
-    struct cpb_response_state resp;
+    struct exb_str body_decoded; //TODO: temporary, get rid of this, currently we copy the body to this no matteer what encoding
+    struct exb_response_state resp;
 
     //only relevant when used as a linked list
-    struct cpb_request_state * next_rqstate;
+    struct exb_request_state * next_rqstate;
 };
 
 //boolean
-static int cpb_request_http_version_eq(struct cpb_request_state *rqstate, int major, int minor) {
+static int exb_request_http_version_eq(struct exb_request_state *rqstate, int major, int minor) {
     return rqstate->http_major == major && rqstate->http_minor == minor;
 }
 
-void cpb_request_repr(struct cpb_request_state *rqstate);
+void exb_request_repr(struct exb_request_state *rqstate);
 
-static int cpb_request_input_buffer_size(struct cpb_request_state *rqstate) {
+static int exb_request_input_buffer_size(struct exb_request_state *rqstate) {
     return rqstate->input_buffer_cap;
 }
 
-static int cpb_request_input_buffer_ensure_cap(struct cpb_request_state *rqstate, size_t capacity) {
+static int exb_request_input_buffer_ensure_cap(struct exb_request_state *rqstate, size_t capacity) {
     if (capacity > rqstate->input_buffer_cap) {
-        struct cpb_error err = cpb_eloop_realloc_buffer(rqstate->eloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+        struct exb_error err = exb_eloop_realloc_buffer(rqstate->eloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
         return err.error_code;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_eloop *eloop, struct cpb *cpb, struct cpb_server *s, int socket_fd) {
+static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_eloop *eloop, struct exb *exb, struct exb_server *s, int socket_fd) {
     
     rqstate->is_chunked = 0;
     rqstate->eloop = eloop;
@@ -138,56 +138,56 @@ static int cpb_request_state_init(struct cpb_request_state *rqstate, struct cpb_
     rqstate->bytes_read = 0;
     rqstate->parse_chunk_cursor = 0;
     rqstate->next_request_cursor = -1;
-    rqstate->istate = CPB_HTTP_I_ST_INIT;
-    rqstate->pstate = CPB_HTTP_P_ST_INIT;
-    rqstate->body_handling = CPB_HTTP_B_DISCARD;
+    rqstate->istate = EXB_HTTP_I_ST_INIT;
+    rqstate->pstate = EXB_HTTP_P_ST_INIT;
+    rqstate->body_handling = EXB_HTTP_B_DISCARD;
     rqstate->headers.h_connection_idx        = -1;
     rqstate->headers.h_content_length_idx    = -1;
     rqstate->headers.h_content_type_idx      = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
-    struct cpb_error err = cpb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+    struct exb_error err = exb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &rqstate->input_buffer_cap);
     if (err.error_code) {
         return err.error_code;
     }
 
-    cpb_str_init_empty(&rqstate->body_decoded);
-    return cpb_response_state_init(&rqstate->resp, rqstate, eloop);
+    exb_str_init_empty(&rqstate->body_decoded);
+    return exb_response_state_init(&rqstate->resp, rqstate, eloop);
 }
 
 
-static int cpb_request_body_bytes_read(struct cpb_request_state *rqstate) {
+static int exb_request_body_bytes_read(struct exb_request_state *rqstate) {
     return rqstate->bytes_read - rqstate->body_s.index;
 }
 
-static void cpb_request_state_deinit(struct cpb_request_state *rqstate, struct cpb *cpb) {
-    cpb_response_state_deinit(&rqstate->resp, cpb, rqstate->eloop);
-    cpb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer, rqstate->input_buffer_cap);
-    cpb_str_deinit(cpb, &rqstate->body_decoded);
-    rqstate->istate = CPB_HTTP_I_ST_DEAD;
+static void exb_request_state_deinit(struct exb_request_state *rqstate, struct exb *exb) {
+    exb_response_state_deinit(&rqstate->resp, exb, rqstate->eloop);
+    exb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer, rqstate->input_buffer_cap);
+    exb_str_deinit(exb, &rqstate->body_decoded);
+    rqstate->istate = EXB_HTTP_I_ST_DEAD;
 }
 
-static int cpb_request_has_body(struct cpb_request_state *rqstate) {
+static int exb_request_has_body(struct exb_request_state *rqstate) {
     return (rqstate->headers.h_content_length_idx != -1) || (rqstate->headers.h_transfer_encoding_idx != -1);
 }
-static int cpb_request_is_chunked_body_complete(struct cpb_request_state *rqstate) {
-    return rqstate->pstate == CPB_HTTP_P_ST_DONE;
+static int exb_request_is_chunked_body_complete(struct exb_request_state *rqstate) {
+    return rqstate->pstate == EXB_HTTP_P_ST_DONE;
 }
 
-static int cpb_request_http_check_validity(struct cpb_request_state *rqstate) {
-    int has_body = cpb_request_has_body(rqstate);
+static int exb_request_http_check_validity(struct exb_request_state *rqstate) {
+    int has_body = exb_request_has_body(rqstate);
     /*Conditions we are checking for:*/
     /*  Body must not be present in Trace*/
     /*  in Requests with bodies, Content-Length or Chunked encoding must be used, otherwise we can't respond*/
-    if (has_body && rqstate->method == CPB_HTTP_M_TRACE)
-        return CPB_HTTP_ERROR;
-    return CPB_OK;
+    if (has_body && rqstate->method == EXB_HTTP_M_TRACE)
+        return EXB_HTTP_ERROR;
+    return EXB_OK;
 }
 
-static struct cpb_response_state *cpb_request_get_response(struct cpb_request_state *rqstate) {
+static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate) {
     return &rqstate->resp;
 }
 
 
-#endif// CPB_HTTP_REQUEST_H
+#endif// EXB_HTTP_REQUEST_H

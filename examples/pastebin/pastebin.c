@@ -1,49 +1,49 @@
-#include "cpb/cpb.h"
-#include "cpb/http/http_server_module.h"
-#include "cpb/http/http_request.h"
-#include "cpb/http/http_decode.h"
+#include "exb/exb.h"
+#include "exb/http/http_server_module.h"
+#include "exb/http/http_request.h"
+#include "exb/http/http_decode.h"
 #include <sqlite3.h>
 struct pastebin_module {
-    struct cpb_http_server_module head;
-    struct cpb *cpb_ref;
+    struct exb_http_server_module head;
+    struct exb *exb_ref;
     int count;
     sqlite3 *db;
-    struct cpb_str site_link;
+    struct exb_str site_link;
 };
 
-static void form(struct cpb_request_state *rqstate) {
-    struct cpb_str key,value;
-    cpb_str_init_const_str(&key, "Content-Type");
-    cpb_str_init_const_str(&value, "text/html");
-    cpb_response_append_body_cstr(rqstate, "<!DOCTYPE html>");
-    cpb_response_append_body_cstr(rqstate, "<html>"
+static void form(struct exb_request_state *rqstate) {
+    struct exb_str key,value;
+    exb_str_init_const_str(&key, "Content-Type");
+    exb_str_init_const_str(&value, "text/html");
+    exb_response_append_body_cstr(rqstate, "<!DOCTYPE html>");
+    exb_response_append_body_cstr(rqstate, "<html>"
                                                     "<head>"
-                                                    "    <title>CPBIN!</title>"
+                                                    "    <title>EXBIN!</title>"
                                                     "<style> *{margin: auto; margin-top: 10px; text-align: center; font-family: monospace; padding: 10px;}\nbody{max-width: 960px;} textarea{ text-align: left; padding: 0;}</style>"
                                                     "</head>"
                                                     "<body>");
-    cpb_response_set_header(rqstate, &key, &value);
-    cpb_response_append_body_cstr(rqstate, "<p>POWERED BY CPBIN HTTP SERVER</p> <br>");
-    cpb_response_append_body_cstr(rqstate, "<form action=\"/\" method=\"POST\">"
+    exb_response_set_header(rqstate, &key, &value);
+    exb_response_append_body_cstr(rqstate, "<p>POWERED BY EXBIN HTTP SERVER</p> <br>");
+    exb_response_append_body_cstr(rqstate, "<form action=\"/\" method=\"POST\">"
                                                     "<textarea name=\"f\" rows=\"20\" cols=\"80\" required=""></textarea> <br>"
                                                     "<button> PASTE </button> <br>"
                                                     "</form>");
-    cpb_response_append_body_cstr(rqstate, "</body>"
+    exb_response_append_body_cstr(rqstate, "</body>"
                                                     "</html>");
-    cpb_response_end(rqstate);
+    exb_response_end(rqstate);
 }
 
-static void info(struct pastebin_module *mod, struct cpb_request_state *rqstate) {
-    struct cpb_str key,value;
-    cpb_str_init_const_str(&key, "Content-Type");
-    cpb_str_init_const_str(&value, "text/plain");
-    cpb_response_set_header(rqstate, &key, &value);
-    struct cpb_str str;
-    cpb_str_init(mod->cpb_ref, &str);
-    cpb_sprintf(mod->cpb_ref, &str, "curl -F 'f=<-' %s", mod->site_link.str);
-    cpb_response_append_body(rqstate, str.str, str.len);
-    cpb_str_deinit(mod->cpb_ref, &str);
-    cpb_response_end(rqstate);
+static void info(struct pastebin_module *mod, struct exb_request_state *rqstate) {
+    struct exb_str key,value;
+    exb_str_init_const_str(&key, "Content-Type");
+    exb_str_init_const_str(&value, "text/plain");
+    exb_response_set_header(rqstate, &key, &value);
+    struct exb_str str;
+    exb_str_init(mod->exb_ref, &str);
+    exb_sprintf(mod->exb_ref, &str, "curl -F 'f=<-' %s", mod->site_link.str);
+    exb_response_append_body(rqstate, str.str, str.len);
+    exb_str_deinit(mod->exb_ref, &str);
+    exb_response_end(rqstate);
 }
 
 void randkey(char *out, int len) {
@@ -55,12 +55,12 @@ void randkey(char *out, int len) {
 }
 
 
-static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
+static void destroy_module(struct exb_http_server_module *module, struct exb *exb) {
     struct pastebin_module *mod = (struct pastebin_module *)module;
     sqlite3_close(mod->db);
-    cpb_str_deinit(cpb, &mod->site_link);
-    cpb_free(cpb, module);
-    return CPB_OK;
+    exb_str_deinit(exb, &mod->site_link);
+    exb_free(exb, module);
+    return EXB_OK;
 }
 
 struct sql_value {
@@ -203,7 +203,7 @@ char *module_get_arg(struct pastebin_module *mod, char *mod_args, char *arg_name
             char *end = strchr(cursor, ' ');
             if (end == NULL)
                 end = cursor + strlen(cursor);
-            char *val = cpb_malloc(mod->cpb_ref, end - cursor + 1);
+            char *val = exb_malloc(mod->exb_ref, end - cursor + 1);
             if (val) {
                 strncpy(val, cursor, end - cursor);
                 val[end - cursor] = 0;
@@ -214,69 +214,69 @@ char *module_get_arg(struct pastebin_module *mod, char *mod_args, char *arg_name
     return NULL;
 }
 
-static struct cpb_str get_post_param(struct cpb *cpb_ref, struct cpb_request_state *rqstate, char *param_name) {
-    struct cpb_str str;
-    cpb_str_init_empty(&str);
+static struct exb_str get_post_param(struct exb *exb_ref, struct exb_request_state *rqstate, char *param_name) {
+    struct exb_str str;
+    exb_str_init_empty(&str);
     char *content_type_header = NULL;
     int content_type_header_len = 0;
     if (rqstate->headers.h_content_type_idx != -1) {
         content_type_header = rqstate->input_buffer + rqstate->headers.headers[rqstate->headers.h_content_type_idx].value.index;
         content_type_header_len = rqstate->headers.headers[rqstate->headers.h_content_type_idx].value.len;
     }
-    if (content_type_header && cpb_content_type_is(content_type_header, content_type_header_len, "multipart/form-data")) {
-        struct cpb_form_parts fp;
-        struct cpb_str_slice content_type =  rqstate->headers.headers[rqstate->headers.h_content_type_idx].value;
-        if (cpb_decode_multipart(cpb_ref, &fp, rqstate->input_buffer + content_type.index, content_type.len, rqstate->body_decoded.str, rqstate->body_decoded.len ) == CPB_OK) {
+    if (content_type_header && exb_content_type_is(content_type_header, content_type_header_len, "multipart/form-data")) {
+        struct exb_form_parts fp;
+        struct exb_str_slice content_type =  rqstate->headers.headers[rqstate->headers.h_content_type_idx].value;
+        if (exb_decode_multipart(exb_ref, &fp, rqstate->input_buffer + content_type.index, content_type.len, rqstate->body_decoded.str, rqstate->body_decoded.len ) == EXB_OK) {
             for (int i=0; i<fp.nparts; i++) {
                 if (strcmp(fp.buff.str + fp.keys[i].index, "f") == 0) {
-                    str = cpb_str_slice_to_const_str((struct cpb_str_slice){fp.values[i].index, fp.values[i].len}, rqstate->body_decoded.str);
+                    str = exb_str_slice_to_const_str((struct exb_str_slice){fp.values[i].index, fp.values[i].len}, rqstate->body_decoded.str);
                     break;
                 }
             }
-            cpb_form_parts_deinit(cpb_ref, &fp);
+            exb_form_parts_deinit(exb_ref, &fp);
         }
     }
-    else if (content_type_header && cpb_content_type_is(content_type_header, content_type_header_len, "application/x-www-form-urlencoded")) {
-        struct cpb_form_parts fp;
-        if (cpb_urlencode_decode_parts(cpb_ref, &fp, rqstate->body_decoded.str, rqstate->body_decoded.len) == CPB_OK) {
+    else if (content_type_header && exb_content_type_is(content_type_header, content_type_header_len, "application/x-www-form-urlencoded")) {
+        struct exb_form_parts fp;
+        if (exb_urlencode_decode_parts(exb_ref, &fp, rqstate->body_decoded.str, rqstate->body_decoded.len) == EXB_OK) {
             for (int i=0; i<fp.nparts; i++) {
                 if (strcmp(fp.buff.str + fp.keys[i].index, "f") == 0) {
-                    cpb_str_strlcpy(cpb_ref, &str, fp.buff.str + fp.values[i].index, fp.values[i].len);
+                    exb_str_strlcpy(exb_ref, &str, fp.buff.str + fp.values[i].index, fp.values[i].len);
                     break;
                 }
             }
-            cpb_form_parts_deinit(cpb_ref, &fp);
+            exb_form_parts_deinit(exb_ref, &fp);
         }
     }
     else {
-        str = cpb_str_const_view(&rqstate->body_decoded);
+        str = exb_str_const_view(&rqstate->body_decoded);
     }
     return str;
 }
 
-static int handle_request(struct cpb_http_server_module *module, struct cpb_request_state *rqstate, int reason) {
+static int handle_request(struct exb_http_server_module *module, struct exb_request_state *rqstate, int reason) {
     struct pastebin_module *mod = (struct pastebin_module *) module;
 
-    struct cpb_str path;
-    //cpb_request_repr(rqstate);
+    struct exb_str path;
+    //exb_request_repr(rqstate);
 
-    cpb_str_init(mod->cpb_ref, &path);
-    cpb_str_slice_to_copied_str(mod->cpb_ref, rqstate->path_s, rqstate->input_buffer, &path);
-    if ((rqstate->method == CPB_HTTP_M_POST) && (path.len == 1 && path.str[0] == '/')) {
-        if (!cpb_request_has_body(rqstate)) {
-            cpb_assert_h(reason != CPB_HTTP_HANDLER_BODY, "");
+    exb_str_init(mod->exb_ref, &path);
+    exb_str_slice_to_copied_str(mod->exb_ref, rqstate->path_s, rqstate->input_buffer, &path);
+    if ((rqstate->method == EXB_HTTP_M_POST) && (path.len == 1 && path.str[0] == '/')) {
+        if (!exb_request_has_body(rqstate)) {
+            exb_assert_h(reason != EXB_HTTP_HANDLER_BODY, "");
             info(mod, rqstate);
         }
-        else if (reason == CPB_HTTP_HANDLER_HEADERS) {
-            rqstate->body_handling = CPB_HTTP_B_BUFFER;
+        else if (reason == EXB_HTTP_HANDLER_HEADERS) {
+            rqstate->body_handling = EXB_HTTP_B_BUFFER;
         }
-        else if (reason == CPB_HTTP_HANDLER_BODY) {
+        else if (reason == EXB_HTTP_HANDLER_BODY) {
             
             char *insert_stmt = "INSERT INTO pastebin(key, value) VALUES (?, ?)";
             char key_buff[5];
             randkey(key_buff, 4);
             key_buff[4] = 0;
-            struct cpb_str posted_value = get_post_param(mod->cpb_ref, rqstate, "f");
+            struct exb_str posted_value = get_post_param(mod->exb_ref, rqstate, "f");
             struct sql_value values[2] = {{.len = 4, .value=key_buff, .value_type=SQLITE_TEXT},
                                           {.len = posted_value.len, .value=posted_value.str, .value_type=SQLITE_BLOB}};
             struct sql_value out[1];
@@ -285,27 +285,27 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
             int rc = exec_sql_returning_one(mod->db, insert_stmt, values, 2, out, 1, &nresults, &stmt);
             sqlite3_finalize(stmt);
             if (rc == SQLITE_DONE) {
-                cpb_response_append_body_cstr(rqstate, mod->site_link.str);
-                cpb_response_append_body_cstr(rqstate, "/");
-                cpb_response_append_body_cstr(rqstate, key_buff);
-                cpb_response_append_body_cstr(rqstate, "\r\n");
-                cpb_response_end(rqstate);
+                exb_response_append_body_cstr(rqstate, mod->site_link.str);
+                exb_response_append_body_cstr(rqstate, "/");
+                exb_response_append_body_cstr(rqstate, key_buff);
+                exb_response_append_body_cstr(rqstate, "\r\n");
+                exb_response_end(rqstate);
             }
             else {
-                cpb_response_set_status_code(rqstate, 500);
-                cpb_response_append_body_cstr(rqstate, "Error!...");
-                cpb_response_end(rqstate);
+                exb_response_set_status_code(rqstate, 500);
+                exb_response_append_body_cstr(rqstate, "Error!...");
+                exb_response_end(rqstate);
             }
-            cpb_str_deinit(mod->cpb_ref, &posted_value);
+            exb_str_deinit(mod->exb_ref, &posted_value);
             
         }
         else {
-            cpb_assert_h(0, "unknown reason");
+            exb_assert_h(0, "unknown reason");
         }
         
     }
-    else if (rqstate->method == CPB_HTTP_M_GET) {
-        if (cpb_str_streqc(mod->cpb_ref, &path, "/post") || cpb_str_startswithc(mod->cpb_ref, &path, "/post/")) {
+    else if (rqstate->method == EXB_HTTP_M_GET) {
+        if (exb_str_streqc(mod->exb_ref, &path, "/post") || exb_str_startswithc(mod->exb_ref, &path, "/post/")) {
             form(rqstate);
         }
         else if (path.len > 1) {
@@ -321,22 +321,22 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
             sqlite3_stmt *stmt = NULL;
             int rc = exec_sql_returning_one(mod->db, select_stmt, key, 1, value, 1, &nresults, &stmt);
             if (rc == SQLITE_DONE) {
-                cpb_response_set_status_code(rqstate, 404);
+                exb_response_set_status_code(rqstate, 404);
             }
             else if (rc == SQLITE_ROW) {
-                cpb_assert_h(nresults == 1, "unexpected no. results");
+                exb_assert_h(nresults == 1, "unexpected no. results");
                 if (nresults != 1 || (value[0].len && !value[0].value) || value[0].value_type != SQLITE_BLOB) {
-                    cpb_response_set_status_code(rqstate, 500);
-                    cpb_response_append_body_cstr(rqstate, "Error!...");
+                    exb_response_set_status_code(rqstate, 500);
+                    exb_response_append_body_cstr(rqstate, "Error!...");
                 }
-                cpb_response_append_body(rqstate, value[0].value, value[0].len);
+                exb_response_append_body(rqstate, value[0].value, value[0].len);
             }
             else {
-                cpb_response_set_status_code(rqstate, 500);
-                cpb_response_append_body_cstr(rqstate, "Error!");
+                exb_response_set_status_code(rqstate, 500);
+                exb_response_append_body_cstr(rqstate, "Error!");
             }
             sqlite3_finalize(stmt);
-            cpb_response_end(rqstate);
+            exb_response_end(rqstate);
         }
         else {
             info(mod, rqstate);
@@ -346,59 +346,59 @@ static int handle_request(struct cpb_http_server_module *module, struct cpb_requ
         info(mod, rqstate);
     }
     
-    cpb_str_deinit(mod->cpb_ref, &path);   
-    return CPB_OK;
+    exb_str_deinit(mod->exb_ref, &path);   
+    return EXB_OK;
 }
 
-int handler_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_server_module **module_out) {
+int handler_init(struct exb *exb, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
 
     srand(time(NULL));
 
-    struct pastebin_module *mod = cpb_malloc(cpb, sizeof(struct pastebin_module));
+    struct pastebin_module *mod = exb_malloc(exb, sizeof(struct pastebin_module));
     if (!mod)
-        return CPB_NOMEM_ERR;
-    mod->cpb_ref = cpb;
+        return EXB_NOMEM_ERR;
+    mod->exb_ref = exb;
     
     mod->head.destroy = destroy_module;
     mod->count = 0;
     mod->db = NULL;
 
-    cpb_str_init_const_str(&mod->site_link, "http://127.0.0.1");
+    exb_str_init_const_str(&mod->site_link, "http://127.0.0.1");
     char *site_link = module_get_arg(mod, module_args, "site_link");
     if (site_link) {
-        cpb_str_strcpy(mod->cpb_ref, &mod->site_link, site_link);
-        cpb_free(cpb, site_link);
+        exb_str_strcpy(mod->exb_ref, &mod->site_link, site_link);
+        exb_free(exb, site_link);
     }
 
     char *db_path = module_get_arg(mod, module_args, "db_path");
     if (!db_path) {
         fprintf(stderr, "expected argument db_path=<path> in module args\n");
-        cpb_free(cpb, mod);
+        exb_free(exb, mod);
     }
     int rc = sqlite3_open(db_path, &mod->db);
     if ( rc ){
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(mod->db));
         sqlite3_close(mod->db);
-        cpb_free(cpb, mod);
-        cpb_free(cpb, db_path);
+        exb_free(exb, mod);
+        exb_free(exb, db_path);
         return 1;
     }
-    cpb_free(cpb, db_path);
+    exb_free(exb, db_path);
 
     char *reinit_db = module_get_arg(mod, module_args, "db_reinit");
     int do_reinit_db = reinit_db && atoi(reinit_db) != 0;
-    cpb_free(cpb, reinit_db);
+    exb_free(exb, reinit_db);
     if (init_db(mod, do_reinit_db) != 0) {
         fprintf(stderr, "Can't init db\n");
         sqlite3_close(mod->db);
-        cpb_free(cpb, mod);
+        exb_free(exb, mod);
         return 1;
     }
 
-    if (cpb_server_set_module_request_handler(server, (struct cpb_http_server_module*)mod, handle_request) != CPB_OK) {
-        destroy_module((struct cpb_http_server_module*)mod, cpb);
-        return CPB_MODULE_LOAD_ERROR;
+    if (exb_server_set_module_request_handler(server, (struct exb_http_server_module*)mod, handle_request) != EXB_OK) {
+        destroy_module((struct exb_http_server_module*)mod, exb);
+        return EXB_MODULE_LOAD_ERROR;
     }
-    *module_out = (struct cpb_http_server_module*)mod;
-    return CPB_OK;
+    *module_out = (struct exb_http_server_module*)mod;
+    return EXB_OK;
 }

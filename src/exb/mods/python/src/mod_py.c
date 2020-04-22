@@ -6,8 +6,8 @@
 
 #include <dlfcn.h>
 
-#include "../../../cpb.h"
-#include "../../../cpb_str.h"
+#include "../../../exb.h"
+#include "../../../exb_str.h"
 #include "../../../http/http_server_module.h"
 #include "../../../http/http_request.h"
 #include "../../../http/http_server.h"
@@ -18,15 +18,15 @@
 #include "../../../http/http_parse.h"
 
 //cffi
-extern void cpb_py_handle_request(struct cpb_request_state *rqstate);
+extern void exb_py_handle_request(struct exb_request_state *rqstate);
 
-struct cpb_py_module {
-    struct cpb_http_server_module head;
-    struct cpb *cpb_ref;
+struct exb_py_module {
+    struct exb_http_server_module head;
+    struct exb *exb_ref;
     int count;
-    struct cpb_http_server *server;
-    struct cpb_str cpb_py_module_path;
-    struct cpb_str user_py_module_path;
+    struct exb_http_server *server;
+    struct exb_str exb_py_module_path;
+    struct exb_str user_py_module_path;
     struct defaultsigs {
         struct sigaction int_handler;
     } defaultsigs;
@@ -34,7 +34,7 @@ struct cpb_py_module {
     bool gil_unlocked;
     PyGILState_STATE gstate;
 };
-static void save_signal_handlers(struct cpb_py_module *mod) {
+static void save_signal_handlers(struct exb_py_module *mod) {
     struct sigaction tmp_handler;
     struct sigaction old_handler;
     memset(&tmp_handler, 0, sizeof(tmp_handler));
@@ -44,20 +44,20 @@ static void save_signal_handlers(struct cpb_py_module *mod) {
     sigaction(SIGINT, &old_handler, NULL);
     mod->defaultsigs.int_handler = old_handler;
 }
-static void restore_signal_handlers(struct cpb_py_module *mod) {
+static void restore_signal_handlers(struct exb_py_module *mod) {
     sigaction(SIGINT, &mod->defaultsigs.int_handler, NULL);
 }
 
 static int destroy_python() {
-    return Py_FinalizeEx() == 0 ? CPB_OK : CPB_INVALID_STATE_ERR;
+    return Py_FinalizeEx() == 0 ? EXB_OK : EXB_INVALID_STATE_ERR;
 }
 
-static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
-    struct cpb_py_module *mod = (struct cpb_py_module*) module;
+static void destroy_module(struct exb_http_server_module *module, struct exb *exb) {
+    struct exb_py_module *mod = (struct exb_py_module*) module;
     destroy_python();
-    cpb_str_deinit(cpb, &mod->cpb_py_module_path);
-    cpb_str_deinit(cpb, &mod->user_py_module_path);
-    cpb_free(cpb, module);
+    exb_str_deinit(exb, &mod->exb_py_module_path);
+    exb_str_deinit(exb, &mod->user_py_module_path);
+    exb_free(exb, module);
 }
 
 int split(char *buff, int buffsz, char **tok) {
@@ -78,15 +78,15 @@ int split(char *buff, int buffsz, char **tok) {
 }
 
 
-static void handle_args(struct cpb_py_module *mod, char *module_args) {
+static void handle_args(struct exb_py_module *mod, char *module_args) {
     char *tok = module_args;
     char buff[256];
     while (split(buff, 256, &tok)) {
         if (strncmp(buff, "py-module=", 10) == 0) {
-            cpb_str_init_strcpy(mod->cpb_ref, &mod->user_py_module_path, buff+10);
+            exb_str_init_strcpy(mod->exb_ref, &mod->user_py_module_path, buff+10);
         }
-        else if (strncmp(buff, "cpb-py-path=", 12) == 0) {
-            cpb_str_init_strcpy(mod->cpb_ref, &mod->cpb_py_module_path, buff+12);
+        else if (strncmp(buff, "exb-py-path=", 12) == 0) {
+            exb_str_init_strcpy(mod->exb_ref, &mod->exb_py_module_path, buff+12);
         }
         else {
             fprintf(stderr, "Unknown module argument: '%s'\n", buff);
@@ -94,36 +94,36 @@ static void handle_args(struct cpb_py_module *mod, char *module_args) {
     }
 }
 
-static void request_handler(struct cpb_http_server_module *module, struct cpb_request_state *rqstate, int reason) {
-    struct cpb_py_module *mod = (struct cpb_py_module *) module;
+static void request_handler(struct exb_http_server_module *module, struct exb_request_state *rqstate, int reason) {
+    struct exb_py_module *mod = (struct exb_py_module *) module;
     if (mod->gil_unlocked) {
         mod->gstate = PyGILState_Ensure();
         mod->gil_unlocked = false;
     }
 
-    cpb_py_handle_request(rqstate);
+    exb_py_handle_request(rqstate);
 
 }
-static void release_gil(struct cpb_py_module *mod) {
+static void release_gil(struct exb_py_module *mod) {
     if (!mod->gil_unlocked) {
         PyGILState_Release(mod->gstate);
         mod->gil_unlocked = true;
     }
 }
 
-static int initialize_python(struct cpb_py_module *mod) {
+static int initialize_python(struct exb_py_module *mod) {
 
     char *p = getenv("PYTHONPATH");
-    struct cpb_str ppath;
+    struct exb_str ppath;
     int rv;
-    cpb_str_init_const_str(&ppath, "");
-    if ((p && (rv = cpb_str_init_strcpy(mod->cpb_ref, &ppath, p)) != CPB_OK) || 
-        ((rv = cpb_str_strappend(mod->cpb_ref, &ppath, mod->cpb_py_module_path.str)) != CPB_OK))
+    exb_str_init_const_str(&ppath, "");
+    if ((p && (rv = exb_str_init_strcpy(mod->exb_ref, &ppath, p)) != EXB_OK) || 
+        ((rv = exb_str_strappend(mod->exb_ref, &ppath, mod->exb_py_module_path.str)) != EXB_OK))
     {
         return rv;
     }
     setenv("PYTHONPATH", ppath.str, 1);
-    cpb_str_deinit(mod->cpb_ref, &ppath);
+    exb_str_deinit(mod->exb_ref, &ppath);
     save_signal_handlers(mod);
     Py_Initialize();
 
@@ -134,7 +134,7 @@ static int initialize_python(struct cpb_py_module *mod) {
     } 
 
     restore_signal_handlers(mod);
-    PyObject * pName = PyUnicode_DecodeFSDefault("_cpb_py");
+    PyObject * pName = PyUnicode_DecodeFSDefault("_exb_py");
     /* Error checking of pName left out */
 
     PyObject * pModule = PyImport_Import(pName);
@@ -142,7 +142,7 @@ static int initialize_python(struct cpb_py_module *mod) {
 
     if (pModule == NULL) {
         PyErr_Print();
-        fprintf(stderr, "Failed to load \"%s\"\n", "_cpb_py");
+        fprintf(stderr, "Failed to load \"%s\"\n", "_exb_py");
         Py_FinalizeEx();
         return 1;
     }
@@ -194,9 +194,9 @@ static int initialize_python(struct cpb_py_module *mod) {
         return 1;
     }
 
-    if (cpb_server_set_module_request_handler(mod->server, (struct cpb_http_server_module*)mod, request_handler) != CPB_OK) {
-        //destroy_module((struct cpb_http_server_module*)mod, cpb);
-        //return CPB_MODULE_LOAD_ERROR;
+    if (exb_server_set_module_request_handler(mod->server, (struct exb_http_server_module*)mod, request_handler) != EXB_OK) {
+        //destroy_module((struct exb_http_server_module*)mod, exb);
+        //return EXB_MODULE_LOAD_ERROR;
         fprintf(stderr, "setting py module as request handler failed\n");
     }
     /*
@@ -210,14 +210,14 @@ static int initialize_python(struct cpb_py_module *mod) {
     return 0;
 }
 
-int cpb_py_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_server_module **module_out) {
+int exb_py_init(struct exb *exb, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
     (void) module_args;
-    struct cpb_py_module *mod = cpb_malloc(cpb, sizeof(struct cpb_py_module));
+    struct exb_py_module *mod = exb_malloc(exb, sizeof(struct exb_py_module));
     if (!mod)
-        return CPB_NOMEM_ERR;
-    cpb_str_init_const_str(&mod->user_py_module_path, "");
-    cpb_str_init_const_str(&mod->cpb_py_module_path, "cpb.py");
-    mod->cpb_ref = cpb;
+        return EXB_NOMEM_ERR;
+    exb_str_init_const_str(&mod->user_py_module_path, "");
+    exb_str_init_const_str(&mod->exb_py_module_path, "exb.py");
+    mod->exb_ref = exb;
     mod->head.destroy = destroy_module;
     mod->count = 0;
     mod->server = server;
@@ -230,6 +230,6 @@ int cpb_py_init(struct cpb *cpb, struct cpb_server *server, char *module_args, s
 
 
     
-    *module_out = (struct cpb_http_server_module*)mod;
-    return CPB_OK;
+    *module_out = (struct exb_http_server_module*)mod;
+    return EXB_OK;
 }

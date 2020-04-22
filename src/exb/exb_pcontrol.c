@@ -1,30 +1,30 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h>
-#include "cpb_pcontrol.h"
-#include "cpb_errors.h"
-#include "cpb.h"
-#include "cpb_eloop_env.h"
+#include "exb_pcontrol.h"
+#include "exb_errors.h"
+#include "exb.h"
+#include "exb_eloop_env.h"
 
-int cpb_pcontrol_init(struct cpb_pcontrol *st, int nprocesses) {
+int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses) {
     st->npostfork_hooks = 0;
     st->nchildren = 0;
     st->config_nprocesses = nprocesses;
     st->master_pid = getpid();
     st->stop = 0;
     st->short_id = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
-int cpb_pcontrol_is_master(struct cpb_pcontrol *st) {
+int exb_pcontrol_is_master(struct exb_pcontrol *st) {
     return st->master_pid == getpid();
 }
-int cpb_pcontrol_is_worker(struct cpb_pcontrol *st) {
+int exb_pcontrol_is_worker(struct exb_pcontrol *st) {
     return st->master_pid != getpid();
 }
-int cpb_pcontrol_is_single_process(struct cpb_pcontrol *st) {
+int exb_pcontrol_is_single_process(struct exb_pcontrol *st) {
     return st->config_nprocesses == 1;
 }
-int cpb_pcontrol_running(struct cpb_pcontrol *st) {
+int exb_pcontrol_running(struct exb_pcontrol *st) {
     return !st->stop;
 }
 
@@ -42,14 +42,14 @@ static int waitpid_with_timeout(pid_t pid, pid_t *pid_out, int *state, int timeo
     }
     return -1;
 }
-int cpb_pcontrol_worker_id(struct cpb_pcontrol *st) {
+int exb_pcontrol_worker_id(struct exb_pcontrol *st) {
     return st->short_id;
 }
 
-int cpb_pcontrol_maintain(struct cpb_pcontrol *st) {
-    cpb_assert_h(cpb_pcontrol_is_master(st), "");
+int exb_pcontrol_maintain(struct exb_pcontrol *st) {
+    exb_assert_h(exb_pcontrol_is_master(st), "");
     if (st->stop)
-        return CPB_OK;
+        return EXB_OK;
     int config_nprocesses = st->config_nprocesses - 1;
     //make sure they're alive
     int some_died = 1;
@@ -79,11 +79,11 @@ int cpb_pcontrol_maintain(struct cpb_pcontrol *st) {
             for (int j=0; j<st->npostfork_hooks; j++) {
                 st->postfork_hooks[j].hook(st->postfork_hooks[j].data);
             }
-            return CPB_CHILD;
+            return EXB_CHILD;
         }
         else if (child_pid == -1) {
             //error
-            return CPB_FORK_ERROR;
+            return EXB_FORK_ERROR;
         }
         else {
             //parent
@@ -93,16 +93,16 @@ int cpb_pcontrol_maintain(struct cpb_pcontrol *st) {
     }
 }
 
-int cpb_pcontrol_add_postfork_hook(struct cpb_pcontrol *st,    void (*hook)(void *data), void *data) {
-    cpb_assert_h(cpb_pcontrol_is_master(st), "");
-    if (st->npostfork_hooks >= CPB_MAX_HOOKS)
-        return CPB_OUT_OF_RANGE_ERR;
+int exb_pcontrol_add_postfork_hook(struct exb_pcontrol *st,    void (*hook)(void *data), void *data) {
+    exb_assert_h(exb_pcontrol_is_master(st), "");
+    if (st->npostfork_hooks >= EXB_MAX_HOOKS)
+        return EXB_OUT_OF_RANGE_ERR;
     st->postfork_hooks[st->npostfork_hooks].hook = hook;
     st->postfork_hooks[st->npostfork_hooks].data = data;
     st->npostfork_hooks++;
-    return CPB_OK;
+    return EXB_OK;
 }
-int cpb_pcontrol_remove_postfork_hook(struct cpb_pcontrol *st, void (*hook)(void *data), void *data) {
+int exb_pcontrol_remove_postfork_hook(struct exb_pcontrol *st, void (*hook)(void *data), void *data) {
     for (int i=0; i<st->npostfork_hooks; i++) {
         if (st->postfork_hooks[st->npostfork_hooks].hook == hook && 
             st->postfork_hooks[st->npostfork_hooks].data == data) 
@@ -112,14 +112,14 @@ int cpb_pcontrol_remove_postfork_hook(struct cpb_pcontrol *st, void (*hook)(void
                 st->postfork_hooks[i] = st->postfork_hooks[st->npostfork_hooks - 1];
             }
             st->npostfork_hooks--;
-            return CPB_OK;
+            return EXB_OK;
         }
     }
-    return CPB_NOT_FOUND;
+    return EXB_NOT_FOUND;
 }
 
-int cpb_pcontrol_stop(struct cpb_pcontrol *st) {
-    if (cpb_pcontrol_is_master(st)) {
+int exb_pcontrol_stop(struct exb_pcontrol *st) {
+    if (exb_pcontrol_is_master(st)) {
         for (int i=0; i<st->nchildren; i++) {
             kill(st->children[i].pid, SIGTERM);
         }
@@ -139,31 +139,31 @@ int cpb_pcontrol_stop(struct cpb_pcontrol *st) {
 }
 
 
-int cpb_pcontrol_deinit(struct cpb_pcontrol *st) {
+int exb_pcontrol_deinit(struct exb_pcontrol *st) {
     st->nchildren = 0;
     st->npostfork_hooks = 0;
 }
 
-int cpb_pcontrol_child_maintain(struct cpb_pcontrol *st) {
-    cpb_assert_h(cpb_pcontrol_is_worker(st), "");
+int exb_pcontrol_child_maintain(struct exb_pcontrol *st) {
+    exb_assert_h(exb_pcontrol_is_worker(st), "");
     if (getppid() != st->master_pid) {
         //parent died
         fprintf(stderr, "Detected parent died!\n");
         raise(SIGTERM);
     }
 }
-static void cpb_pcontrol_child_event_loop(struct cpb_event ev) {
-    struct cpb_pcontrol  *st    = ev.msg.u.pp.argp1;
-    struct cpb_eloop_env *elist = ev.msg.u.pp.argp2;
-    struct cpb_eloop *eloop = elist->loops[0].loop;
-    cpb_assert_h(!!eloop, "");
-    cpb_pcontrol_child_maintain(st);
-    cpb_eloop_append_delayed(eloop, ev, 200, 0);
+static void exb_pcontrol_child_event_loop(struct exb_event ev) {
+    struct exb_pcontrol  *st    = ev.msg.u.pp.argp1;
+    struct exb_eloop_env *elist = ev.msg.u.pp.argp2;
+    struct exb_eloop *eloop = elist->loops[0].loop;
+    exb_assert_h(!!eloop, "");
+    exb_pcontrol_child_maintain(st);
+    exb_eloop_append_delayed(eloop, ev, 200, 0);
 }
 //add periodic child maintainance events such as checking if parent died
-int cpb_pcontrol_child_setup(struct cpb_pcontrol *st, struct cpb_eloop_env *elist) {
-    struct cpb_event new_ev = {.handle = cpb_pcontrol_child_event_loop,
+int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_eloop_env *elist) {
+    struct exb_event new_ev = {.handle = exb_pcontrol_child_event_loop,
                                .msg.u.pp.argp1 = st,
                                .msg.u.pp.argp2 = elist,};
-    cpb_pcontrol_child_event_loop(new_ev);
+    exb_pcontrol_child_event_loop(new_ev);
 }

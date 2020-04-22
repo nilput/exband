@@ -10,13 +10,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "failed to open \"%s\"\n", argv[1]);
         return 1;
     }
-    struct cpb cpb_state;
-    cpb_init(&cpb_state);
-    struct ini_config *c = ini_parse(&cpb_state, f);
+    struct exb exb_state;
+    exb_init(&exb_state);
+    struct ini_config *c = ini_parse(&exb_state, f);
     if (!c) {
         fprintf(stderr, "failed to parse ini\n");
         return 1;
     }
-    ini_dump(&cpb_state, c);
-    ini_destroy(&cpb_state, c);
+    ini_dump(&exb_state, c);
+    ini_destroy(&exb_state, c);
 }

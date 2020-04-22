@@ -1,6 +1,6 @@
-#ifndef CPB_MSG_H
-#define CPB_MSG_H
-struct cpb_msg {
+#ifndef EXB_MSG_H
+#define EXB_MSG_H
+struct exb_msg {
     union {
         struct {
             void *argp;
@@ -20,4 +20,4 @@ struct cpb_msg {
     } u;
     
 };
-#endif //CPB_MSG_H
+#endif //EXB_MSG_H

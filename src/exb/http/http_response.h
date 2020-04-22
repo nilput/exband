@@ -1,38 +1,38 @@
-#ifndef CPB_HTTP_RESPONSE_H
-#define CPB_HTTP_RESPONSE_H
+#ifndef EXB_HTTP_RESPONSE_H
+#define EXB_HTTP_RESPONSE_H
 
 #include <stdbool.h>
-#include "../cpb_str.h"
+#include "../exb_str.h"
 #include "http_server_events.h"
 #include "http_status.h"
 #define HTTP_HEADERS_BUFFER_INIT_SIZE 512
 #define HTTP_OUTPUT_BUFFER_INIT_SIZE 2048
-#define CPB_HTTP_RESPONSE_HEADER_MAX 32
+#define EXB_HTTP_RESPONSE_HEADER_MAX 32
 #define HTTP_STATUS_MAX_SZ 128
 
-struct cpb_request_state;
-static struct cpb_response_state *cpb_request_get_response(struct cpb_request_state *rqstate);
+struct exb_request_state;
+static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate);
 
-enum cpb_http_response_state {
-    CPB_HTTP_R_ST_INIT,
-    CPB_HTTP_R_ST_READY_HEADERS,
-    CPB_HTTP_R_ST_READY_BODY,
-    CPB_HTTP_R_ST_SENDING,
-    CPB_HTTP_R_ST_DONE,
-    CPB_HTTP_R_ST_DEAD
+enum exb_http_response_state {
+    EXB_HTTP_R_ST_INIT,
+    EXB_HTTP_R_ST_READY_HEADERS,
+    EXB_HTTP_R_ST_READY_BODY,
+    EXB_HTTP_R_ST_SENDING,
+    EXB_HTTP_R_ST_DONE,
+    EXB_HTTP_R_ST_DEAD
 };
-struct cpb_response_header {
-    struct cpb_str key;
-    struct cpb_str value;
+struct exb_response_header {
+    struct exb_str key;
+    struct exb_str value;
 };
-struct cpb_response_headers {
-    struct cpb_response_header headers[CPB_HTTP_RESPONSE_HEADER_MAX];
+struct exb_response_headers {
+    struct exb_response_header headers[EXB_HTTP_RESPONSE_HEADER_MAX];
     int len;
 };
-struct cpb_response_state {
+struct exb_response_state {
     char *output_buffer; //layout: [space?] STATUS . HEADERS . BODY
     int output_buffer_cap;
-    enum cpb_http_response_state state;
+    enum exb_http_response_state state;
     
     //bool is_chunked; //currently not supported
     int written_bytes;
@@ -47,7 +47,7 @@ struct cpb_response_state {
     int body_len;            //inititalized to 0
 
     int status_code;
-    struct cpb_response_headers headers;
+    struct exb_response_headers headers;
 };
 /*
     The way we do responses is:
@@ -56,9 +56,9 @@ struct cpb_response_state {
         then, at the end, once we know status + headers size write them before the body
 */
 
-static int cpb_response_state_init(struct cpb_response_state *resp_state, struct cpb_request_state *req, struct cpb_eloop *eloop) {
-    cpb_assert_h(!!eloop, "");
-    resp_state->state = CPB_HTTP_R_ST_INIT;
+static int exb_response_state_init(struct exb_response_state *resp_state, struct exb_request_state *req, struct exb_eloop *eloop) {
+    exb_assert_h(!!eloop, "");
+    resp_state->state = EXB_HTTP_R_ST_INIT;
     //resp_state->is_chunked = 0;
     resp_state->status_code = 200;
     resp_state->written_bytes = 0;
@@ -75,36 +75,36 @@ static int cpb_response_state_init(struct cpb_response_state *resp_state, struct
     resp_state->body_begin_index = HTTP_HEADERS_BUFFER_INIT_SIZE;
     resp_state->body_len = 0;
 
-    struct cpb_error err = cpb_eloop_alloc_buffer(eloop,
+    struct exb_error err = exb_eloop_alloc_buffer(eloop,
                                 HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
                                 &resp_state->output_buffer,
                                 &resp_state->output_buffer_cap);
-    cpb_assert_h(resp_state->body_begin_index < resp_state->output_buffer_cap, "");
+    exb_assert_h(resp_state->body_begin_index < resp_state->output_buffer_cap, "");
     if (err.error_code) {
         return err.error_code;
     }
 
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_response_state_deinit(struct cpb_response_state *resp_state, struct cpb *cpb, struct cpb_eloop *eloop) {
-    resp_state->state = CPB_HTTP_R_ST_DEAD;
+static int exb_response_state_deinit(struct exb_response_state *resp_state, struct exb *exb, struct exb_eloop *eloop) {
+    resp_state->state = EXB_HTTP_R_ST_DEAD;
     for (int i=0; i<resp_state->headers.len; i++) {
-        cpb_str_deinit(cpb, &resp_state->headers.headers[i].key);
-        cpb_str_deinit(cpb, &resp_state->headers.headers[i].value);
+        exb_str_deinit(exb, &resp_state->headers.headers[i].key);
+        exb_str_deinit(exb, &resp_state->headers.headers[i].value);
     }
-    cpb_eloop_release_buffer(eloop, resp_state->output_buffer, resp_state->output_buffer_cap);
-    return CPB_OK;
+    exb_eloop_release_buffer(eloop, resp_state->output_buffer, resp_state->output_buffer_cap);
+    return EXB_OK;
 }
 
 
 //doesnt own name
-static int cpb_response_get_header_index(struct cpb_request_state *rqstate, const char *s, int len) {
-    struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
+static int exb_response_get_header_index(struct exb_request_state *rqstate, const char *s, int len) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
     
     for (int i=0; i<rsp->headers.len; i++) {
-        struct cpb_str *key = &rsp->headers.headers[i].key;
-        if (cpb_strcasel_eq(key->str, key->len, s, len)) {
+        struct exb_str *key = &rsp->headers.headers[i].key;
+        if (exb_strcasel_eq(key->str, key->len, s, len)) {
             return i;
         }
     }
@@ -112,72 +112,72 @@ static int cpb_response_get_header_index(struct cpb_request_state *rqstate, cons
 }
 
 //Takes ownership of both name and value
-int cpb_response_set_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
+int exb_response_set_header(struct exb_request_state *rqstate, struct exb_str *name, struct exb_str *value);
 //Takes ownership of both name and value
-int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value);
+int exb_response_add_header(struct exb_request_state *rqstate, struct exb_str *name, struct exb_str *value);
 
 //doesnt take ownership
-int cpb_response_add_header_c(struct cpb_request_state *rqstate, char *name, char *value);
+int exb_response_add_header_c(struct exb_request_state *rqstate, char *name, char *value);
 //doesnt take ownership
-int cpb_response_set_header_c(struct cpb_request_state *rqstate, char *name, char *value);
+int exb_response_set_header_c(struct exb_request_state *rqstate, char *name, char *value);
 
-static size_t cpb_response_body_available_bytes(struct cpb_request_state *rqstate) {
-    struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
+static size_t exb_response_body_available_bytes(struct exb_request_state *rqstate) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
 }
 
-int cpb_response_body_buffer_ensure(struct cpb_request_state *rqstate, size_t cap);
+int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t cap);
 //the bytes are copied to output buffer
-static int cpb_response_append_body(struct cpb_request_state *rqstate, char *s, int len) {
-    struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
+static int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
     
-    int available_bytes = cpb_response_body_available_bytes(rqstate);
+    int available_bytes = exb_response_body_available_bytes(rqstate);
     if (len > available_bytes) {
         int rv;
         size_t new_cap = rsp->output_buffer_cap;
-        cpb_assert_h(new_cap > 0, "");
+        exb_assert_h(new_cap > 0, "");
         while (new_cap < (len - available_bytes))
             new_cap *= 2;
-        if ((rv = cpb_response_body_buffer_ensure(rqstate, new_cap)) != CPB_OK)
+        if ((rv = exb_response_body_buffer_ensure(rqstate, new_cap)) != EXB_OK)
             return rv;
     }
     memcpy(rsp->output_buffer + rsp->body_begin_index + rsp->body_len, s, len);
     rsp->body_len += len;
-    return CPB_OK;
+    return EXB_OK;
 }
 
-int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *s);
+int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s);
 
-static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struct cpb_eloop *eloop) {
-    struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
+static int exb_response_prepare_headers(struct exb_request_state *rqstate, struct exb_eloop *eloop) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
 
-    if (rsp->state != CPB_HTTP_R_ST_INIT) {
-        return CPB_INVALID_STATE_ERR;
+    if (rsp->state != EXB_HTTP_R_ST_INIT) {
+        return EXB_INVALID_STATE_ERR;
     }
-    cpb_assert_h(rsp->headers_len == 0, "");
-    cpb_assert_h(rsp->headers_begin_index == -1, "");
+    exb_assert_h(rsp->headers_len == 0, "");
+    exb_assert_h(rsp->headers_begin_index == -1, "");
     if ((rsp->headers_bytes + HTTP_STATUS_MAX_SZ) > rsp->body_begin_index) {
         //this should be unlikely to happen
         char *new_buff;
         int new_buff_cap;
-        struct cpb_error err = cpb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
+        struct exb_error err = exb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
         if (err.error_code) {
             return err.error_code;
         }
         int new_body_index = rsp->headers_bytes + HTTP_STATUS_MAX_SZ;
         memcpy(new_buff + new_body_index, rsp->output_buffer + rsp->body_begin_index, rsp->body_len);
-        cpb_eloop_release_buffer(eloop, rsp->output_buffer, rsp->output_buffer_cap);
+        exb_eloop_release_buffer(eloop, rsp->output_buffer, rsp->output_buffer_cap);
         rsp->output_buffer = new_buff;
         rsp->output_buffer_cap = new_buff_cap;
         rsp->body_begin_index = new_body_index;
     }
     rsp->headers_begin_index = rsp->body_begin_index - rsp->headers_bytes;
     //prepare status
-    cpb_assert_h(rsp->headers_begin_index >= 0, "");
+    exb_assert_h(rsp->headers_begin_index >= 0, "");
     int status_len = 0;
     char statusbuff[HTTP_STATUS_MAX_SZ];
-    int rv = cpb_write_status_code(statusbuff, HTTP_STATUS_MAX_SZ, &status_len, rsp->status_code, 1, 1);
-    if (rv != CPB_OK)
+    int rv = exb_write_status_code(statusbuff, HTTP_STATUS_MAX_SZ, &status_len, rsp->status_code, 1, 1);
+    if (rv != EXB_OK)
         return rv;
     
     rsp->status_len = status_len;
@@ -185,7 +185,7 @@ static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struc
     memcpy(rsp->output_buffer + rsp->status_begin_index, statusbuff, status_len);
     //prepare headers
     for (int i=0; i<rsp->headers.len; i++) {
-        struct cpb_response_header *h = &rsp->headers.headers[i];
+        struct exb_response_header *h = &rsp->headers.headers[i];
         char *key   = rsp->output_buffer + rsp->headers_begin_index + rsp->headers_len;
         char *colon = key + h->key.len;
         char *value = colon + 2;
@@ -199,19 +199,19 @@ static int cpb_response_prepare_headers(struct cpb_request_state *rqstate, struc
     
     memcpy(rsp->output_buffer + rsp->headers_begin_index + rsp->headers_len, "\r\n", 2);
     rsp->headers_len += 2;
-    cpb_assert_h(rsp->headers_bytes == rsp->headers_len, "headers size mismatch");
+    exb_assert_h(rsp->headers_bytes == rsp->headers_len, "headers size mismatch");
 
-    rsp->state = CPB_HTTP_R_ST_READY_HEADERS;
-    return CPB_OK;
+    rsp->state = EXB_HTTP_R_ST_READY_HEADERS;
+    return EXB_OK;
 }
 
-static void cpb_response_set_status_code(struct cpb_request_state *rqstate, int status_code) {
-    struct cpb_response_state *rsp = cpb_request_get_response(rqstate);
+static void exb_response_set_status_code(struct exb_request_state *rqstate, int status_code) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
     rsp->status_code = status_code;
 }
 
 //doesnt own location
-int cpb_response_redirect_and_end(struct cpb_request_state *rqstate, int status_code, const char *location);
-int cpb_response_end(struct cpb_request_state *rqstate);
+int exb_response_redirect_and_end(struct exb_request_state *rqstate, int status_code, const char *location);
+int exb_response_end(struct exb_request_state *rqstate);
 
 #endif

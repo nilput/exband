@@ -1,20 +1,20 @@
 #!/usr/bin/python3
 from cffi import FFI
 ffibuilder = FFI()
-ffibuilder.cdef('struct cpb;')
-ffibuilder.cdef('struct cpb_server;')
-ffibuilder.cdef('struct cpb_request_state;')
-#ffibuilder.cdef('struct cpb_request_state *cpb_py_get_request();')
-ffibuilder.cdef('int cpb_response_set_header_c(struct cpb_request_state *rqstate, char *name, char *value);')
-ffibuilder.cdef('int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *text);')
-ffibuilder.cdef('int cpb_response_end(struct cpb_request_state *rqstate);')
-ffibuilder.cdef('extern "Python" void py_handle_request(struct cpb_request_state *);')
-ffibuilder.set_source('_cpb_ffi', '''
-    #include "cpb_py_ffi.h"
+ffibuilder.cdef('struct exb;')
+ffibuilder.cdef('struct exb_server;')
+ffibuilder.cdef('struct exb_request_state;')
+#ffibuilder.cdef('struct exb_request_state *exb_py_get_request();')
+ffibuilder.cdef('int exb_response_set_header_c(struct exb_request_state *rqstate, char *name, char *value);')
+ffibuilder.cdef('int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *text);')
+ffibuilder.cdef('int exb_response_end(struct exb_request_state *rqstate);')
+ffibuilder.cdef('extern "Python" void py_handle_request(struct exb_request_state *);')
+ffibuilder.set_source('_exb_ffi', '''
+    #include "exb_py_ffi.h"
 
-    static void py_handle_request(struct cpb_request_state *rqstate);
+    static void py_handle_request(struct exb_request_state *rqstate);
 
-    CFFI_DLLEXPORT void cpb_py_handle_request(struct cpb_request_state *rqstate)
+    CFFI_DLLEXPORT void exb_py_handle_request(struct exb_request_state *rqstate)
     {
         py_handle_request(rqstate);
     }

@@ -1,3 +1,3 @@
 #include "http_server_listener.h"
-struct cpb_server;
-int cpb_server_listener_select_new(struct cpb_server *s, struct cpb_eloop *eloop, struct cpb_server_listener **listener);
+struct exb_server;
+int exb_server_listener_select_new(struct exb_server *s, struct exb_eloop *eloop, struct exb_server_listener **listener);

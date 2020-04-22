@@ -1,6 +1,6 @@
-#ifndef CPB_MOD_PY_H
-#define CPB_MOD_PY_H
+#ifndef EXB_MOD_PY_H
+#define EXB_MOD_PY_H
 
-struct cpb_request_state;
-void (*py_request_handler)(struct cpb_request_state *rqstate);
+struct exb_request_state;
+void (*py_request_handler)(struct exb_request_state *rqstate);
 #endif

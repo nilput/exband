@@ -1,9 +1,9 @@
-#include "../../cpb.h"
+#include "../../exb.h"
 #include "../../http/http_server_module.h"
 #include "../../http/http_request.h"
 #include "../../http/http_server.h"
-#include "cpb_event_perf_gen.h"
-#include "cpb_event_perf_act.h"
+#include "exb_event_perf_gen.h"
+#include "exb_event_perf_act.h"
 #include <string.h>
 #include <signal.h>
 
@@ -12,15 +12,15 @@
 #include "../../http/http_parse.h"
 
 struct perf_module {
-    struct cpb_http_server_module head;
-    struct cpb *cpb_ref;
-    struct cpb_perf_gen gen;
+    struct exb_http_server_module head;
+    struct exb *exb_ref;
+    struct exb_perf_gen gen;
     int count;
-    struct cpb_http_server *server;
+    struct exb_http_server *server;
 };
 
-static void destroy_module(struct cpb_http_server_module *module, struct cpb *cpb) {
-    cpb_free(cpb, module);
+static void destroy_module(struct exb_http_server_module *module, struct exb *exb) {
+    exb_free(exb, module);
 }
 
 int split(char *buff, int buffsz, char **tok) {
@@ -48,7 +48,7 @@ struct {
 } samples[8];
 int nsamples;
 int read_samples() {
-    char name[64] = "./src/cpb/mods/perf/samples/sample_X.txt";
+    char name[64] = "./src/exb/mods/perf/samples/sample_X.txt";
     char *digit = strchr(name, 'X');
     for (int i=1; i<=9; i++) {
         *digit = '0' + i;
@@ -68,7 +68,7 @@ int read_samples() {
 }
 
 static void parse_test(struct perf_module *mod) {
-    struct cpb_eloop *eloop = cpb_server_get_any_eloop(mod->server);
+    struct exb_eloop *eloop = exb_server_get_any_eloop(mod->server);
     read_samples();
     if (nsamples == 0) {
         printf("Found no request samples\n");
@@ -76,14 +76,14 @@ static void parse_test(struct perf_module *mod) {
     }
     int max = 4000000;
     for (int i=0; i<max; i++) {
-        struct cpb_request_state *rqstate = cpb_server_new_rqstate(mod->server, eloop, 0);
-        rqstate->istate = CPB_HTTP_I_ST_WAITING_FOR_HEADERS;
+        struct exb_request_state *rqstate = exb_server_new_rqstate(mod->server, eloop, 0);
+        rqstate->istate = EXB_HTTP_I_ST_WAITING_FOR_HEADERS;
         int idx = i / (max / nsamples);
         memcpy(rqstate->input_buffer, samples[idx].buff, samples[idx].len);
         rqstate->input_buffer_len = samples[idx].len;
-        struct cpb_error err = cpb_make_error(1);
-        if (cpb_str_has_crlfcrlf(rqstate->input_buffer, 0, rqstate->input_buffer_len)) {
-            err = cpb_request_http_parse(rqstate);
+        struct exb_error err = exb_make_error(1);
+        if (exb_str_has_crlfcrlf(rqstate->input_buffer, 0, rqstate->input_buffer_len)) {
+            err = exb_request_http_parse(rqstate);
         }
         
         if (err.error_code != 0) {
@@ -93,7 +93,7 @@ static void parse_test(struct perf_module *mod) {
             if (i % (max / 10) == 0)
                 printf("request method: %d\n", rqstate->method);
         }
-        cpb_server_destroy_rqstate(mod->server, eloop, rqstate);
+        exb_server_destroy_rqstate(mod->server, eloop, rqstate);
     }
 }
 
@@ -108,7 +108,7 @@ static void itoa_test(int use_printf) {
         }
         else {
             int n;
-            cpb_itoa(buff, 64, &n, num);
+            exb_itoa(buff, 64, &n, num);
         }
         magic += buff[0];
     }
@@ -121,9 +121,9 @@ static void handle_args(struct perf_module *mod, char *module_args) {
     while (split(buff, 64, &tok)) {
         printf("'%s'\n", buff);
         if (strcmp(buff, "--events") == 0) {
-            cpb_perf_gen_init(&mod->gen, cpb_server_get_any_eloop(mod->server), 4000000);
-            cpb_assert_h(mod->gen.eloop, "");
-            cpb_perf_gen_begin(&mod->gen);
+            exb_perf_gen_init(&mod->gen, exb_server_get_any_eloop(mod->server), 4000000);
+            exb_assert_h(mod->gen.eloop, "");
+            exb_perf_gen_begin(&mod->gen);
         }
         else if (strcmp(buff, "--parse") == 0) {
             parse_test(mod);
@@ -133,26 +133,26 @@ static void handle_args(struct perf_module *mod, char *module_args) {
             itoa_test(1);
             raise(SIGTERM);
         }
-        else if (strcmp(buff, "--itoa-cpb") == 0) {
+        else if (strcmp(buff, "--itoa-exb") == 0) {
             itoa_test(0);
             raise(SIGTERM);
         }
     }
 }
-int cpb_perf_init(struct cpb *cpb, struct cpb_server *server, char *module_args, struct cpb_http_server_module **module_out) {
+int exb_perf_init(struct exb *exb, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
     (void) module_args;
-    struct perf_module *mod = cpb_malloc(cpb, sizeof(struct perf_module));
+    struct perf_module *mod = exb_malloc(exb, sizeof(struct perf_module));
     if (!mod)
-        return CPB_NOMEM_ERR;
-    mod->cpb_ref = cpb;
+        return EXB_NOMEM_ERR;
+    mod->exb_ref = exb;
     mod->head.destroy = destroy_module;
     mod->count = 0;
     mod->server = server;
 
-    printf("s: %d\n", sizeof(struct cpb_http_multiplexer));
+    printf("s: %d\n", sizeof(struct exb_http_multiplexer));
     printf(".mp: %p\n", (void *)&server->mp);
 
     handle_args(mod, module_args);
-    *module_out = (struct cpb_http_server_module*)mod;
-    return CPB_OK;
+    *module_out = (struct exb_http_server_module*)mod;
+    return EXB_OK;
 }

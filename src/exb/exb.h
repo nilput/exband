@@ -1,13 +1,13 @@
 #include <stdlib.h>
-#ifndef CPB_H
-#define CPB_H
+#ifndef EXB_H
+#define EXB_H
 
-#define CPB_RESTRICT 
+#define EXB_RESTRICT 
 
-#include "cpb_assert.h"
-#include "cpb_errors.h"
+#include "exb_assert.h"
+#include "exb_errors.h"
 #ifdef TRACK_RQSTATE_EVENTS
-    #define RQSTATE_EVENT(f, fmt, ...) fprintf(f, "[%.6f]" fmt, cpb_time(), __VA_ARGS__)
+    #define RQSTATE_EVENT(f, fmt, ...) fprintf(f, "[%.6f]" fmt, exb_time(), __VA_ARGS__)
 #else
     #define RQSTATE_EVENT(f, fmt, ...) 
 #endif
@@ -25,42 +25,42 @@
 #endif
 
 #if 1
-    #define CPB_ALIGN(bytes)  __attribute__((aligned(bytes)))
+    #define EXB_ALIGN(bytes)  __attribute__((aligned(bytes)))
 #else
-    #define CPB_ALIGN(bytes)
+    #define EXB_ALIGN(bytes)
 #endif
 #if 1
     #define USE_GNU_MEMMEM
 #endif
 #if 1
-    #define CPB_SET_TCPNODELAY
+    #define EXB_SET_TCPNODELAY
 #endif
 #if 1
-    #define CPB_SET_TCPQUICKACK
+    #define EXB_SET_TCPQUICKACK
 #endif
 #if 1
-    #define CPB_SCHED
+    #define EXB_SCHED
 #endif
-struct cpb {
+struct exb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)
     int e;
 };
-static int cpb_init(struct cpb *cpb) {
+static int exb_init(struct exb *exb) {
     return 0;
 }
-static int cpb_deinit(struct cpb *cpb) {
+static int exb_deinit(struct exb *exb) {
     return 0;
 }
-static void *cpb_malloc(struct cpb *cpb, size_t sz){
+static void *exb_malloc(struct exb *exb, size_t sz){
     void *m = malloc(sz);
     return m;
 }
-static void *cpb_realloc(struct cpb *cpb, void *p, size_t sz){
+static void *exb_realloc(struct exb *exb, void *p, size_t sz){
     void *m = realloc(p, sz);
     return m;
 }
-static void cpb_free(struct cpb *cpb, void *p){
+static void exb_free(struct exb *exb, void *p){
     free(p);
 }
 #endif

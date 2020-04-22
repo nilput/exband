@@ -1,31 +1,31 @@
 #define _GNU_SOURCE
-#include "cpb_utils.h"
-#include "cpb_errors.h"
-#include "cpb_str.h"
+#include "exb_utils.h"
+#include "exb_errors.h"
+#include "exb_str.h"
 #include <unistd.h>
 #include <sys/time.h>
 
 #include <string.h>
 #include <stdio.h>
-int cpb_sleep(int ms) {
+int exb_sleep(int ms) {
     return usleep(ms * 1000);
 }
 //returns unix time in seconds with at least ms accuarcy
-double cpb_time() {
+double exb_time() {
     struct timeval tv;
     int rv = gettimeofday(&tv, NULL);
     if (rv != 0)
         return 0;
     return tv.tv_sec + (tv.tv_usec / 1000000.0);
 }
-int cpb_memchr(const char *haystack, int hidx, int hlen, char needle) {
+int exb_memchr(const char *haystack, int hidx, int hlen, char needle) {
     char *f = memchr(haystack + hidx, needle, hlen - hidx);
     if (f != NULL)
         return f - haystack;
     return -1;
 }
 
-int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen) {
+int exb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen) {
     if (nlen == 0)
         return hidx;
     if (hidx + nlen > hlen)
@@ -51,13 +51,13 @@ int cpb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int
 #endif
 }
 
-int cpb_itoa(char *dest, int dest_size, int *written_out, int num) {
-#define CPB_ITOA_MAX_DIGITS 20
-    char digits[CPB_ITOA_MAX_DIGITS];
+int exb_itoa(char *dest, int dest_size, int *written_out, int num) {
+#define EXB_ITOA_MAX_DIGITS 20
+    char digits[EXB_ITOA_MAX_DIGITS];
     int ndigits = 0;
     int neg = num < 0;
     num = num < 0 ? - num : num;
-    for (int i=0; i<CPB_ITOA_MAX_DIGITS; i++) {
+    for (int i=0; i<EXB_ITOA_MAX_DIGITS; i++) {
         digits[i] = '0' + (num % 10);
         num /= 10;
         if (num == 0) {
@@ -68,7 +68,7 @@ int cpb_itoa(char *dest, int dest_size, int *written_out, int num) {
     if ((ndigits + neg + 1) > dest_size) {
         *written_out = 0;
         *dest = '\0';
-        return CPB_OUT_OF_RANGE_ERR;
+        return EXB_OUT_OF_RANGE_ERR;
     }
     *written_out= ndigits + neg;
     if (neg)
@@ -76,30 +76,30 @@ int cpb_itoa(char *dest, int dest_size, int *written_out, int num) {
     for (int i=0; i<ndigits; i++) {
         dest[i] = digits[ndigits - i - 1];
     }
-    return CPB_OK;
+    return EXB_OK;
 }
-int cpb_atoi(char *str, int len, int *dest) {
+int exb_atoi(char *str, int len, int *dest) {
     char *end = NULL;
     long value = strtol(str, &end, 10);
     if (end == str) {
         *dest = 0;
-        return CPB_INVALID_INT_ERR;
+        return EXB_INVALID_INT_ERR;
     }
     *dest = value;
-    return CPB_OK;
+    return EXB_OK;
 }
-int cpb_atoi_hex(char *str, int len, int *dest) {
+int exb_atoi_hex(char *str, int len, int *dest) {
     char *end = NULL;
     long value = strtol(str, &end, 16);
     if (end == str) {
         *dest = 0;
-        return CPB_INVALID_INT_ERR;
+        return EXB_INVALID_INT_ERR;
     }
     *dest = value;
-    return CPB_OK;
+    return EXB_OK;
 }
 //returns length of read bytes, 0 means error
-int cpb_atoi_hex_rlen(char *str, int len, int *dest) {
+int exb_atoi_hex_rlen(char *str, int len, int *dest) {
     char *end = NULL;
     long value = strtol(str, &end, 16);
     if (end == str) {
@@ -109,11 +109,11 @@ int cpb_atoi_hex_rlen(char *str, int len, int *dest) {
     *dest = value;
     return end - str;
 }
-int cpb_str_itoa(struct cpb *cpb, struct cpb_str *str, int num) {
+int exb_str_itoa(struct exb *exb, struct exb_str *str, int num) {
     if (str->cap < 32) {
-        int rv = cpb_str_set_cap(cpb, str, 32);
-        if (rv != CPB_OK)
+        int rv = exb_str_set_cap(exb, str, 32);
+        if (rv != EXB_OK)
             return rv;
     }
-    return cpb_itoa(str->str, str->cap, &str->len, num);
+    return exb_itoa(str->str, str->cap, &str->len, num);
 }

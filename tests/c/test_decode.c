@@ -6,9 +6,9 @@
 #include <string.h>
 
 #include "cmocka.h"
-#include "../../src/cpb/cpb.h"
-#include "../../src/cpb/cpb_str.h"
-#include "../../src/cpb/http/http_decode.h
+#include "../../src/exb/exb.h"
+#include "../../src/exb/exb_str.h"
+#include "../../src/exb/http/http_decode.h
 struct encdec {
         unsigned char *enc;
         int enclen;
@@ -30,18 +30,18 @@ struct encdec_keys_values {
 
 #include "test_decode_data.h
 struct test_state {
-    struct cpb cpb;
+    struct exb exb;
 };
 
 void test_strappend(void **state)
 {
     struct test_state *tstate = *state;
-    struct cpb_str foo;
+    struct exb_str foo;
     
-    cpb_str_init_const_str(&foo, "hello");
-    cpb_str_strappend(&tstate->cpb, &foo, " world");
+    exb_str_init_const_str(&foo, "hello");
+    exb_str_strappend(&tstate->exb, &foo, " world");
     assert_string_equal(foo.str, "hello world");
-    cpb_str_deinit(&tstate->cpb, &foo);
+    exb_str_deinit(&tstate->exb, &foo);
 }
 
 
@@ -58,23 +58,23 @@ static int vmemcmp(void *a, void *b, int len) {
 void test_urlencode_decode(void **state)
 {
     struct test_state *tstate = *state;
-    struct cpb_str dec;
+    struct exb_str dec;
     int sz;
-    cpb_str_init(&tstate->cpb, &dec);
+    exb_str_init(&tstate->exb, &dec);
     for (int i=0; i<sizeof ed / sizeof ed[0]; i++) {
-        cpb_str_ensure_cap(&tstate->cpb, &dec, ed[i].declen);
-        cpb_urlencode_decode(dec.str, dec.cap, &sz, ed[i].enc, ed[i].enclen);
+        exb_str_ensure_cap(&tstate->exb, &dec, ed[i].declen);
+        exb_urlencode_decode(dec.str, dec.cap, &sz, ed[i].enc, ed[i].enclen);
         assert_true(sz == ed[i].declen);
         assert_true(sz < dec.cap);
         assert_true(vmemcmp(dec.str, ed[i].dec, ed[i].declen) == 0);
     }
     
-    cpb_str_deinit(&tstate->cpb, &dec);
+    exb_str_deinit(&tstate->exb, &dec);
 }
 
-int check_encdec_keys_values(struct cpb *cpb, struct encdec_keys_values *ekv) { 
-    struct cpb_form_parts fp;
-    cpb_urlencode_decode_parts(cpb, &fp, ekv->enc, ekv->enclen);
+int check_encdec_keys_values(struct exb *exb, struct encdec_keys_values *ekv) { 
+    struct exb_form_parts fp;
+    exb_urlencode_decode_parts(exb, &fp, ekv->enc, ekv->enclen);
     assert_int_equal(ekv->nvalues, fp.nparts);
     for (int i=0; i<ekv->nvalues; i++) {
         assert_true(fp.buff.str[fp.keys[i].index + fp.keys[i].len] == 0); //nul terminated
@@ -83,30 +83,30 @@ int check_encdec_keys_values(struct cpb *cpb, struct encdec_keys_values *ekv) {
         assert_true(vmemcmp(fp.buff.str + fp.keys[i].index,   ekv->keyvalues[i].key,   ekv->keyvalues[i].keylen) == 0);
         assert_true(vmemcmp(fp.buff.str + fp.values[i].index, ekv->keyvalues[i].value, ekv->keyvalues[i].valuelen) == 0);
     }
-    cpb_form_parts_deinit(cpb, &fp);
+    exb_form_parts_deinit(exb, &fp);
 }
 
 void test_urlencode_decode_parts(void **state)
 {
     struct test_state *tstate = *state;
     for (int i=0; i<sizeof eparts / sizeof eparts[0]; i++) {
-        check_encdec_keys_values(&tstate->cpb, eparts + i);
+        check_encdec_keys_values(&tstate->exb, eparts + i);
     }
 }
 void test_decode_header_parts(void **state) {
     struct test_state *tstate = *state;
-    struct cpb *cpb = &tstate->cpb;
+    struct exb *exb = &tstate->exb;
     char *h1 = "multipart/form-data; boundary=foobar";
-    assert_true(cpb_content_type_is(h1, strlen(h1), "multipart/form-data"));
-    struct cpb_header_params pm;
-    cpb_decode_header_params(&tstate->cpb, &pm, h1, strlen(h1));
+    assert_true(exb_content_type_is(h1, strlen(h1), "multipart/form-data"));
+    struct exb_header_params pm;
+    exb_decode_header_params(&tstate->exb, &pm, h1, strlen(h1));
     assert_true(pm.nparams == 1);
     assert_string_equal(pm.buff.str + pm.value.index, "multipart/form-data");
     assert_string_equal(pm.buff.str + pm.params.keys[0].index, "boundary");
     assert_string_equal(pm.buff.str + pm.params.values[0].index, "foobar");
-    cpb_header_params_deinit(&tstate->cpb, &pm);
+    exb_header_params_deinit(&tstate->exb, &pm);
     char *h2 = "multipart/form-data;boundary=foobar;key2=\"value 2\"  ; key3=\"value \\\"3\"";
-    cpb_decode_header_params(&tstate->cpb, &pm, h2, strlen(h2));
+    exb_decode_header_params(&tstate->exb, &pm, h2, strlen(h2));
     assert_true(pm.nparams == 3);
     assert_string_equal(pm.buff.str + pm.value.index, "multipart/form-data");
     assert_string_equal(pm.buff.str + pm.params.keys[0].index, "boundary");
@@ -116,13 +116,13 @@ void test_decode_header_parts(void **state) {
     assert_string_equal(pm.buff.str + pm.params.keys[2].index, "key3");
     assert_string_equal(pm.buff.str + pm.params.values[2].index, "value \"3");
     
-    cpb_header_params_deinit(&tstate->cpb, &pm);
+    exb_header_params_deinit(&tstate->exb, &pm);
 }
 
 void test_decode_multipart_form(void **state) {
     struct test_state *tstate = *state;
-    struct cpb *cpb = &tstate->cpb;
-    struct cpb_form_parts fp;
+    struct exb *exb = &tstate->exb;
+    struct exb_form_parts fp;
     
     char *h1 = "multipart/form-data; boundary=------------------------3b3fe428898e909a";
     char *body1 = "--------------------------3b3fe428898e909a\r\n"
@@ -130,12 +130,12 @@ void test_decode_multipart_form(void **state) {
                   "\r\n"
                   "12 45 678\r\n"
                   "--------------------------3b3fe428898e909a--";
-    cpb_decode_multipart(cpb, &fp,  h1, strlen(h1), body1, strlen(body1));
+    exb_decode_multipart(exb, &fp,  h1, strlen(h1), body1, strlen(body1));
     assert_int_equal(fp.nparts, 1);
     assert_string_equal(fp.buff.str + fp.keys[0].index, "f");
     assert_int_equal(fp.values[0].len, 9);
     assert_memory_equal(body1 + fp.values[0].index, "12 45 678", 9);
-    cpb_form_parts_deinit(cpb, &fp);
+    exb_form_parts_deinit(exb, &fp);
     char *h2 = "multipart/form-data; boundary=------------------------9a68d36abfb5d849";
     char *body2 = "--------------------------9a68d36abfb5d849\r\n"
         "Content-Disposition: form-data; name=\"key1\"\r\n"
@@ -154,7 +154,7 @@ void test_decode_multipart_form(void **state) {
         "\r\n"
         "value\r\n"
         "--------------------------9a68d36abfb5d849--\r\n";
-    cpb_decode_multipart(cpb, &fp,  h2, strlen(h2), body2, strlen(body2));
+    exb_decode_multipart(exb, &fp,  h2, strlen(h2), body2, strlen(body2));
     assert_int_equal(fp.nparts, 4);
     assert_string_equal(fp.buff.str + fp.keys[0].index, "key1");
     assert_int_equal(fp.values[0].len, 6);
@@ -173,13 +173,13 @@ void test_decode_multipart_form(void **state) {
     assert_int_equal(fp.values[3].len, 5);
     assert_memory_equal(body2 + fp.values[3].index, "value", 5);
 
-    cpb_form_parts_deinit(cpb, &fp);
+    exb_form_parts_deinit(exb, &fp);
 }
 
 int create_state(void **state) {
     struct test_state *tstate = malloc(sizeof *state);
     assert_true(!!tstate);
-    cpb_init(&tstate->cpb);
+    exb_init(&tstate->exb);
     *state = tstate;
     return 0;
 }
@@ -187,7 +187,7 @@ int destroy_state(void **state) {
     struct test_state *tstate = *state;
     assert_true(!!state);
     
-    cpb_deinit(&tstate->cpb);
+    exb_deinit(&tstate->exb);
     *state = NULL;
     return 0;
 }

@@ -25,7 +25,7 @@ def module_init(mod_ptr, user_module):
     request_handler = imported_module.handler
 
     return 0
-from ._cpb_ffi import ffi, lib
+from ._exb_ffi import ffi, lib
 
 def asbytes(text):
     if isinstance(text, str):
@@ -41,12 +41,12 @@ class Request:
     def end(self):
         if self._is_ended:
             raise RuntimeError('response already ended')
-        lib.cpb_response_end(self._rqstate_ptr)
+        lib.exb_response_end(self._rqstate_ptr)
         self._is_ended = True
     def append_body(self, text):
-        lib.cpb_response_append_body_cstr(self._rqstate_ptr, asbytes(text))
+        lib.exb_response_append_body_cstr(self._rqstate_ptr, asbytes(text))
     def set_header(self, header, value):
-        lib.cpb_response_set_header_c(self._rqstate_ptr, asbytes(header), asbytes(value))
+        lib.exb_response_set_header_c(self._rqstate_ptr, asbytes(header), asbytes(value))
     
 
 @ffi.def_extern()

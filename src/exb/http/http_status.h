@@ -1,11 +1,11 @@
-#ifndef CPB_HTTP_STATUS_H
-#define CPB_HTTP_STATUS_H
+#ifndef EXB_HTTP_STATUS_H
+#define EXB_HTTP_STATUS_H
 
-#include "../cpb_assert.h"
-#include "../cpb_errors.h"
+#include "../exb_assert.h"
+#include "../exb_errors.h"
 #include <string.h>
 //doesnt add a null terminator
-static int cpb_write_status_code(char *dest,
+static int exb_write_status_code(char *dest,
         int dest_size,
         int *written_bytes,
         int status_code,
@@ -14,7 +14,7 @@ static int cpb_write_status_code(char *dest,
 {
     #define STATUS_BUFF_LEN 64
     char buff[STATUS_BUFF_LEN] = "HTTP/x.x ";
-    cpb_assert_h(http_major < 10 && http_minor < 10, "");
+    exb_assert_h(http_major < 10 && http_minor < 10, "");
     buff[5] = '0' + http_major;
     buff[7] = '0' + http_minor;
 
@@ -56,18 +56,18 @@ static int cpb_write_status_code(char *dest,
     else if (status_code == 501)
         status = "501 Not Implemented";
     else 
-        return CPB_INVALID_ARG_ERR;
+        return EXB_INVALID_ARG_ERR;
     //thats impossible, the largest of the currently hardcoded status lines 26 chars + http version is 8 chars + 2 crlf
-    cpb_assert_h(((strlen(status) + strlen(buff) + 1) <= STATUS_BUFF_LEN), ""); 
+    exb_assert_h(((strlen(status) + strlen(buff) + 1) <= STATUS_BUFF_LEN), ""); 
     #undef STATUS_BUFF_LEN
     strcat(buff, status);
     strcat(buff, "\r\n");
     int buff_len = strlen(buff);
     if (buff_len > dest_size)
-        return CPB_OUT_OF_RANGE_ERR;
+        return EXB_OUT_OF_RANGE_ERR;
     memcpy(dest, buff, buff_len);
     *written_bytes = buff_len;
-    return CPB_OK;
+    return EXB_OK;
 }
 /*
 '<,'>s/\v((\d+).+)/if (status_code == \2){^Mstatus = "\1";^M}/gc

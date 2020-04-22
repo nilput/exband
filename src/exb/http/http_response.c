@@ -4,36 +4,36 @@
 #include <unistd.h>
 #include <errno.h>
 
-int cpb_response_body_buffer_ensure(struct cpb_request_state *rqstate, size_t cap) {
-    struct cpb_response_state *rsp = &rqstate->resp;
+int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t cap) {
+    struct exb_response_state *rsp = &rqstate->resp;
     
     cap = cap + rsp->body_begin_index;
     if (cap > rsp->output_buffer_cap) {
-        struct cpb_error err;
+        struct exb_error err;
         char *new_buff;
         int new_sz;
-        err = cpb_eloop_realloc_buffer(rqstate->eloop, rsp->output_buffer, cap, &new_buff, &new_sz);
+        err = exb_eloop_realloc_buffer(rqstate->eloop, rsp->output_buffer, cap, &new_buff, &new_sz);
         if (err.error_code)
             return err.error_code;
         rsp->output_buffer = new_buff;
         rsp->output_buffer_cap = new_sz;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 
-int cpb_response_append_body_cstr(struct cpb_request_state *rqstate, char *s) {
-    return cpb_response_append_body(rqstate, s, strlen(s));
+int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s) {
+    return exb_response_append_body(rqstate, s, strlen(s));
 }
 
 
 
 //Takes ownership of both name and value
-int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value) {
-    struct cpb_response_state *rsp = &rqstate->resp;
-    if (rsp->headers.len + 1 >= CPB_HTTP_RESPONSE_HEADER_MAX) {
-        cpb_str_deinit(rqstate->server->cpb, name);
-        cpb_str_deinit(rqstate->server->cpb, value);
-        return CPB_OUT_OF_RANGE_ERR;
+int exb_response_add_header(struct exb_request_state *rqstate, struct exb_str *name, struct exb_str *value) {
+    struct exb_response_state *rsp = &rqstate->resp;
+    if (rsp->headers.len + 1 >= EXB_HTTP_RESPONSE_HEADER_MAX) {
+        exb_str_deinit(rqstate->server->exb, name);
+        exb_str_deinit(rqstate->server->exb, value);
+        return EXB_OUT_OF_RANGE_ERR;
     }
     rsp->headers.headers[rsp->headers.len].key = *name;
     rsp->headers.headers[rsp->headers.len].value = *value;
@@ -41,62 +41,62 @@ int cpb_response_add_header(struct cpb_request_state *rqstate, struct cpb_str *n
 
     rsp->headers_bytes += name->len + 2 /*": "*/ + value->len + 2 /*crlf*/;
 
-    return CPB_OK;
+    return EXB_OK;
 }
 
 //Takes ownership of both name and value
-int cpb_response_set_header(struct cpb_request_state *rqstate, struct cpb_str *name, struct cpb_str *value) {
-    struct cpb_response_state *rsp = &rqstate->resp;
+int exb_response_set_header(struct exb_request_state *rqstate, struct exb_str *name, struct exb_str *value) {
+    struct exb_response_state *rsp = &rqstate->resp;
     
-    int idx = cpb_response_get_header_index(rqstate, name->str, name->len);
+    int idx = exb_response_get_header_index(rqstate, name->str, name->len);
     if (idx != -1) {
-        struct cpb_str *old_value = &rsp->headers.headers[idx].value;
-        cpb_str_deinit(rqstate->server->cpb, old_value);
-        cpb_str_deinit(rqstate->server->cpb, name);
+        struct exb_str *old_value = &rsp->headers.headers[idx].value;
+        exb_str_deinit(rqstate->server->exb, old_value);
+        exb_str_deinit(rqstate->server->exb, name);
         rsp->headers.headers[idx].value = *value;
-        return CPB_OK;
+        return EXB_OK;
     }
-    return cpb_response_add_header(rqstate, name, value);
+    return exb_response_add_header(rqstate, name, value);
 }
 
-int cpb_response_set_header_c(struct cpb_request_state *rqstate, char *name, char *value) {
-    struct cpb_str sname, svalue;
+int exb_response_set_header_c(struct exb_request_state *rqstate, char *name, char *value) {
+    struct exb_str sname, svalue;
     int rv;
-    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &sname, name)) != CPB_OK) {
+    if ((rv = exb_str_init_strcpy(rqstate->server->exb, &sname, name)) != EXB_OK) {
         return rv;
     }
-    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &svalue, name)) != CPB_OK) {
-        cpb_str_deinit(rqstate->server->cpb, &sname);
+    if ((rv = exb_str_init_strcpy(rqstate->server->exb, &svalue, name)) != EXB_OK) {
+        exb_str_deinit(rqstate->server->exb, &sname);
         return rv;
     }
-    return cpb_response_set_header(rqstate, &sname, &svalue);
+    return exb_response_set_header(rqstate, &sname, &svalue);
 }
-int cpb_response_add_header_c(struct cpb_request_state *rqstate, char *name, char *value) {
-    struct cpb_str sname, svalue;
+int exb_response_add_header_c(struct exb_request_state *rqstate, char *name, char *value) {
+    struct exb_str sname, svalue;
     int rv;
-    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &sname, name)) != CPB_OK) {
+    if ((rv = exb_str_init_strcpy(rqstate->server->exb, &sname, name)) != EXB_OK) {
         return rv;
     }
-    if ((rv = cpb_str_init_strcpy(rqstate->server->cpb, &svalue, name)) != CPB_OK) {
-        cpb_str_deinit(rqstate->server->cpb, &sname);
+    if ((rv = exb_str_init_strcpy(rqstate->server->exb, &svalue, name)) != EXB_OK) {
+        exb_str_deinit(rqstate->server->exb, &sname);
         return rv;
     }
-    return cpb_response_add_header(rqstate, &sname, &svalue);
+    return exb_response_add_header(rqstate, &sname, &svalue);
 }
 
-int cpb_response_redirect_and_end(struct cpb_request_state *rqstate, int status_code, const char *location) {
-    struct cpb_response_state *rsp = &rqstate->resp;
+int exb_response_redirect_and_end(struct exb_request_state *rqstate, int status_code, const char *location) {
+    struct exb_response_state *rsp = &rqstate->resp;
     
-    struct cpb_str name, value;
-    cpb_str_init_const_str(&name, "Location");
-    int rv =  cpb_str_init_strcpy(rqstate->server->cpb, &value, location);
-    if (rv != CPB_OK)
+    struct exb_str name, value;
+    exb_str_init_const_str(&name, "Location");
+    int rv =  exb_str_init_strcpy(rqstate->server->exb, &value, location);
+    if (rv != EXB_OK)
         return rv;
-    rv = cpb_response_set_header(rqstate, &name, &value);
-    if (rv != CPB_OK) {
-        cpb_str_deinit(rqstate->server->cpb, &value);
+    rv = exb_response_set_header(rqstate, &name, &value);
+    if (rv != EXB_OK) {
+        exb_str_deinit(rqstate->server->exb, &value);
         return rv;
     }
-    cpb_response_set_status_code(rqstate, status_code);
-    return cpb_response_end(rqstate);
+    exb_response_set_status_code(rqstate, status_code);
+    return exb_response_end(rqstate);
 }

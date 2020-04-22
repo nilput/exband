@@ -1,7 +1,7 @@
-CPB_LIB_DIR := ../../
-CPB_INCLUDE_DIR := ../../src/
-CFLAGS := -I ../../othersrc/ -fPIC -I $(CPB_INCLUDE_DIR)
-LDLIBS := -L $(CPB_LIB_DIR) -lcpb
+EXB_LIB_DIR := ../../
+EXB_INCLUDE_DIR := ../../src/
+CFLAGS := -I ../../othersrc/ -fPIC -I $(EXB_INCLUDE_DIR)
+LDLIBS := -L $(EXB_LIB_DIR) -lexb
 
 .PHONY: clean all
 debug: CFLAGS += -g3 -O0 -Wall

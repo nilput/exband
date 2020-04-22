@@ -1,3 +1,3 @@
-struct cpb_module {
-    int (*init)(struct cpb *cpb);
+struct exb_module {
+    int (*init)(struct exb *exb);
 };

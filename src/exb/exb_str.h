@@ -1,12 +1,12 @@
-#ifndef CPB_STR_H
-#define CPB_STR_H
+#ifndef EXB_STR_H
+#define EXB_STR_H
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include "cpb.h"
-#include "cpb_errors.h"
-#define CPB_CRV(code)
+#include "exb.h"
+#include "exb_errors.h"
+#define EXB_CRV(code)
 
 /*
 * valid states:
@@ -14,55 +14,55 @@
 *   .len == -1 : memory is read only, and not owned by the object
 *   in both cases .len and .str are valid, .str points to the empty string if the string is just initialized
 */
-struct cpb_str {
+struct exb_str {
     char *str; //null terminated
     int len;
     int cap; //negative values mean memory is not owned by us (const char * passed to us)
 };
-struct cpb_str_slice {
+struct exb_str_slice {
     int index;
     int len;
 };
 //returned str is not null terminated!
-static struct cpb_str cpb_str_slice_to_const_str(struct cpb_str_slice slice, const char *base) {
-    struct cpb_str s;
+static struct exb_str exb_str_slice_to_const_str(struct exb_str_slice slice, const char *base) {
+    struct exb_str s;
     s.str = (char *)base + slice.index;
     s.len = slice.len;
     s.cap = -1;
     return s;
 }
-static int cpb_str_is_const(struct cpb_str *str) {
+static int exb_str_is_const(struct exb_str *str) {
     return str->cap == -1;
 }
 
-static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len);
-static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len);
+static int exb_str_init_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int src_len);
+static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int src_len);
 
 //assumes str is already initialized
-static int cpb_str_slice_to_copied_str(struct cpb *cpb, struct cpb_str_slice slice, const char *base, struct cpb_str *out) {
-    int rv = cpb_str_strlcpy(cpb, out, base + slice.index, slice.len);
-    if (rv != CPB_OK)
+static int exb_str_slice_to_copied_str(struct exb *exb, struct exb_str_slice slice, const char *base, struct exb_str *out) {
+    int rv = exb_str_strlcpy(exb, out, base + slice.index, slice.len);
+    if (rv != EXB_OK)
         return rv;
-    return CPB_OK;
+    return EXB_OK;
 }
 
 
-static int cpb_str_clone(struct cpb *cpb, struct cpb_str *str) {
-    return cpb_str_init_strlcpy(cpb, str, str->str, str->len);
+static int exb_str_clone(struct exb *exb, struct exb_str *str) {
+    return exb_str_init_strlcpy(exb, str, str->str, str->len);
 }
 
-static int cpb_str_rtrim(struct cpb *cpb, struct cpb_str *str) {
+static int exb_str_rtrim(struct exb *exb, struct exb_str *str) {
     int rv;
-    if (cpb_str_is_const(str) && ((rv = cpb_str_clone(cpb, str) != CPB_OK))) {
+    if (exb_str_is_const(str) && ((rv = exb_str_clone(exb, str) != EXB_OK))) {
         return rv;
     }
     while (str->len > 0 && (str->str[str->len-1] == ' ' ||
                             str->str[str->len-1] == '\t'  ))
         str->len--;
     str->str[str->len] = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
-static void cpb_str_slice_trim(const char *base, struct cpb_str_slice *slice) {
+static void exb_str_slice_trim(const char *base, struct exb_str_slice *slice) {
     while (slice->len > 0 && (base[slice->index] == ' ' ||
                               base[slice->index] == '\t'  ))
     {
@@ -74,94 +74,94 @@ static void cpb_str_slice_trim(const char *base, struct cpb_str_slice *slice) {
         slice->len--;
 }
 
-static struct cpb_str cpb_str_const_view(struct cpb_str *str) {
-    struct cpb_str view = *str;
+static struct exb_str exb_str_const_view(struct exb_str *str) {
+    struct exb_str view = *str;
     view.cap = -1;
     return view;
 }
 
 
 //see str valid states at kdata.h
-static int cpb_str_init(struct cpb *cpb, struct cpb_str *str) {
-    (void) cpb;
+static int exb_str_init(struct exb *exb, struct exb_str *str) {
+    (void) exb;
     str->str = "";
     str->cap = -1;
     str->len = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_str_init_empty(struct cpb_str *str) {
+static int exb_str_init_empty(struct exb_str *str) {
     str->str = "";
     str->cap = -1;
     str->len = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
 
 //src0 must outlive the object (doesn't own it)
-static int cpb_str_init_const_str(struct cpb_str *str, const char *src0) {
-    cpb_assert_h(!!src0, "passed NULL string");
+static int exb_str_init_const_str(struct exb_str *str, const char *src0) {
+    exb_assert_h(!!src0, "passed NULL string");
     str->str = (char *) src0;
     str->len = strlen(src0);
     str->cap = -1;
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_str_deinit(struct cpb *cpb, struct cpb_str *str) {
+static int exb_str_deinit(struct exb *exb, struct exb_str *str) {
     if (str->cap >= 0) {
-        cpb_free(cpb, str->str);
+        exb_free(exb, str->str);
     }
     str->str = NULL;
     str->cap = 0;
     str->len = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen);
+static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int srclen);
 
-static int cpb_str_init_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int src_len) {
-    int rv = cpb_str_init(cpb, str);
-    if (rv != CPB_OK)
+static int exb_str_init_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int src_len) {
+    int rv = exb_str_init(exb, str);
+    if (rv != EXB_OK)
         return rv;
-    rv = cpb_str_strlcpy(cpb, str, src, src_len);
-    if (rv != CPB_OK) {
-        cpb_str_deinit(cpb, str);
+    rv = exb_str_strlcpy(exb, str, src, src_len);
+    if (rv != EXB_OK) {
+        exb_str_deinit(exb, str);
         return rv;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 
-static int cpb_str_new(struct cpb *cpb, struct cpb_str **strp) {
+static int exb_str_new(struct exb *exb, struct exb_str **strp) {
     void *p = NULL;
-    p = cpb_malloc(cpb, sizeof(struct cpb_str));
+    p = exb_malloc(exb, sizeof(struct exb_str));
     if (!p) {
         *strp = NULL;
-        return CPB_NOMEM_ERR;
+        return EXB_NOMEM_ERR;
     }
-    int rv = cpb_str_init(cpb, p);
+    int rv = exb_str_init(exb, p);
     *strp = p;
     return rv;
 }
-static int cpb_str_destroy(struct cpb *cpb, struct cpb_str *strp) {
-    int rv = cpb_str_deinit(cpb, strp);
-    cpb_free(cpb, strp);
+static int exb_str_destroy(struct exb *exb, struct exb_str *strp) {
+    int rv = exb_str_deinit(exb, strp);
+    exb_free(exb, strp);
 
     return rv;
 }
-static int cpb_str_strcpy(struct cpb *cpb, struct cpb_str *str, const char *src0);
-static int cpb_str_new_strcpy(struct cpb *cpb, struct cpb_str **strp, const char *src0) {
-    int rv = cpb_str_new(cpb, strp); CPB_CRV(rv);
-    rv = cpb_str_strcpy(cpb, *strp, src0);
-    if (rv != CPB_OK) {
-        cpb_str_destroy(cpb, *strp);
+static int exb_str_strcpy(struct exb *exb, struct exb_str *str, const char *src0);
+static int exb_str_new_strcpy(struct exb *exb, struct exb_str **strp, const char *src0) {
+    int rv = exb_str_new(exb, strp); EXB_CRV(rv);
+    rv = exb_str_strcpy(exb, *strp, src0);
+    if (rv != EXB_OK) {
+        exb_str_destroy(exb, *strp);
         *strp = NULL;
         return rv;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 
 
-static int cpb_str_clear(struct cpb *cpb, struct cpb_str *str) {
-    (void) cpb;
+static int exb_str_clear(struct exb *exb, struct exb_str *str) {
+    (void) exb;
     if (str->cap > 0) {
         str->str[0] = 0;
         str->len = 0;
@@ -171,191 +171,191 @@ static int cpb_str_clear(struct cpb *cpb, struct cpb_str *str) {
         str->len = 0;
         str->cap = -1;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
-static int cpb_str_set_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
+static int exb_str_set_cap(struct exb *exb, struct exb_str *str, int capacity) {
     if (capacity == 0) {
-        return cpb_str_clear(cpb, str);
+        return exb_str_clear(exb, str);
     }
     if (capacity < (str->len + 1))
         str->len = capacity - 1;
     if (str->cap < 0) {
         void *p;
-        p  = cpb_malloc(cpb, capacity);
+        p  = exb_malloc(exb, capacity);
         if (!p) {
-            return CPB_NOMEM_ERR;
+            return EXB_NOMEM_ERR;
         }
         memcpy(p, str->str, str->len);
         str->str = p;
     }
     else {
         void *p = NULL;
-        p = cpb_realloc(cpb, str->str, capacity);
+        p = exb_realloc(exb, str->str, capacity);
         if (!p) {
-            return CPB_NOMEM_ERR;
+            return EXB_NOMEM_ERR;
         }
         str->str = p;
     }
     str->str[str->len] = 0;
     str->cap = capacity;
-    return CPB_OK;
+    return EXB_OK;
 }
 //make sure capacity is at least the provided arg
-static int cpb_str_ensure_cap(struct cpb *cpb, struct cpb_str *str, int capacity) {
+static int exb_str_ensure_cap(struct exb *exb, struct exb_str *str, int capacity) {
     if (str->cap >= capacity) {
-        return CPB_OK;
+        return EXB_OK;
     }
     if (capacity < 16)
         capacity = 16;
-    return cpb_str_set_cap(cpb, str, (capacity * 3) / 2);
+    return exb_str_set_cap(exb, str, (capacity * 3) / 2);
 }
-static int cpb_str_strlcpy(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen) {
+static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int srclen) {
     int rv;
     if (str->cap <= srclen) {
-        rv = cpb_str_set_cap(cpb, str, srclen + 1);
-        if (rv != CPB_OK) {
+        rv = exb_str_set_cap(exb, str, srclen + 1);
+        if (rv != EXB_OK) {
             return rv;
         }
     }
     memcpy(str->str, src, srclen);
     str->len = srclen;
     str->str[srclen] = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
-static int cpb_str_strlappend(struct cpb *cpb, struct cpb_str *str, const char *src, int srclen) {
+static int exb_str_strlappend(struct exb *exb, struct exb_str *str, const char *src, int srclen) {
     int rv;
     if (str->cap <= (str->len + srclen)) {
-        rv = cpb_str_set_cap(cpb, str, str->len + srclen + 1);
-        if (rv != CPB_OK) {
+        rv = exb_str_set_cap(exb, str, str->len + srclen + 1);
+        if (rv != EXB_OK) {
             return rv;
         }
     }
     memcpy(str->str + str->len, src, srclen);
     str->len += srclen;
     str->str[str->len] = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
-static int cpb_str_charappend(struct cpb *cpb, struct cpb_str *str, unsigned char ch) {
+static int exb_str_charappend(struct exb *exb, struct exb_str *str, unsigned char ch) {
     char buff[1] = {ch};
-    return cpb_str_strlappend(cpb, str, buff, 1);
+    return exb_str_strlappend(exb, str, buff, 1);
 }
-static int cpb_str_strcpy(struct cpb *cpb, struct cpb_str *str, const char *src0) {
-    return cpb_str_strlcpy(cpb, str, src0, strlen(src0));
+static int exb_str_strcpy(struct exb *exb, struct exb_str *str, const char *src0) {
+    return exb_str_strlcpy(exb, str, src0, strlen(src0));
 }
-static int cpb_str_strappend(struct cpb *cpb, struct cpb_str *str, const char *src0) {
-    return cpb_str_strlappend(cpb, str, src0, strlen(src0));
+static int exb_str_strappend(struct exb *exb, struct exb_str *str, const char *src0) {
+    return exb_str_strlappend(exb, str, src0, strlen(src0));
 }
-static int cpb_str_init_copy(struct cpb *cpb, struct cpb_str *str, struct cpb_str *src) {
-    int rv = cpb_str_init(cpb, str); CPB_CRV(rv);
-    rv = cpb_str_strlcpy(cpb, str, src->str, src->len);
-    if (rv != CPB_OK) {
-        cpb_str_deinit(cpb, str);
+static int exb_str_init_copy(struct exb *exb, struct exb_str *str, struct exb_str *src) {
+    int rv = exb_str_init(exb, str); EXB_CRV(rv);
+    rv = exb_str_strlcpy(exb, str, src->str, src->len);
+    if (rv != EXB_OK) {
+        exb_str_deinit(exb, str);
         return rv;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
-static int cpb_str_new_copy(struct cpb *cpb, struct cpb_str **strp, struct cpb_str *src) {
-    int rv = cpb_str_new(cpb, strp);
-    if (rv != CPB_OK) {
+static int exb_str_new_copy(struct exb *exb, struct exb_str **strp, struct exb_str *src) {
+    int rv = exb_str_new(exb, strp);
+    if (rv != EXB_OK) {
         return rv;
     }
-    rv = cpb_str_strlcpy(cpb, *strp, src->str, src->len);
-    if (rv != CPB_OK) {
-        cpb_str_destroy(cpb, *strp);
+    rv = exb_str_strlcpy(exb, *strp, src->str, src->len);
+    if (rv != EXB_OK) {
+        exb_str_destroy(exb, *strp);
         *strp = NULL;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 //exclusive end, inclusive begin
-static int cpb_str_mutsubstr(struct cpb *cpb, struct cpb_str *str, int begin, int end) {
-    cpb_assert_h((begin <= end) && (begin <= str->len) && (end <= str->len), "invalid arguments to mutsubstr()");
+static int exb_str_mutsubstr(struct exb *exb, struct exb_str *str, int begin, int end) {
+    exb_assert_h((begin <= end) && (begin <= str->len) && (end <= str->len), "invalid arguments to mutsubstr()");
     void *p = NULL;
     int len = end - begin;
-    p = cpb_malloc(cpb, len + 1);
+    p = exb_malloc(exb, len + 1);
     if (!p)
-        return CPB_NOMEM_ERR;
+        return EXB_NOMEM_ERR;
     memcpy(p, str->str + begin, len);
-    cpb_free(cpb, str->str);
+    exb_free(exb, str->str);
     str->str = p;
     str->len = len;
     str->str[len] = 0;
-    return CPB_OK;
+    return EXB_OK;
 }
-enum cpb_str_mutstrip {
-    CPB_STRIP_DEFAULT = 0,
-    CPB_STRIP_LEFT = 1,
-    CPB_STRIP_RIGHT = 2,
+enum exb_str_mutstrip {
+    EXB_STRIP_DEFAULT = 0,
+    EXB_STRIP_LEFT = 1,
+    EXB_STRIP_RIGHT = 2,
 };
 //stripchars are treated like a set, each assumed to be one char to be excluded repeatedly from beginning and end
-static int cpb_str_mutstrip(struct cpb *cpb, struct cpb_str *str, const char *stripchars, enum cpb_str_mutstrip opts) {
+static int exb_str_mutstrip(struct exb *exb, struct exb_str *str, const char *stripchars, enum exb_str_mutstrip opts) {
     if (!opts)
-        opts = CPB_STRIP_LEFT + CPB_STRIP_RIGHT;
+        opts = EXB_STRIP_LEFT + EXB_STRIP_RIGHT;
     int begin = 0;
     int end = str->len;
-    if (opts & CPB_STRIP_LEFT) {
+    if (opts & EXB_STRIP_LEFT) {
         for (int i=0; i < str->len && strchr(stripchars, str->str[i]); i++)
             begin++;
     }
-    if (opts & CPB_STRIP_RIGHT) {
+    if (opts & EXB_STRIP_RIGHT) {
         for (int i=str->len - 1; i > begin && strchr(stripchars, str->str[i]); i--)
             end--;
     }
     if (begin == 0 && end == str->len)
-        return CPB_OK;
-    return cpb_str_mutsubstr(cpb, str, begin, end);
+        return EXB_OK;
+    return exb_str_mutsubstr(exb, str, begin, end);
 }
 
-static int cpb_strl_eq(const char *a, size_t alen, const char *b, size_t blen) {
+static int exb_strl_eq(const char *a, size_t alen, const char *b, size_t blen) {
     return alen == blen && (memcmp(a, b, alen) == 0);
 }
 
 //doesnt work on binary strings
-static int cpb_strcasel_eq(const char *a, size_t alen, const char *b, size_t blen) {
+static int exb_strcasel_eq(const char *a, size_t alen, const char *b, size_t blen) {
     return alen == blen && (strncasecmp(a, b, alen) == 0);
 }
 //boolean
-static int cpb_str_streqc(struct cpb *cpb, struct cpb_str *str, const char *src0) {
+static int exb_str_streqc(struct exb *exb, struct exb_str *str, const char *src0) {
     if (!str->len && !src0[0])
         return 1;
     if (!str->len || !src0[0])
         return 0;
-    cpb_assert_h(!!str->str, "invalid string passed to be compared");
+    exb_assert_h(!!str->str, "invalid string passed to be compared");
     return strcmp(str->str, src0) == 0;
 }
-static int cpb_str_startswithc(struct cpb *cpb, struct cpb_str *str, const char *src0) {
-    cpb_assert_h(str->str && src0, "invalid string passed to be compared");
+static int exb_str_startswithc(struct exb *exb, struct exb_str *str, const char *src0) {
+    exb_assert_h(str->str && src0, "invalid string passed to be compared");
     return strncmp(str->str, src0, strlen(src0)) == 0;
 }
 
 //boolean
-static int cpb_str_streq(struct cpb *cpb, struct cpb_str *str_a, struct cpb_str *str_b) {
+static int exb_str_streq(struct exb *exb, struct exb_str *str_a, struct exb_str *str_b) {
     if (str_a->len != str_b->len)
         return 0;
     else if (str_a->len == 0)
         return 1;
-    return cpb_strl_eq(str_a->str, str_a->len, str_b->str, str_a->len);
+    return exb_strl_eq(str_a->str, str_a->len, str_b->str, str_a->len);
 }
 
 
-static int cpb_str_init_strcpy(struct cpb *cpb, struct cpb_str *str, const char *src0) {
-    int rv = cpb_str_init(cpb, str);
-    if (rv != CPB_OK)
+static int exb_str_init_strcpy(struct exb *exb, struct exb_str *str, const char *src0) {
+    int rv = exb_str_init(exb, str);
+    if (rv != EXB_OK)
         return rv;
-    rv = cpb_str_strcpy(cpb, str, src0);
-    if (rv != CPB_OK) {
-        cpb_str_deinit(cpb, str);
+    rv = exb_str_strcpy(exb, str, src0);
+    if (rv != EXB_OK) {
+        exb_str_deinit(exb, str);
         return rv;
     }
-    return CPB_OK;
+    return EXB_OK;
 }
 
 
-static int cpb_vsprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, va_list ap_in) {
+static int exb_vsprintf(struct exb *exb, struct exb_str *str, const char *fmt, va_list ap_in) {
     int rv;
     va_list ap;
     if (str->cap < 2) {
-        rv = cpb_str_set_cap(cpb, str, 2);
-        if (rv != CPB_OK) {
+        rv = exb_str_set_cap(exb, str, 2);
+        if (rv != EXB_OK) {
             return rv;
         }
     }
@@ -363,26 +363,26 @@ static int cpb_vsprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, v
     int needed = vsnprintf(str->str, str->cap, fmt, ap);
     va_end(ap);
     if (needed >= str->cap) {
-        rv = cpb_str_set_cap(cpb, str, needed + 1);
-        if (rv != CPB_OK) {
+        rv = exb_str_set_cap(exb, str, needed + 1);
+        if (rv != EXB_OK) {
             return rv;
         }
-        cpb_assert_s(needed < str->cap, "str grow failed");
+        exb_assert_s(needed < str->cap, "str grow failed");
         va_copy(ap, ap_in);
         needed = vsnprintf(str->str, str->cap, fmt, ap);
-        cpb_assert_s(needed < str->cap, "str grow failed");
+        exb_assert_s(needed < str->cap, "str grow failed");
         va_end(ap);
     }
     str->len = needed;
-    return CPB_OK;
+    return EXB_OK;
 }
-static int cpb_sprintf(struct cpb *cpb, struct cpb_str *str, const char *fmt, ...) {
+static int exb_sprintf(struct exb *exb, struct exb_str *str, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = cpb_vsprintf(cpb, str, fmt, ap);
+    int rv = exb_vsprintf(exb, str, fmt, ap);
     va_end(ap);
     return rv;
 }
 
 
-#endif //CPB_STR_H
+#endif //EXB_STR_H

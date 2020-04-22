@@ -14,9 +14,10 @@ dplog.txt
 callgrind*
 vgcore*
 oprofile_data
-cpbin.bundle
+exbin.bundle
 perf.data*
 .gdb_history
 *.pyc
-src/cpb/mods/python/build/_cpb_ffi.*
+src/exb/mods/python/build/_exb_ffi.*
 .cipd
+diff.txt
