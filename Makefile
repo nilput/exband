@@ -1,5 +1,5 @@
 .PHONY: clean all
-CFLAGS := -I othersrc/ -fPIC 
+CFLAGS := -I othersrc/ -I third_party/ -fPIC 
 LDLIBS := -pthread -ldl
 SERVER_MAIN_DEPS := src/exb/exb_utils.c src/exb/http/http_server.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_events.c src/exb/http/http_request.c
@@ -27,7 +27,7 @@ profile: server_main libexb.s
 
 libexb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
-server_main: $(SERVER_MAIN_DEPS) libexb.so
+server_main: src/exb/server_main.c $(SERVER_MAIN_DEPS) libexb.so
 	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/server_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lexb
 
 all : server_main libexb.so

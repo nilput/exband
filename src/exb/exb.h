@@ -60,6 +60,14 @@ static void *exb_realloc(struct exb *exb, void *p, size_t sz){
     void *m = realloc(p, sz);
     return m;
 }
+//try to reallocate, otherwise free old pointer
+static void *exb_realloc_f(struct exb *exb, void *p, size_t sz){
+    void *m = realloc(p, sz);
+    if (!m) {
+        free(p);
+    }
+    return m;
+}
 static void exb_free(struct exb *exb, void *p){
     free(p);
 }

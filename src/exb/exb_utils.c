@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "exb_utils.h"
+#include "exb.h"
 #include "exb_errors.h"
 #include "exb_str.h"
 #include <unistd.h>
@@ -116,4 +117,41 @@ int exb_str_itoa(struct exb *exb, struct exb_str *str, int num) {
             return rv;
     }
     return exb_itoa(str->str, str->cap, &str->len, num);
+}
+
+int exb_read_file_fully(struct exb *exb, FILE *f, size_t max_sz, char **buffer_out, size_t *sz_out) {
+    size_t did_read = 0;
+    size_t buffsz = 0;
+    char *buff = NULL;
+
+    *buffer_out = NULL;
+    *sz_out = 0;
+    while (!ferror(f) && !feof(f)) {
+        if ((buffsz - did_read) == 0) {
+            if (buffsz == 0)
+                buffsz = 1024;
+            else
+                buffsz *= 2;
+            if (buffsz > max_sz) {
+                free(buff);
+                return EXB_OUT_OF_RANGE_ERR;
+            }
+            buff = exb_realloc_f(exb, buff, buffsz);
+        }
+        did_read += fread(buff + did_read, 1, buffsz - did_read, f);
+    }
+    if (ferror(f)) {
+        free(buff);
+        return EXB_READ_ERR;
+    }
+    if (did_read == buffsz) {
+       buff = exb_realloc_f(exb, buff, did_read + 1);
+       if (!buff) {
+           return EXB_OUT_OF_RANGE_ERR;
+       }
+    }
+    *sz_out = did_read;
+    *buffer_out = buff;
+    buff[did_read] = 0;
+    return EXB_OK;
 }

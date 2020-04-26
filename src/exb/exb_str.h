@@ -222,6 +222,13 @@ static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src
     str->str[srclen] = 0;
     return EXB_OK;
 }
+
+//boolean return value
+static int exb_strc_endswith(char *str, char *suffix) {
+    int slen = strlen(str);
+    int suffixlen = strlen(suffix);
+    return (slen > suffixlen) && (strcmp(str+slen-suffixlen, suffix) == 0);
+}
 static int exb_str_strlappend(struct exb *exb, struct exb_str *str, const char *src, int srclen) {
     int rv;
     if (str->cap <= (str->len + srclen)) {

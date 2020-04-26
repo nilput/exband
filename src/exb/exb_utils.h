@@ -1,5 +1,6 @@
 #ifndef EXB_UTILS_H
 #define EXB_UTILS_H
+#include <stdio.h>
 
 int exb_sleep(int ms);
 int exb_memmem(const char *haystack, int hidx, int hlen, const char *needle, int nlen);
@@ -14,5 +15,8 @@ struct exb_str;
 struct exb;
 int exb_str_itoa(struct exb *exb, struct exb_str *str, int num);
 double exb_time();
+
+//Does not close file!
+int exb_read_file_fully(struct exb *exb, FILE *f, size_t max_s, char **buff, size_t *sz);
 
 #endif// EXB_UTILS_H

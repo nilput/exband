@@ -4,6 +4,7 @@
 #include "../exb_errors.h"
 #include "../exb_config.h"
 #include "http_request.h"
+#include "http_request_rules.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "exb_request_state_recycle_array.h"
@@ -29,7 +30,10 @@ struct exb_http_server_config {
         struct exb_str module_spec; //path:entry_name
         struct exb_str module_args;
     } module_specs[EXB_SERVER_MAX_MODULES];
+    
     int n_modules;
+    struct exb_request_rule request_rules[EXB_SERVER_MAX_RULES];
+    int nrules;
     struct exb_str polling_backend;
 };
 static struct exb_http_server_config exb_http_server_config_default(struct exb *exb_ref) {
