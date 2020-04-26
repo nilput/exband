@@ -11,7 +11,7 @@
 #include <errno.h> 
 
 #include "../exb_errors.h"
-#include "../exb_eloop_env.h"
+#include "../exb_eloop_pool.h"
 #include "../exb_pcontrol.h"
 #include "http_server_internal.h"
 #include "http_server_events_internal.h"
@@ -27,29 +27,28 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-static struct exb_or_socket make_socket (uint16_t port)
+static struct exb_error make_socket (uint16_t port, int *out)
 {
     int sock = socket (PF_INET, SOCK_STREAM, 0);
-    struct exb_or_socket rv = {0};
+    struct exb_error error = {0};
     if (sock < 0) {
-        rv.error = exb_make_error(EXB_SOCKET_ERR);
-        return rv;
+        error = exb_make_error(EXB_SOCKET_ERR);
+        return error;
     }
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
         ;//handle err
 
-    /* Give the socket a name. */
     struct sockaddr_in name;
     name.sin_family = AF_INET;
     name.sin_port = htons(port);
     name.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
-        rv.error = exb_make_error(EXB_BIND_ERR);
-        return rv;
+        error = exb_make_error(EXB_BIND_ERR);
+        return error;
     }
-    fcntl(sock, F_SETFL, O_NONBLOCK); /* Change the socket into non-blocking state	*/
-    rv.value = sock;
-    return rv;
+    fcntl(sock, F_SETFL, O_NONBLOCK); /*make socket non-blocking*/
+    *out = sock;
+    return error;
 }
 
 static void default_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
@@ -69,7 +68,7 @@ static void server_postfork(void *data) {
     fprintf(stderr, "server_postfork %d\n", getpid());
     exb_server_listener_switch(s, s->config.polling_backend.str);
 }
-struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_env *elist, struct exb_http_server_config config) {
+struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config) {
     struct exb_error err = {0};
     s->exb = exb_ref;
     s->elist = elist;
@@ -95,17 +94,17 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         exb_http_multiplexer_init(&s->mp[i], NULL, -1, i);
     }
     /* Create the socket and set it up to accept connections. */
-    struct exb_or_socket or_socket = make_socket(s->config.http_listen_port);
-    if (or_socket.error.error_code) {
-        err = exb_prop_error(or_socket.error);
+    int socket_fd = -1;
+    err = make_socket(s->config.http_listen_port, &socket_fd);
+    if (err.error_code) {
+        err = exb_prop_error(err);
         goto err0;
     }
-    else if (or_socket.value >= EXB_SOCKET_MAX) {
+    else if (socket_fd >= EXB_SOCKET_MAX) {
         err = exb_make_error(EXB_OUT_OF_RANGE_ERR);
         goto err1;
     }
     
-    int socket_fd = or_socket.value;
     s->listen_socket_fd = socket_fd;
 
     if (listen(s->listen_socket_fd, LISTEN_BACKLOG) < 0) { 
@@ -175,7 +174,7 @@ int exb_server_set_module_request_handler(struct exb_server *s, struct exb_http_
     return EXB_OK;
 }
 
-struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_env *elist, int port) {
+struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, int port) {
     struct exb_http_server_config config = exb_http_server_config_default(exb_ref);
     config.http_listen_port = port;
     struct exb_error err = exb_server_init_with_config(s, exb_ref, pcontrol, elist, config);
@@ -193,7 +192,7 @@ struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, in
 
 
 struct exb_eloop * exb_server_get_any_eloop(struct exb_server *s) {
-    return exb_eloop_env_get_any(s->elist);
+    return exb_eloop_pool_get_any(s->elist);
 }
 
 //this is bad
@@ -224,6 +223,7 @@ struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, stru
 
     return st;
 }
+
 void exb_server_destroy_rqstate(struct exb_server *server, struct exb_eloop *eloop, struct exb_request_state *rqstate) {
 
     exb_request_state_deinit(rqstate, server->exb);
@@ -260,7 +260,7 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
     }
     struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
     exb_assert_h(eloop_idx < s->elist->nloops, "");
-    exb_eloop_env_get_any(s->elist);
+    exb_eloop_pool_get_any(s->elist);
     exb_assert_h(!!eloop, "");
     exb_http_multiplexer_init(mp, eloop, eloop_idx, socket_fd);
 
@@ -275,7 +275,7 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
             ntohs (clientname.sin_port), eloop_idx, s->elist->nloops, getpid());
     listener->new_connection(listener, socket_fd);
     
-    mp->creading = rqstate;
+    mp->currently_reading = rqstate;
     mp->wants_read = 1;
     exb_http_multiplexer_queue_response(mp, rqstate)
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
@@ -292,8 +292,8 @@ void exb_server_cancel_requests(struct exb_server *s, int socket_fd) {
     mp->wants_read  = 0;
     mp->wants_write = 0;
     mp->state = EXB_MP_CANCELLING;
-    if (mp->creading) {
-        mp->creading->is_cancelled = 1;
+    if (mp->currently_reading) {
+        mp->currently_reading->is_cancelled = 1;
     }
     struct exb_request_state *next = mp->next_response;
     while (next) {
@@ -325,18 +325,18 @@ void exb_server_on_write_available(struct exb_server *s, struct exb_http_multipl
     exb_server_on_write_available_i(s, m);
 }
 
-static inline struct exb_error exb_server_listen_once(struct exb_server *s, int eloop_idx) {
+static struct exb_error exb_server_listen_once(struct exb_server *s, int eloop_idx) {
     struct exb_error err = {0};
 
     struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
     exb_assert_h(!!listener, "");
     listener->listen(listener);
     
-ret:
-
     return err;
 }
 
+/*Start server listening loop, this returns but adds itself
+repeatedly to the event loop*/
 void exb_server_event_listen_loop(struct exb_event ev) {
     struct exb_server *s = ev.msg.u.iip.argp;
     int eloop_idx = ev.msg.u.iip.arg1;
@@ -385,11 +385,13 @@ void exb_server_deinit(struct exb_server *s) {
     close(s->listen_socket_fd);
 }
 
+/*Sets request handler for all http requests, the handler must terminate the request by sending a response*/
 int exb_server_set_request_handler(struct exb_server *s, void (*handler)(struct exb_request_state *rqstate, enum exb_request_handler_reason reason)) {
     s->request_handler = handler;
     return EXB_OK;
 }
 
+//Switch implementation of the listener, for example from select() -> epoll()
 int exb_server_listener_switch(struct exb_server *s, const char *listener_name) {
     struct exb_server_listener_fdlist *fdlist = NULL;
     int rv = EXB_OK;

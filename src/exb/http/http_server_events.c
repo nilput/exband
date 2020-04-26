@@ -8,6 +8,8 @@
 #include "http_server_internal.h"
 #include "http_server_events.h"
 #include "http_server_events_internal.h"
+
+//ends the response, after this rqstate is no longer valid
 int exb_response_end(struct exb_request_state *rqstate) {
     return exb_response_end_i(rqstate);
 }

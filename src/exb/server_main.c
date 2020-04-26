@@ -4,7 +4,7 @@
 #include "exb.h"
 #include "exb_errors.h"
 #include "exb_eloop.h"
-#include "exb_eloop_env.h"
+#include "exb_eloop_pool.h"
 #include "exb_pcontrol.h"
 #include "http/http_server.h"
 #include "http/http_server_listener_epoll.h"
@@ -20,7 +20,7 @@ void ordie(int code) {
 }
 
 static struct exb           exb_state;
-static struct exb_eloop_env elist;
+static struct exb_eloop_pool elist;
 static struct exb_pcontrol  pcontrol;
 static struct exb_server    server;
 
@@ -30,7 +30,7 @@ void int_handler(int sig) {
     else 
         fprintf(stderr, "Got SIG %d, killing server\n", sig);
     fflush(stderr);
-    exb_eloop_env_stop(&elist);
+    exb_eloop_pool_stop(&elist);
     exb_pcontrol_stop(&pcontrol);
 }
 void set_handlers() {
@@ -61,7 +61,7 @@ void exb_config_deinit(struct exb *exb_ref, struct exb_config *config) {
 }
 
 void stop() {
-    exb_eloop_env_deinit(&elist);
+    exb_eloop_pool_deinit(&elist);
     exb_server_deinit(&server);
     exb_deinit(&exb_state);
     dp_dump();
@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
     if (rv != EXB_OK) {
         fprintf(stderr, "failed to load configuration");
     }
-    rv = exb_eloop_env_init(&elist, &exb_state, exb_config.nloops);
+    rv = exb_eloop_pool_init(&elist, &exb_state, exb_config.nloops);
     ordie(rv);
     rv = exb_pcontrol_init(&pcontrol, exb_config.nproc);
     ordie(rv);
@@ -208,9 +208,9 @@ int main(int argc, char *argv[]) {
             }
             erv = exb_server_listen(&server);
             ordie(erv.error_code);
-            erv = exb_eloop_env_run(&elist, exb_pcontrol_worker_id(&pcontrol));
+            erv = exb_eloop_pool_run(&elist, exb_pcontrol_worker_id(&pcontrol));
             ordie(erv.error_code);
-            erv = exb_eloop_env_join(&elist);
+            erv = exb_eloop_pool_join(&elist);
             ordie(erv.error_code);
         }
         else if (exb_pcontrol_is_master(&pcontrol)) {

@@ -8,6 +8,9 @@ struct exb_http_server_module {
 };
 
 /*
+Server plugin interface
+
+
 when a config has http_module=foo.so:handler
 foo.so is loaded
 we search for "handler_init()" in foo.so and call it (formed by concatanating the handler name and "_init")

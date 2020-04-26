@@ -4,7 +4,7 @@
 #include "exb_pcontrol.h"
 #include "exb_errors.h"
 #include "exb.h"
-#include "exb_eloop_env.h"
+#include "exb_eloop_pool.h"
 
 int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses) {
     st->npostfork_hooks = 0;
@@ -154,14 +154,14 @@ int exb_pcontrol_child_maintain(struct exb_pcontrol *st) {
 }
 static void exb_pcontrol_child_event_loop(struct exb_event ev) {
     struct exb_pcontrol  *st    = ev.msg.u.pp.argp1;
-    struct exb_eloop_env *elist = ev.msg.u.pp.argp2;
+    struct exb_eloop_pool *elist = ev.msg.u.pp.argp2;
     struct exb_eloop *eloop = elist->loops[0].loop;
     exb_assert_h(!!eloop, "");
     exb_pcontrol_child_maintain(st);
     exb_eloop_append_delayed(eloop, ev, 200, 0);
 }
 //add periodic child maintainance events such as checking if parent died
-int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_eloop_env *elist) {
+int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_eloop_pool *elist) {
     struct exb_event new_ev = {.handle = exb_pcontrol_child_event_loop,
                                .msg.u.pp.argp1 = st,
                                .msg.u.pp.argp2 = elist,};

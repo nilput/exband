@@ -9,8 +9,6 @@
 #include "exb_request_state_recycle_array.h"
 
 
-define_exb_or(int, struct exb_or_socket);
-
 /*
 
     Server uses one or more event loops
@@ -22,7 +20,7 @@ define_exb_or(int, struct exb_or_socket);
 */
 
 struct exb_pcontrol;
-struct exb_eloop_env;
+struct exb_eloop_pool;
 
 struct exb_http_server_config {
     int http_listen_port;
@@ -57,7 +55,7 @@ typedef void (*exb_server_request_handler_func)(struct exb_request_state *rqstat
 
 struct exb_server {
     struct exb *exb; //not owned, must outlive
-    struct exb_eloop_env *elist; //not owned, must outlive
+    struct exb_eloop_pool *elist; //not owned, must outlive
     struct exb_pcontrol *pcontrol; //not owned, must outlive
 
     void (*on_read)(struct exb_event ev);
@@ -107,10 +105,10 @@ struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, stru
 //the eloop it was associated with
 void exb_server_destroy_rqstate(struct exb_server *server, struct exb_eloop *eloop, struct exb_request_state *rqstate);
 
-struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_env *elist, int port);
+struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, int port);
 /*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
 
-struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_env *elist, struct exb_http_server_config config);
+struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config);
 struct exb_error exb_server_listen(struct exb_server *s);
 
 void exb_server_cancel_requests(struct exb_server *s, int socket_fd);

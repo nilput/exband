@@ -84,9 +84,4 @@ static struct exb_error exb_prop_error(struct exb_error src) {
     return src;
 }
 
-#define define_exb_or(value_type, struct_name) \
-struct_name { \
-    struct exb_error error; \
-    value_type value; \
-}
 #endif

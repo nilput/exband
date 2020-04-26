@@ -69,7 +69,7 @@ static void exb_request_lifetime(struct exb_http_multiplexer *mp, struct exb_req
         //FIXME: if cancelled, are we sure no one else has a reference to it?
         if ((rqstate->istate == EXB_HTTP_I_ST_DONE && rqstate->resp.state == EXB_HTTP_R_ST_DONE) || rqstate->is_cancelled) {
             if (!rqstate->is_cancelled)
-                exb_assert_h(mp->creading != rqstate && mp->next_response != rqstate, "");
+                exb_assert_h(mp->currently_reading != rqstate && mp->next_response != rqstate, "");
             exb_server_destroy_rqstate(rqstate->server, mp->eloop, rqstate);
             RQSTATE_EVENT(stderr, "lifetime check for rqstate %p destroyed it\n", rqstate);
         }
@@ -132,7 +132,7 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
     exb_assert_h(mp && mp->state == EXB_MP_ACTIVE, "");
     
     struct exb_request_state *forked_rqstate = exb_server_new_rqstate(s, mp->eloop, rqstate->socket_fd);
-    exb_assert_h(mp->creading == rqstate, "Tried to fork a request that is not the current one reading on socket");
+    exb_assert_h(mp->currently_reading == rqstate, "Tried to fork a request that is not the current one reading on socket");
 
     //Copy mistakenly read bytes from older request to the new one
 
@@ -157,7 +157,7 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
     exb_assert_h(!rqstate->is_forked, "");
     rqstate->is_forked = 1;
     exb_assert_h(!rqstate->is_read_scheduled, "");
-    mp->creading = forked_rqstate;
+    mp->currently_reading = forked_rqstate;
     exb_http_multiplexer_queue_response(mp, forked_rqstate);
     //RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read socket %d, because we just forked it\n",  forked_rqstate, forked_rqstate->socket_fd)
     err = exb_make_error(EXB_OK);
@@ -266,7 +266,7 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
         }
         else {
             struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-            mp->creading = NULL;
+            mp->currently_reading = NULL;
             mp->wants_read = 0;
         }
         exb_request_on_request_done(rqstate);
@@ -740,11 +740,11 @@ static void on_http_cancel(struct exb_event ev) {
     exb_assert_h(mp->state == EXB_MP_CANCELLING, "invalid mp state");
     exb_assert_h(mp->socket_fd == socket_fd, "invalid mp state");
     struct exb_request_state *next = mp->next_response;
-    if (next != mp->creading && mp->creading) {
-        exb_assert_h(mp->creading->is_cancelled, "");
-        exb_request_on_request_done(mp->creading);
+    if (next != mp->currently_reading && mp->currently_reading) {
+        exb_assert_h(mp->currently_reading->is_cancelled, "");
+        exb_request_on_request_done(mp->currently_reading);
     }
-    mp->creading = NULL;
+    mp->currently_reading = NULL;
     while (next) {
         exb_assert_h(next->is_cancelled, "");
         struct exb_request_state *tmp = next;
@@ -797,13 +797,13 @@ static inline int exb_event_http_init(struct exb_server *s, struct exb_event *ev
 static inline void exb_server_on_read_available_i(struct exb_server *s, struct exb_http_multiplexer *m) {
     struct exb_event ev;
     exb_assert_h((!!m) && m->state == EXB_MP_ACTIVE, "");
-    exb_assert_h(!!m->creading, "");
+    exb_assert_h(!!m->currently_reading, "");
     
-    exb_event_http_init(s, &ev, EXB_HTTP_READ, m->creading, 0);
-    mark_read_scheduled(m->creading, 1);
+    exb_event_http_init(s, &ev, EXB_HTTP_READ, m->currently_reading, 0);
+    mark_read_scheduled(m->currently_reading, 1);
     exb_eloop_append(m->eloop, ev);
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because we found out "
-                    "read is available for socket %d\n", m->creading, m->socket_fd);
+                    "read is available for socket %d\n", m->currently_reading, m->socket_fd);
     
 }
 static inline void exb_server_on_write_available_i(struct exb_server *s, struct exb_http_multiplexer *m) {

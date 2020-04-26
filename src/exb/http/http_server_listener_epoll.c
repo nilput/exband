@@ -103,7 +103,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
         }
         exb_assert_h(m->eloop == lis->eloop, "");
         exb_assert_h(!!m->next_response, "");
-        exb_assert_h(m->wants_read || (!m->creading /*destroyed*/) || m->creading->is_read_scheduled, "");
+        exb_assert_h(m->wants_read || (!m->currently_reading /*destroyed*/) || m->currently_reading->is_read_scheduled, "");
         if ( (ev->events & EPOLLIN) &&
               m->wants_read           )
         {

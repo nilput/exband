@@ -1,5 +1,5 @@
-#ifndef EXB_ELOOP_ENV_H
-#define EXB_ELOOP_ENV_H
+#ifndef EXB_ELOOP_POOL_H
+#define EXB_ELOOP_POOL_H
 
 #include "exb_config.h"
 #include "exb_eloop.h"
@@ -7,7 +7,7 @@
 #include "exb_threadpool.h"
 
 //unsafe to move in memory, members hold references to &tp
-struct exb_eloop_env {
+struct exb_eloop_pool {
     struct {
         struct exb_eloop *loop;
         struct exb_thread *thread;
@@ -18,7 +18,7 @@ struct exb_eloop_env {
     struct exb_threadpool tp;
     struct exb *exb_ref;
 };
-static int exb_eloop_env_init(struct exb_eloop_env *elist, struct exb *exb_ref, int nloops) {
+static int exb_eloop_pool_init(struct exb_eloop_pool *elist, struct exb *exb_ref, int nloops) {
     int err = EXB_OK;
     if (nloops > EXB_MAX_ELOOPS)
         return EXB_INVALID_ARG_ERR;
@@ -53,19 +53,19 @@ err1:
 err0:
     return err;
 }
-static struct exb_eloop * exb_eloop_env_get_any(struct exb_eloop_env *elist) {
+static struct exb_eloop * exb_eloop_pool_get_any(struct exb_eloop_pool *elist) {
     struct exb_eloop *eloop = elist->loops[elist->rr].loop;
     if (++elist->rr >= elist->nloops)
         elist->rr = 0; // %= elist->nloops
     return eloop;
 }
-static struct exb_eloop * exb_eloop_env_stop(struct exb_eloop_env *elist) {
+static struct exb_eloop * exb_eloop_pool_stop(struct exb_eloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         exb_eloop_stop(elist->loops[i].loop);
     }
 }
 
-static void *exb_eloop_env_thread_runner(void *p) {
+static void *exb_eloop_pool_thread_runner(void *p) {
     struct exb_thread *t = p;
     struct exb_eloop *eloop = t->data;
     #ifdef EXB_SCHED
@@ -84,14 +84,14 @@ static void *exb_eloop_env_thread_runner(void *p) {
 }
 
 //cpu offset is used for cpu affinity, it's not important (can be 0)
-static struct exb_error exb_eloop_env_run(struct exb_eloop_env *elist, int cpu_offset) {
+static struct exb_error exb_eloop_pool_run(struct exb_eloop_pool *elist, int cpu_offset) {
     for (int i=0; i<elist->nloops; i++) {
-        exb_thread_new(elist->exb_ref, i, &elist->tp, exb_eloop_env_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
+        exb_thread_new(elist->exb_ref, i, &elist->tp, exb_eloop_pool_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
         elist->loops[i].thread->bind_cpu = cpu_offset + i;
     }
     return exb_make_error(EXB_OK);
 }
-static struct exb_error  exb_eloop_env_join(struct exb_eloop_env *elist) {
+static struct exb_error  exb_eloop_pool_join(struct exb_eloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         if (elist->loops[i].thread) {
             int rv = exb_thread_join(elist->loops[i].thread);
@@ -103,7 +103,7 @@ static struct exb_error  exb_eloop_env_join(struct exb_eloop_env *elist) {
     return exb_make_error(EXB_OK);
 }
 
-static int exb_eloop_env_deinit(struct exb_eloop_env *elist) {
+static int exb_eloop_pool_deinit(struct exb_eloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         exb_eloop_deinit(elist->loops[i].loop);
         exb_free(elist->exb_ref, elist->loops[i].loop);
@@ -111,4 +111,4 @@ static int exb_eloop_env_deinit(struct exb_eloop_env *elist) {
     exb_threadpool_deinit(&elist->tp);
 }
 
-#endif // EXB_ELOOP_ENV_H
+#endif // EXB_ELOOP_POOL_H

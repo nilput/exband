@@ -66,7 +66,7 @@ static int exb_server_listener_select_listen(struct exb_server_listener *listene
         struct exb_http_multiplexer *m = exb_server_get_multiplexer_i(s, i);
         if (m->state == EXB_MP_EMPTY || m->eloop != lis->eloop)
             continue; //can be stdin or whatever, or owned by another thread
-        exb_assert_h(m->wants_read || (!m->creading /*destroyed*/) || m->creading->is_read_scheduled, "");
+        exb_assert_h(m->wants_read || (!m->currently_reading /*destroyed*/) || m->currently_reading->is_read_scheduled, "");
         if ( FD_ISSET(i, &lis->read_fd_set) &&
              m->wants_read                    )
         {

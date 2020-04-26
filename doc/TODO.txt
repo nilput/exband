@@ -47,4 +47,4 @@ overflow conditions                            [ ]
 dont add epollout for socket immediately, only \
  do that if writing proves to be a problem for \
  a particular socket                           [ ]
- update select to fix bugs when socket no is too big / new wants_read/wants_write flags and ->creading being null []
+ update select to fix bugs when socket no is too big / new wants_read/wants_write flags and ->currently_reading being null []

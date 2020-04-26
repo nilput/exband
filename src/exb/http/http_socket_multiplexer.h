@@ -11,10 +11,10 @@ struct exb_http_multiplexer {
     enum exb_http_multiplexer_state state EXB_ALIGN(64); 
     int eloop_idx;
     int socket_fd;
-    bool wants_read;  //caching whether creading exists / is scheduled or not
+    bool wants_read;  //caching whether currently_reading exists / is scheduled or not
     bool wants_write; //caching whether next_response is ready or not
     struct exb_eloop *eloop;
-    struct exb_request_state *creading; //the current request reading from client
+    struct exb_request_state *currently_reading; //the current request reading from client
     struct exb_request_state *next_response; //queue of responses (linkedlist)
     struct sockaddr_in clientname;
 };
@@ -23,7 +23,7 @@ static void exb_http_multiplexer_init(struct exb_http_multiplexer *mp, struct ex
     mp->eloop_idx = eloop_idx;
     mp->eloop = eloop;
     mp->socket_fd = socket_fd;
-    mp->creading = NULL;
+    mp->currently_reading = NULL;
     mp->next_response = NULL;
     mp->wants_read  = 0;
     mp->wants_write = 0;
@@ -34,7 +34,7 @@ static void exb_http_multiplexer_deinit(struct exb_http_multiplexer *mp) {
     mp->eloop = NULL;
     mp->eloop_idx = -1;
     mp->socket_fd = -1;
-    mp->creading = NULL;
+    mp->currently_reading = NULL;
     mp->next_response = NULL;
     mp->wants_read  = 0;
     mp->wants_write = 0;

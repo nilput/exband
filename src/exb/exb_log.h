@@ -2,22 +2,17 @@
 #include "exb.h"
 #include "exb_errors.h"
 #include "exb_str.h"
-struct exb_logger loggers[];
-struct exb_logger {
-    struct exb *exb; /*not owned, must outlive*/
-    int level;
-};
 
-int exb_logger_logvf(struct exb_logger *logger, const char *fmt, va_list ap_in) {
+static int exb_logger_logvf(struct exb *exb, int level, const char *fmt, va_list ap_in) {
     va_list ap;
     va_copy(ap, ap_in);
     char tbuf[2];
     int needed = vsnprintf(tbuf, 2, fmt, ap);
     va_end(ap);
     struct exb_str str;
-    exb_str_init(logger->exb, &str);
+    exb_str_init(exb, &str);
     if (needed >= str.cap) {
-        int rv = exb_str_set_cap(logger->exb, &str, needed + 1);
+        int rv = exb_str_set_cap(exb, &str, needed + 1);
         if (rv != EXB_OK) {
             return rv;
         }
@@ -28,13 +23,14 @@ int exb_logger_logvf(struct exb_logger *logger, const char *fmt, va_list ap_in) 
         va_end(ap);
     }
     str.len = needed;
-    exb_str_deinit(logger->exb, &str);
+    fprintf(stderr, "%s", str.str);
+    exb_str_deinit(exb, &str);
     return EXB_OK;
 }
-static int exb_logger_logf(struct exb_logger *logger, const char *fmt, ...) {
+static int exb_logger_logf(struct exb *exb, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = exb_logger_logvf(logger,fmt, ap);
+    int rv = exb_logger_logvf(exb,fmt, ap);
     va_end(ap);
     return rv;
 }
