@@ -456,7 +456,7 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
 
         int rv = EXB_OUT_OF_RANGE_ERR;
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 512; i++) {
             rv = exb_eloop_q_pop_next(eloop, &ev);
             if (rv != EXB_OK)
                 break;

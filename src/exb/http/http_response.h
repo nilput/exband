@@ -125,7 +125,10 @@ static size_t exb_response_body_available_bytes(struct exb_request_state *rqstat
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
 }
-
+static size_t exb_response_body_length(struct exb_request_state *rqstate) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
+    return rsp->body_len;
+}
 int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t cap);
 //the bytes are copied to output buffer
 static int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len) {
@@ -134,11 +137,7 @@ static int exb_response_append_body(struct exb_request_state *rqstate, char *s, 
     int available_bytes = exb_response_body_available_bytes(rqstate);
     if (len > available_bytes) {
         int rv;
-        size_t new_cap = rsp->output_buffer_cap;
-        exb_assert_h(new_cap > 0, "");
-        while (new_cap < (len - available_bytes))
-            new_cap *= 2;
-        if ((rv = exb_response_body_buffer_ensure(rqstate, new_cap)) != EXB_OK)
+        if ((rv = exb_response_body_buffer_ensure(rqstate, exb_response_body_length(rqstate) + len)) != EXB_OK)
             return rv;
     }
     memcpy(rsp->output_buffer + rsp->body_begin_index + rsp->body_len, s, len);
