@@ -39,7 +39,7 @@ static void info(struct pastebin_module *mod, struct exb_request_state *rqstate)
     exb_str_init_const_str(&value, "text/plain");
     exb_response_set_header(rqstate, &key, &value);
     struct exb_str str;
-    exb_str_init(mod->exb_ref, &str);
+    exb_str_init_empty(&str);
     exb_sprintf(mod->exb_ref, &str, "curl -F 'f=<-' %s", mod->site_link.str);
     exb_response_append_body(rqstate, str.str, str.len);
     exb_str_deinit(mod->exb_ref, &str);
@@ -260,7 +260,7 @@ static int handle_request(struct exb_http_server_module *module, struct exb_requ
     struct exb_str path;
     //exb_request_repr(rqstate);
 
-    exb_str_init(mod->exb_ref, &path);
+    exb_str_init_empty(&path);
     exb_str_slice_to_copied_str(mod->exb_ref, rqstate->path_s, rqstate->input_buffer, &path);
     if ((rqstate->method == EXB_HTTP_M_POST) && (path.len == 1 && path.str[0] == '/')) {
         if (!exb_request_has_body(rqstate)) {

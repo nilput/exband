@@ -3,6 +3,7 @@
 #include "exb.h"
 #include "exb_errors.h"
 #include "exb_str.h"
+#include "exb_build_config.h"
 #include <unistd.h>
 #include <sys/time.h>
 
@@ -11,6 +12,15 @@
 int exb_sleep(int ms) {
     return usleep(ms * 1000);
 }
+int exb_sleep_until_timestamp_ex(struct exb_timestamp now, struct exb_timestamp target_timestamp) {
+    long long usec = exb_timestamp_get_as_usec(exb_timestamp_diff(target_timestamp, now));
+    if (usec <= 0)
+        return 0;
+    return usleep(usec);
+}
+int exb_sleep_until_timestamp(struct exb_timestamp ts) {
+    return exb_sleep_until_timestamp_ex(exb_timestamp_now(), ts);   
+}
 //returns unix time in seconds with at least ms accuarcy
 double exb_time() {
     struct timeval tv;
@@ -18,6 +28,14 @@ double exb_time() {
     if (rv != 0)
         return 0;
     return tv.tv_sec + (tv.tv_usec / 1000000.0);
+}
+//returns unix time in seconds
+struct exb_timestamp exb_timestamp_now() {
+    struct timeval tv;
+    int rv = gettimeofday(&tv, NULL);
+    if (rv != 0)
+        return exb_timestamp(0);
+    return exb_timestamp(tv.tv_sec);
 }
 int exb_memchr(const char *haystack, int hidx, int hlen, char needle) {
     char *f = memchr(haystack + hidx, needle, hlen - hidx);
@@ -111,12 +129,12 @@ int exb_atoi_hex_rlen(char *str, int len, int *dest) {
     return end - str;
 }
 int exb_str_itoa(struct exb *exb, struct exb_str *str, int num) {
-    if (str->cap < 32) {
-        int rv = exb_str_set_cap(exb, str, 32);
+    if (exb_str_is_const(str) || str->zcap < EXB_INT_DIGITS) {
+        int rv = exb_str_set_cap(exb, str, EXB_INT_DIGITS);
         if (rv != EXB_OK)
             return rv;
     }
-    return exb_itoa(str->str, str->cap, &str->len, num);
+    return exb_itoa(str->str, str->zcap, &str->len, num);
 }
 
 int exb_read_file_fully(struct exb *exb, FILE *f, size_t max_sz, char **buffer_out, size_t *sz_out) {

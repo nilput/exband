@@ -10,8 +10,9 @@ Event loop
 #include "exb_ts_event_queue.h"
 #include "exb_event.h"
 #include "exb_threadpool.h"
+#include "exb_time.h"
 #include "exb_buffer_recycle_list.h"
-#define ELOOP_SLEEP_TIME 1
+#define ELOOP_SLEEP_TIME_MS 1
 #define EXB_ELOOP_TMP_EVENTS_SZ 512
 #define EXB_ELOOP_TASK_BUFFER_COUNT 256
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
@@ -20,7 +21,7 @@ struct exb_event; //fwd
 struct exb_threadpool;
 
 struct exb_delayed_event {
-    double due; //unix time + delay
+    struct exb_timestamp due; //unix time + delay
     struct exb_event event;
     unsigned char tolerate_preexec;
 };
@@ -64,12 +65,13 @@ struct exb_eloop {
     int eloop_id;
     
     unsigned ev_id; //counter
+    int do_stop;
 
     struct exb_delayed_event_node* devents;
     int devents_len;
     int ntasks;
     int tasks_flush_min_delay_ms;
-    double tasks_flush_ts;
+    struct exb_timestamp current_timestamp;
     struct exb_event* events;
     int head;
     int tail; //tail == head means full, tail == head - 1 means full
@@ -86,7 +88,7 @@ struct exb_eloop {
 //_d_ functions are for delayed events which are kept in a linked list
 //_q_ functions are for regular events which are kept in an array as a queue
 
-static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, double due, int tolerate_prexec) {
+static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, struct exb_timestamp due, int tolerate_prexec) {
     void *p = NULL;
     int storage = EXB_ELOOP_DEVENT_BUFFER_COUNT;
     for (int i=0; i<EXB_ELOOP_DEVENT_BUFFER_COUNT; i++) {
@@ -105,13 +107,13 @@ static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, dou
     node->cur.event = event;
     node->cur.due = due;
     node->cur.tolerate_preexec = tolerate_prexec;
-    if (eloop->devents == NULL || (eloop->devents->cur.due > node->cur.due)) {
+    if (eloop->devents == NULL || (exb_timestamp_cmp(eloop->devents->cur.due, node->cur.due) > 0)) {
         node->next = eloop->devents;
         eloop->devents = node;
     }
     else {
         struct exb_delayed_event_node *at = eloop->devents;
-        while (at->next && at->next->cur.due < node->cur.due)
+        while (at->next && (exb_timestamp_cmp(at->next->cur.due, node->cur.due) < 0))
             at = at->next;
         node->next = at->next;
         at->next = node;
@@ -119,21 +121,13 @@ static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, dou
     eloop->devents_len++;
     return EXB_OK;
 }
-static double exb_eloop_time_until_due(struct exb_delayed_event_node *ev) {
-    double cur_time = exb_time();
-    if (ev->cur.due <= cur_time) {
-        return 0;
-    }
-    return ev->cur.due - cur_time;
-}
-static double exb_eloop_sleep_till(struct exb_eloop *eloop) {
+
+static struct exb_timestamp exb_eloop_next_delayed_event_timestamp(struct exb_eloop *eloop) {
     struct exb_delayed_event_node *at = eloop->devents;
-    const double min = (ELOOP_SLEEP_TIME / 1024);
     if (!at) {
-        return min;
+        return eloop->current_timestamp;
     }
-    double till = exb_eloop_time_until_due(at);
-    return till > min ? min : till;
+    return at->cur.due;
 }
 
 static int exb_eloop_q_len(struct exb_eloop *eloop) {
@@ -182,9 +176,9 @@ static struct exb_delayed_event *exb_eloop_d_peek_next(struct exb_eloop *eloop) 
         return NULL;
     return &eloop->devents->cur;
 }
-static int exb_eloop_pop_next(struct exb_eloop *eloop, double exb_cur_time, struct exb_event *ev_out) {
+static int exb_eloop_pop_next(struct exb_eloop *eloop, struct exb_event *ev_out) {
     struct exb_delayed_event *dev = exb_eloop_d_peek_next(eloop);
-    if (dev != NULL && dev->due <= exb_cur_time) {
+    if (dev != NULL && exb_timestamp_cmp(dev->due, eloop->current_timestamp) <= 0) {
         return exb_eloop_d_pop_next(eloop, ev_out);
     }
     return exb_eloop_q_pop_next(eloop, ev_out);
@@ -201,9 +195,10 @@ static int exb_eloop_init(struct exb_eloop *eloop, int eloop_id, struct exb* exb
     eloop->devents_len = 0;
     eloop->exb = exb_ref;
     eloop->eloop_id = eloop_id;
+    eloop->do_stop = 0;
 
     eloop->ntasks = 0;
-    eloop->tasks_flush_ts = 0.0;
+    eloop->current_timestamp = exb_timestamp(0);
     eloop->tasks_flush_min_delay_ms = 0;
 
     int rv;
@@ -360,9 +355,11 @@ static int exb_eloop_flush_tasks(struct exb_eloop *eloop) {
     if (err != EXB_OK)
         return err;
     eloop->ntasks = 0;
-    eloop->tasks_flush_ts = 0.0;
     eloop->tasks_flush_min_delay_ms = 1000;
+    return EXB_OK;
 }
+
+//untested
 static int exb_eloop_push_task(struct exb_eloop *eloop, struct exb_task task, int acceptable_delay_ms) {
     int err;
     if (  eloop->ntasks >= EXB_ELOOP_TASK_BUFFER_COUNT && 
@@ -401,7 +398,7 @@ static int exb_eloop_ts_pop_many(struct exb_eloop *eloop, struct exb_event *even
 
 //copies event, [eventually calls ev->destroy()]
 static int exb_eloop_append_delayed(struct exb_eloop *eloop, struct exb_event ev, int ms, int tolerate_preexec) {
-    return exb_eloop_d_push(eloop, ev, exb_time() + (ms / 1024.0), tolerate_preexec);
+    return exb_eloop_d_push(eloop, ev, exb_timestamp_add_usec(eloop->current_timestamp, ms * 1000), tolerate_preexec);
 }
 
 static int exb_eloop_fatal(struct exb_eloop *eloop, struct exb_error err) {
@@ -410,15 +407,12 @@ static int exb_eloop_fatal(struct exb_eloop *eloop, struct exb_error err) {
 //thread safe
 static int exb_eloop_stop(struct exb_eloop *eloop) {
     struct exb_event ev;
-    ev.handle = NULL;
-    return exb_eloop_ts_append(eloop, ev);
+    eloop->do_stop = 1;
+    return EXB_OK;
 }
 
 //recieves events from other threads
 static int exb_eloop_receive(struct exb_eloop *eloop) {
-    /*TODO: pop many*/
-    struct exb_event ev;
-    
     struct exb_event events[EXB_ELOOP_TMP_EVENTS_SZ];
     int nevents = 0;
     #define MAX_BATCHES 3
@@ -448,7 +442,6 @@ static int exb_eloop_receive(struct exb_eloop *eloop) {
         }
     }
     
-    
     return EXB_OK;
 }
 
@@ -456,57 +449,45 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
     #define EXB_ELOOP_NPROCESS_OFFLOAD 64
     int nprocessed = 0;
 
-    double cur_time = exb_time();
-    while (1) {
+    eloop->current_timestamp = exb_timestamp_now();
+    while (!eloop->do_stop) {
         struct exb_event ev;
         
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
 
-        int rv = exb_eloop_pop_next(eloop, cur_time, &ev);
-
-    again:
-        if (rv == EXB_OK) {
-            //handle event
-            //stop signal
-
-            if (!ev.handle)
-                return exb_make_error(EXB_EOF);
+        int rv = EXB_OUT_OF_RANGE_ERR;
+        for (int i = 0; i < 64; i++) {
+            rv = exb_eloop_q_pop_next(eloop, &ev);
+            if (rv != EXB_OK)
+                break;
+            exb_assert_s(ev.handle, "ev.handle == NULL");
             ev.handle(ev);
-
         }
-        else {
-            if (rv != EXB_OUT_OF_RANGE_ERR) {
-                //serious error
-                struct exb_error err = exb_make_error(rv);
-                return err;
-            }
-            exb_eloop_receive(eloop);
-            cur_time = exb_time();
-
-            rv = exb_eloop_pop_next(eloop, cur_time, &ev);
-
-            if (rv == EXB_OK) {
-                goto again;
-            }
-            else if (rv != EXB_OUT_OF_RANGE_ERR) {
-                //serious error
-                struct exb_error err = exb_make_error(rv);
-                return err;
-            }
-            #if 0
-
-            if (rv == EXB_OK) {
-                goto again;
-            }
-            else if (rv != EXB_OUT_OF_RANGE_ERR) {
-                //serious error
-                struct exb_error err = exb_make_error(rv);
-                return err;
-            }
-            #endif
-            exb_sleep(exb_eloop_sleep_till(eloop) * 1024);
-
+        if (rv != EXB_OK && rv != EXB_OUT_OF_RANGE_ERR) {
+            //serious error
+            struct exb_error err = exb_make_error(rv);
+            return err;
         }
+        
+        int dlen = exb_eloop_d_len(eloop);
+        for (int i = 0; i < dlen; i++) {
+            rv = exb_eloop_d_pop_next(eloop, &ev);
+            if (rv != EXB_OK)
+                break;
+            exb_assert_s(ev.handle, "ev.handle == NULL");
+            ev.handle(ev);
+        }
+        
+        if (rv != EXB_OK && rv != EXB_OUT_OF_RANGE_ERR) {
+            //serious error
+            struct exb_error err = exb_make_error(rv);
+            return err;
+        }
+        exb_eloop_receive(eloop);
+        if (exb_eloop_q_len(eloop) == 0) {
+            exb_sleep_until_timestamp_ex(eloop->current_timestamp, exb_eloop_next_delayed_event_timestamp(eloop));
+        }
+        eloop->current_timestamp = exb_timestamp_now();
     }
     
     return exb_make_error(EXB_OK);

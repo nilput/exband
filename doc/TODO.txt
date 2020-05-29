@@ -28,17 +28,27 @@ Serving files handler                          [ ]
 Serving files handler default mimetypes        [ ]
 Fast threadsafe queue for threads->eloop       [ ]
 Fast threadsafe queue for eloops->threadpool   [ ]
+
+Support json config                            [x]
+
 DO a periodic clean up or a MRU based cleanup  \
    of buffer recycle lists                     [ ]
+
 DO a periodic clean up or a MRU based cleanup  \
    of request recycle lists                    [ ]
+
 DO A performance testing setup, that targets   \
    the event loop and the threadpool, (without \
    actual http/io events, just measuring how   \
-   fast the communication is)                  [x]
+   fast the communication/parsing is)          [ ]
+
+Ensure compatibility with 32bit systems        \
+ (avoid long long)                             [ ]
+
 Increase buffer size integers to a larger      \
 type such as size_t, and check for             \
 overflow conditions                            [ ]
+
  have an option of running multiple eloops,    \  
  each having its own epoll listener and doing  \
  io directly instead of having to communicate  \
@@ -47,4 +57,7 @@ overflow conditions                            [ ]
 dont add epollout for socket immediately, only \
  do that if writing proves to be a problem for \
  a particular socket                           [ ]
- update select to fix bugs when socket no is too big / new wants_read/wants_write flags and ->currently_reading being null []
+
+ update select to fix bugs when socket no is too big \
+/ new wants_read/wants_write flags and\
+ ->currently_reading being null                [ ]

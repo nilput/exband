@@ -136,12 +136,14 @@ int exb_pcontrol_stop(struct exb_pcontrol *st) {
         st->nchildren = 0;
     }
     st->stop = 1;
+    return EXB_OK;
 }
 
 
 int exb_pcontrol_deinit(struct exb_pcontrol *st) {
     st->nchildren = 0;
     st->npostfork_hooks = 0;
+    return EXB_OK;
 }
 
 int exb_pcontrol_child_maintain(struct exb_pcontrol *st) {
@@ -151,6 +153,7 @@ int exb_pcontrol_child_maintain(struct exb_pcontrol *st) {
         fprintf(stderr, "Detected parent died!\n");
         raise(SIGTERM);
     }
+    return EXB_OK;
 }
 static void exb_pcontrol_child_event_loop(struct exb_event ev) {
     struct exb_pcontrol  *st    = ev.msg.u.pp.argp1;
@@ -166,4 +169,5 @@ int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_eloop_pool *eli
                                .msg.u.pp.argp1 = st,
                                .msg.u.pp.argp2 = elist,};
     exb_pcontrol_child_event_loop(new_ev);
+    return EXB_OK;
 }

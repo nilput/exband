@@ -43,19 +43,18 @@ static struct ini_config *ini_parse(struct exb *exb, FILE *f) {
     c->sections_len = 0;
     c->entries_len  = 0;
     
-    int rv = exb_str_init(exb, &c->input);
-    if (rv != EXB_OK)
-        goto err;
-    exb_str_set_cap(exb, &c->input, 512);
+    
+    exb_str_init_empty(&c->input);
+    int rv = exb_str_set_cap(exb, &c->input, 512);
     if (rv != EXB_OK)
         goto err;
     while (1) {
-        int available = c->input.cap - c->input.len - 1;
+        int available = c->input.zcap - c->input.len - 1;
         if (available == 0) {
-            exb_str_set_cap(exb, &c->input, c->input.cap * 2);
+            exb_str_set_cap(exb, &c->input, c->input.zcap * 2);
             if (rv != EXB_OK)
                 goto err_1;
-            available = c->input.cap - c->input.len - 1;
+            available = c->input.zcap - c->input.len - 1;
         }
         size_t read_bytes = fread(c->input.str + c->input.len, 1, available, f);
         if (read_bytes == 0) {

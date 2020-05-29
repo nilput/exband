@@ -13,7 +13,7 @@ static int handle_request(struct exb_http_server_module *module, struct exb_requ
     struct exb_str path;
     //exb_request_repr(rqstate);
 
-    exb_str_init(mod->exb_ref, &path);
+    exb_str_init_empty(&path);
     exb_str_slice_to_copied_str(mod->exb_ref, rqstate->path_s, rqstate->input_buffer, &path);
     if (exb_str_streqc(mod->exb_ref, &path, "/post") || exb_str_streqc(mod->exb_ref, &path, "/post/")) {
         struct exb_str key,value;
@@ -60,7 +60,7 @@ static int handle_request(struct exb_http_server_module *module, struct exb_requ
         struct exb_str key,value, tmp;
         exb_str_init_const_str(&key, "Content-Type");
         exb_str_init_const_str(&value, "text/html");
-        exb_str_init(mod->exb_ref, &tmp);
+        exb_str_init_empty(&tmp);
         exb_sprintf(mod->exb_ref, &tmp, "<!DOCTYPE html>"
                                         "<html>"
                                         "<head>"
@@ -87,7 +87,7 @@ static int handle_request(struct exb_http_server_module *module, struct exb_requ
         exb_response_append_body(rqstate, "Hello World!\r\n", 14);
         struct exb_str str;
         
-        exb_str_init(mod->exb_ref, &str);
+        exb_str_init_empty(&str);
         
         exb_sprintf(mod->exb_ref, &str, "Requested URL: '%s'", path.str);
         

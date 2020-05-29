@@ -157,7 +157,7 @@ static int exb_response_prepare_headers(struct exb_request_state *rqstate, struc
     exb_assert_h(rsp->headers_len == 0, "");
     exb_assert_h(rsp->headers_begin_index == -1, "");
     if ((rsp->headers_bytes + HTTP_STATUS_MAX_SZ) > rsp->body_begin_index) {
-        //this should be unlikely to happen
+        //this is unlikely to happen
         char *new_buff;
         int new_buff_cap;
         struct exb_error err = exb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);

@@ -1,6 +1,6 @@
 #ifndef EXB_PCONTROL_H
 #define EXB_PCONTROL_H
-#include "exb_config.h"
+#include "exb_build_config.h"
 /*
 Manage processes
 */

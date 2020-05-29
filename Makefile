@@ -6,6 +6,7 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_events.c src/ex
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_response.c src/exb/http/http_server_listener_select.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_listener_epoll.c src/exb/http/http_server_module.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_threadpool.c src/exb/exb_pcontrol.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/server_config.c
 
 debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all

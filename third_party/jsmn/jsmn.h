@@ -373,6 +373,15 @@ JSMN_API int jsmn_parse(jsmn_parser *parser, const char *js, const size_t len,
     case '\n':
     case ' ':
       break;
+
+    //NON-STANDARD EXTENSION: SUPPORT COMMENTS
+    case '/':
+        if ((len - parser->pos < 2) || (js[parser->pos+1] != '/')) {
+            return JSMN_ERROR_INVAL;
+        }
+        for (; parser->pos < len && js[parser->pos] != '\0' && js[parser->pos] != '\n'; parser->pos++)
+            ;
+        break;
     case ':':
       parser->toksuper = parser->toknext - 1;
       break;

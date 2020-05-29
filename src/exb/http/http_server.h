@@ -2,12 +2,15 @@
 #define EXB_HTTP_SERVER_H
 
 #include "../exb_errors.h"
-#include "../exb_config.h"
+#include "../exb_log.h"
+#include "../exb_build_config.h"
 #include "http_request.h"
 #include "http_request_rules.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
+#include "http_server_config.h"
 #include "exb_request_state_recycle_array.h"
+
 
 
 /*
@@ -23,44 +26,13 @@
 struct exb_pcontrol;
 struct exb_eloop_pool;
 
-struct exb_http_server_config {
-    int http_listen_port;
-    int http_use_aio;
-    struct {
-        struct exb_str module_spec; //path:entry_name
-        struct exb_str module_args;
-    } module_specs[EXB_SERVER_MAX_MODULES];
-    
-    int n_modules;
-    struct exb_request_rule request_rules[EXB_SERVER_MAX_RULES];
-    int nrules;
-    struct exb_str polling_backend;
-};
-static struct exb_http_server_config exb_http_server_config_default(struct exb *exb_ref) {
-    (void) exb_ref;
-    struct exb_http_server_config conf = {0};
-    conf.http_listen_port = 80;
-    conf.http_use_aio = 0;
-    conf.n_modules = 0;
-    exb_str_init_const_str(&conf.polling_backend, "select");
-    return conf;
-}
-static void exb_http_server_config_deinit(struct exb *exb_ref, struct exb_http_server_config *config) {
-    exb_assert_h(config->n_modules <= EXB_SERVER_MAX_MODULES, "");
-    for (int i=0; i<config->n_modules; i++) {
-        exb_str_deinit(exb_ref, &config->module_specs[i].module_spec);
-        exb_str_deinit(exb_ref, &config->module_specs[i].module_args);
-    }
-    exb_str_deinit(exb_ref, &config->polling_backend);    
-}
-
 
 typedef void (*exb_server_request_handler_func)(struct exb_request_state *rqstate, enum exb_request_handler_reason reason);
 
 struct exb_server {
-    struct exb *exb; //not owned, must outlive
-    struct exb_eloop_pool *elist; //not owned, must outlive
-    struct exb_pcontrol *pcontrol; //not owned, must outlive
+    struct exb *exb;                 //not owned, must outlive
+    struct exb_eloop_pool *elist;    //not owned, must outlive
+    struct exb_pcontrol *pcontrol;   //not owned, must outlive
 
     void (*on_read)(struct exb_event ev);
     void (*on_send)(struct exb_event ev);

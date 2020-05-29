@@ -1,24 +1,20 @@
 #ifndef EXB_CONFIG_H
 #define EXB_CONFIG_H
+struct exb;
+struct exb_config {
+    int tp_threads; //threadpool threads
+    int nloops; //number of event loops
+    int nproc;  //number of processes
+};
+static struct exb_config exb_config_default(struct exb *exb_ref) {
+    (void) exb_ref;
+    struct exb_config conf = {0};
+    conf.tp_threads = 4;
+    conf.nloops = 1;
+    conf.nproc = 1;
+    return conf;
+}
 
-/*Eloop env config*/
-#define EXB_MAX_ELOOPS 128
-/*End Eloop env config*/
-
-/*Server configuration*/
-#define LISTEN_BACKLOG 8000
-#define EXB_SOCKET_MAX 8192
-#define EXB_SERVER_MAX_MODULES 11
-#define EXB_SERVER_MAX_RULES   32
-#define EXB_HTTP_MIN_DELAY 0//ms
-
-#define EXB_USE_READ_WRITE_FOR_TCP
-#undef  EXB_USE_READ_WRITE_FOR_TCP
-
-/*End Server configuration*/
-/*Pcontrol config*/
-#define EXB_MAX_PROCESSES 128
-#define EXB_MAX_HOOKS 16
-/*End Pcontrol config*/
-
+static void exb_config_deinit(struct exb *exb_ref, struct exb_config *config) {
+}
 #endif

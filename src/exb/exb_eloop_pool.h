@@ -1,7 +1,7 @@
 #ifndef EXB_ELOOP_POOL_H
 #define EXB_ELOOP_POOL_H
 
-#include "exb_config.h"
+#include "exb_build_config.h"
 #include "exb_eloop.h"
 #include "exb_thread.h"
 #include "exb_threadpool.h"
@@ -59,10 +59,11 @@ static struct exb_eloop * exb_eloop_pool_get_any(struct exb_eloop_pool *elist) {
         elist->rr = 0; // %= elist->nloops
     return eloop;
 }
-static struct exb_eloop * exb_eloop_pool_stop(struct exb_eloop_pool *elist) {
+static int exb_eloop_pool_stop(struct exb_eloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         exb_eloop_stop(elist->loops[i].loop);
     }
+    return EXB_OK;
 }
 
 static void *exb_eloop_pool_thread_runner(void *p) {
@@ -109,6 +110,7 @@ static int exb_eloop_pool_deinit(struct exb_eloop_pool *elist) {
         exb_free(elist->exb_ref, elist->loops[i].loop);
     }
     exb_threadpool_deinit(&elist->tp);
+    return EXB_OK;
 }
 
 #endif // EXB_ELOOP_POOL_H

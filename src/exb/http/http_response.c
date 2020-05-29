@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+/*ensure body buffer fits capacity, or try to grow*/
 int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t cap) {
     struct exb_response_state *rsp = &rqstate->resp;
     

@@ -6,6 +6,7 @@
 
 #include "exb_assert.h"
 #include "exb_errors.h"
+#include "exb_config.h"
 #ifdef TRACK_RQSTATE_EVENTS
     #define RQSTATE_EVENT(f, fmt, ...) fprintf(f, "[%.6f]" fmt, exb_time(), __VA_ARGS__)
 #else
@@ -41,6 +42,9 @@
 #if 1
     #define EXB_SCHED
 #endif
+
+
+
 struct exb {
     //this can be used for custom allocators in the future
     //and semi global state, (GOD OBJECT)

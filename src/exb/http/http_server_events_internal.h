@@ -1,11 +1,13 @@
 #ifndef EXB_HTTP_SERVER_EVENTS_INTERNAL
 #define EXB_HTTP_SERVER_EVENTS_INTERNAL
+
 #include <unistd.h>
 #include <errno.h>
 #include "http_server_events.h"
 #include "http_server_internal.h"
 #include "http_request.h"
 #include "http_response.h"
+#include "../exb_build_config.h"
 #include "http_parse.h"
 
 static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqstate, int index, int nbytes);
@@ -484,7 +486,6 @@ static int exb_response_end_i(struct exb_request_state *rqstate) {
         rsp->state == EXB_HTTP_R_ST_DEAD      ) 
     {
         exb_assert_h(rsp->state != EXB_HTTP_R_ST_DEAD, "");
-
         return EXB_INVALID_STATE_ERR;
     }
     
@@ -494,12 +495,12 @@ static int exb_response_end_i(struct exb_request_state *rqstate) {
     exb_str_init_const_str(&name, "Content-Length");
     int body_len = rsp->body_len;
     struct exb_str body_len_str;
-    exb_str_init(rqstate->server->exb, &body_len_str);
+    char body_len_buff[EXB_INT_DIGITS];
+    exb_str_init_empty_by_local_buffer(&body_len_str, body_len_buff, EXB_INT_DIGITS);
     exb_str_itoa(rqstate->server->exb, &body_len_str, body_len);
     rv = exb_response_set_header(rqstate, &name, &body_len_str); //owns body_len_str
+    exb_str_deinit(rqstate->server->exb, &body_len_str);
     if (rv != EXB_OK) {
-        exb_str_deinit(rqstate->server->exb, &body_len_str);
-
         return rv;
     }
 
@@ -516,8 +517,24 @@ static int exb_response_end_i(struct exb_request_state *rqstate) {
         rv = exb_response_add_header(rqstate, &name, &value);
     }
     if (rv != EXB_OK) {
-
         return rv;
+    }
+#ifdef EXB_HTTP_ADD_DATE_HEADER
+    {
+        struct exb_str name, value;
+        exb_str_init_const_str(&name, "Date");
+        exb_str_init_const_str(&value, "Fri, 29 May 2020 03:38:54 GMT");
+        rv = exb_response_add_header(rqstate, &name, &value);
+        if (rv != EXB_OK) {
+            return rv;
+        }
+    }
+#endif
+    if (!rqstate->is_persistent) {
+        struct exb_str name, value;
+        exb_str_init_const_str(&name, "Connection");
+        exb_str_init_const_str(&value, "close");
+        rv = exb_response_add_header(rqstate, &name, &value);
     }
         
     rv = exb_response_prepare_headers(rqstate, rqstate->eloop);

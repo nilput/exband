@@ -60,7 +60,7 @@ void test_urlencode_decode(void **state)
     struct test_state *tstate = *state;
     struct exb_str dec;
     int sz;
-    exb_str_init(&tstate->exb, &dec);
+    exb_str_init_empty(&dec);
     for (int i=0; i<sizeof ed / sizeof ed[0]; i++) {
         exb_str_ensure_cap(&tstate->exb, &dec, ed[i].declen);
         exb_urlencode_decode(dec.str, dec.cap, &sz, ed[i].enc, ed[i].enclen);

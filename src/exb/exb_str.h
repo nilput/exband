@@ -8,16 +8,20 @@
 #include "exb_errors.h"
 #define EXB_CRV(code)
 
+enum EXB_STR_FLAGS {
+    EXB_STR_DYNAMIC = 1, //backed by malloc?
+    EXB_STR_CONST   = 2, //can overwrite?
+};
 /*
-* valid states:
-*   .len > 0 :   memory is owned by the object
-*   .len == -1 : memory is read only, and not owned by the object
-*   in both cases .len and .str are valid, .str points to the empty string if the string is just initialized
+string can:
+    be const if flags & EXB_STR_CONST, shouldn't be written to
+    be backed by local storage if !(flags & EXB_STR_DYNAMIC)
 */
 struct exb_str {
     char *str; //null terminated
     int len;
-    int cap; //negative values mean memory is not owned by us (const char * passed to us)
+    int zcap; //negative values mean memory is not owned by us (const char * passed to us)
+    unsigned char flags; //backed by malloc?
 };
 struct exb_str_slice {
     int index;
@@ -28,11 +32,18 @@ static struct exb_str exb_str_slice_to_const_str(struct exb_str_slice slice, con
     struct exb_str s;
     s.str = (char *)base + slice.index;
     s.len = slice.len;
-    s.cap = -1;
+    s.zcap = 0;
+    s.flags = EXB_STR_CONST;
     return s;
 }
 static int exb_str_is_const(struct exb_str *str) {
-    return str->cap == -1;
+    return str->flags & EXB_STR_CONST;
+}
+static int exb_str_is_writable(struct exb_str *str) {
+    return !exb_str_is_const(str);
+}
+static int exb_str_is_growable(struct exb_str *str) {
+    return (str->flags & (EXB_STR_CONST | EXB_STR_DYNAMIC)) == EXB_STR_DYNAMIC;
 }
 
 static int exb_str_init_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int src_len);
@@ -56,8 +67,8 @@ static int exb_str_rtrim(struct exb *exb, struct exb_str *str) {
     if (exb_str_is_const(str) && ((rv = exb_str_clone(exb, str) != EXB_OK))) {
         return rv;
     }
-    while (str->len > 0 && (str->str[str->len-1] == ' ' ||
-                            str->str[str->len-1] == '\t'  ))
+    while (str->len > 0 && (str->str[str->len - 1] == ' ' ||
+                            str->str[str->len - 1] == '\t'  ))
         str->len--;
     str->str[str->len] = 0;
     return EXB_OK;
@@ -76,24 +87,28 @@ static void exb_str_slice_trim(const char *base, struct exb_str_slice *slice) {
 
 static struct exb_str exb_str_const_view(struct exb_str *str) {
     struct exb_str view = *str;
-    view.cap = -1;
+    view.flags = EXB_STR_CONST;
     return view;
-}
-
-
-//see str valid states at kdata.h
-static int exb_str_init(struct exb *exb, struct exb_str *str) {
-    (void) exb;
-    str->str = "";
-    str->cap = -1;
-    str->len = 0;
-    return EXB_OK;
 }
 
 static int exb_str_init_empty(struct exb_str *str) {
     str->str = "";
-    str->cap = -1;
+    str->zcap = 0;
     str->len = 0;
+    str->flags = EXB_STR_CONST;
+    return EXB_OK;
+}
+
+//initializes a string backed by a char array on the stack
+//this will expand as needed to dynamic memory
+//Note: you still have to call exb_str_deinit, in case the string grew, otherwise it will be a no-op
+static int exb_str_init_empty_by_local_buffer(struct exb_str *str, char *buffer, size_t size) {
+    exb_assert_h(!!buffer, "passed NULL buffer");
+    buffer[0] = 0;
+    str->str = buffer;
+    str->len = 0;
+    str->zcap = size;
+    str->flags = 0;
     return EXB_OK;
 }
 
@@ -102,27 +117,28 @@ static int exb_str_init_const_str(struct exb_str *str, const char *src0) {
     exb_assert_h(!!src0, "passed NULL string");
     str->str = (char *) src0;
     str->len = strlen(src0);
-    str->cap = -1;
+    str->zcap = 0;
+    str->flags = EXB_STR_CONST;
     return EXB_OK;
 }
 
 static int exb_str_deinit(struct exb *exb, struct exb_str *str) {
-    if (str->cap >= 0) {
+    if ((str->flags & (EXB_STR_CONST | EXB_STR_DYNAMIC)) == EXB_STR_DYNAMIC) {
         exb_free(exb, str->str);
     }
-    str->str = NULL;
-    str->cap = 0;
-    str->len = 0;
+    #ifdef EXB_DEBUG
+        str->str = NULL;
+        str->zcap = 0;
+        str->len = 0;
+    #endif
     return EXB_OK;
 }
 
 static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int srclen);
 
 static int exb_str_init_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int src_len) {
-    int rv = exb_str_init(exb, str);
-    if (rv != EXB_OK)
-        return rv;
-    rv = exb_str_strlcpy(exb, str, src, src_len);
+    exb_str_init_empty(str);
+    int rv = exb_str_strlcpy(exb, str, src, src_len);
     if (rv != EXB_OK) {
         exb_str_deinit(exb, str);
         return rv;
@@ -137,9 +153,9 @@ static int exb_str_new(struct exb *exb, struct exb_str **strp) {
         *strp = NULL;
         return EXB_NOMEM_ERR;
     }
-    int rv = exb_str_init(exb, p);
+    exb_str_init_empty(p);
     *strp = p;
-    return rv;
+    return EXB_OK;
 }
 static int exb_str_destroy(struct exb *exb, struct exb_str *strp) {
     int rv = exb_str_deinit(exb, strp);
@@ -162,31 +178,31 @@ static int exb_str_new_strcpy(struct exb *exb, struct exb_str **strp, const char
 
 static int exb_str_clear(struct exb *exb, struct exb_str *str) {
     (void) exb;
-    if (str->cap > 0) {
-        str->str[0] = 0;
-        str->len = 0;
-    }
-    else {
+    if (exb_str_is_const(str)) {
         str->str = "";
         str->len = 0;
-        str->cap = -1;
+        str->zcap = 0;
+    }
+    else {
+        str->str[0] = 0;
+        str->len = 0;
     }
     return EXB_OK;
 }
 static int exb_str_set_cap(struct exb *exb, struct exb_str *str, int capacity) {
-    if (capacity == 0) {
+    if (capacity <= 0) {
         return exb_str_clear(exb, str);
     }
-    if (capacity < (str->len + 1))
-        str->len = capacity - 1;
-    if (str->cap < 0) {
-        void *p;
+    int newlen = str->len;
+    if (capacity <= str->len)
+        newlen = capacity - 1;
+    void *p;
+    if (!exb_str_is_growable(str)) {
         p  = exb_malloc(exb, capacity);
         if (!p) {
             return EXB_NOMEM_ERR;
         }
         memcpy(p, str->str, str->len);
-        str->str = p;
     }
     else {
         void *p = NULL;
@@ -194,24 +210,25 @@ static int exb_str_set_cap(struct exb *exb, struct exb_str *str, int capacity) {
         if (!p) {
             return EXB_NOMEM_ERR;
         }
-        str->str = p;
     }
+    str->str = p;
+    str->len = newlen;
     str->str[str->len] = 0;
-    str->cap = capacity;
+    str->zcap = capacity;
     return EXB_OK;
 }
 //make sure capacity is at least the provided arg
 static int exb_str_ensure_cap(struct exb *exb, struct exb_str *str, int capacity) {
-    if (str->cap >= capacity) {
+    if (str->zcap >= capacity) {
         return EXB_OK;
     }
     if (capacity < 16)
         capacity = 16;
-    return exb_str_set_cap(exb, str, (capacity * 3) / 2);
+    return exb_str_set_cap(exb, str, capacity);
 }
 static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src, int srclen) {
     int rv;
-    if (str->cap <= srclen) {
+    if (str->zcap <= srclen) {
         rv = exb_str_set_cap(exb, str, srclen + 1);
         if (rv != EXB_OK) {
             return rv;
@@ -224,14 +241,14 @@ static int exb_str_strlcpy(struct exb *exb, struct exb_str *str, const char *src
 }
 
 //boolean return value
-static int exb_strc_endswith(char *str, char *suffix) {
+static int exb_strc_endswith(const char *str, const char *suffix) {
     int slen = strlen(str);
     int suffixlen = strlen(suffix);
     return (slen > suffixlen) && (strcmp(str+slen-suffixlen, suffix) == 0);
 }
 static int exb_str_strlappend(struct exb *exb, struct exb_str *str, const char *src, int srclen) {
     int rv;
-    if (str->cap <= (str->len + srclen)) {
+    if (exb_str_is_const(str) || str->zcap <= (str->len + srclen)) {
         rv = exb_str_set_cap(exb, str, str->len + srclen + 1);
         if (rv != EXB_OK) {
             return rv;
@@ -253,12 +270,21 @@ static int exb_str_strappend(struct exb *exb, struct exb_str *str, const char *s
     return exb_str_strlappend(exb, str, src0, strlen(src0));
 }
 static int exb_str_init_copy(struct exb *exb, struct exb_str *str, struct exb_str *src) {
-    int rv = exb_str_init(exb, str); EXB_CRV(rv);
-    rv = exb_str_strlcpy(exb, str, src->str, src->len);
+    exb_str_init_empty(str);
+    int rv = exb_str_strlcpy(exb, str, src->str, src->len);
     if (rv != EXB_OK) {
         exb_str_deinit(exb, str);
         return rv;
     }
+    return EXB_OK;
+}
+//transfer ownership, string must be allocated with exb_malloc
+static int exb_str_init_transfer(struct exb *exb, char *src_str, struct exb_str *dest) {
+    exb_str_init_empty(dest);
+    dest->len = strlen(src_str);
+    dest->zcap = dest->len;
+    dest->flags = EXB_STR_DYNAMIC;
+    dest->str = src_str;
     return EXB_OK;
 }
 static int exb_str_new_copy(struct exb *exb, struct exb_str **strp, struct exb_str *src) {
@@ -345,10 +371,8 @@ static int exb_str_streq(struct exb *exb, struct exb_str *str_a, struct exb_str 
 
 
 static int exb_str_init_strcpy(struct exb *exb, struct exb_str *str, const char *src0) {
-    int rv = exb_str_init(exb, str);
-    if (rv != EXB_OK)
-        return rv;
-    rv = exb_str_strcpy(exb, str, src0);
+    exb_str_init_empty(str);
+    int rv = exb_str_strcpy(exb, str, src0);
     if (rv != EXB_OK) {
         exb_str_deinit(exb, str);
         return rv;
@@ -358,26 +382,28 @@ static int exb_str_init_strcpy(struct exb *exb, struct exb_str *str, const char 
 
 
 static int exb_vsprintf(struct exb *exb, struct exb_str *str, const char *fmt, va_list ap_in) {
-    int rv;
     va_list ap;
-    if (str->cap < 2) {
-        rv = exb_str_set_cap(exb, str, 2);
-        if (rv != EXB_OK) {
-            return rv;
-        }
-    }
+    int needed;
+
     va_copy(ap, ap_in);
-    int needed = vsnprintf(str->str, str->cap, fmt, ap);
+    if (exb_str_is_const(str) || str->zcap < 2) {
+        char tmp_buff[2];
+        needed = vsnprintf(tmp_buff, sizeof tmp_buff, fmt, ap);
+    }
+    else {
+        needed = vsnprintf(str->str, str->zcap, fmt, ap);
+    }
     va_end(ap);
-    if (needed >= str->cap) {
-        rv = exb_str_set_cap(exb, str, needed + 1);
+
+    if (needed >= str->zcap || exb_str_is_const(str)) {
+        int rv = exb_str_set_cap(exb, str, needed + 1);
         if (rv != EXB_OK) {
             return rv;
         }
-        exb_assert_s(needed < str->cap, "str grow failed");
+        exb_assert_s(needed < str->zcap, "str grow failed");
         va_copy(ap, ap_in);
-        needed = vsnprintf(str->str, str->cap, fmt, ap);
-        exb_assert_s(needed < str->cap, "str grow failed");
+        needed = vsnprintf(str->str, str->zcap, fmt, ap);
+        exb_assert_s(needed < str->zcap, "str grow failed");
         va_end(ap);
     }
     str->len = needed;
