@@ -2,7 +2,7 @@ options:
     kcachegrind + valgrind: meh
     dplog : umm, idk
     oprofile: YES
-    perfl: YES!
+    perf: YES!
 
 OPROFILE:
 https://linuxhint.com/oprofile-tutorial/

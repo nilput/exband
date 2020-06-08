@@ -7,8 +7,8 @@
 #include "http_status.h"
 #define HTTP_HEADERS_BUFFER_INIT_SIZE 512
 #define HTTP_OUTPUT_BUFFER_INIT_SIZE 2048
-#define EXB_HTTP_RESPONSE_HEADER_MAX 32
-#define HTTP_STATUS_MAX_SZ 128
+#define EXB_HTTP_RESPONSE_HEADER_MAX 16
+#define HTTP_STATUS_MAX_SZ 64
 
 struct exb_request_state;
 static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate);

@@ -28,6 +28,7 @@ Serving files handler                          [ ]
 Serving files handler default mimetypes        [ ]
 Fast threadsafe queue for threads->eloop       [ ]
 Fast threadsafe queue for eloops->threadpool   [ ]
+Buffering of multiple responses before write() [ ]
 
 Support json config                            [x]
 

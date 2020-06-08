@@ -10,6 +10,8 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/server_config.c
 
 debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all
+trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 
+trace: all
 debug-no-assert: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DEXB_NO_ASSERTS -fno-inline-small-functions
 debug-no-assert: all
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function 

@@ -173,3 +173,40 @@ int exb_read_file_fully(struct exb *exb, FILE *f, size_t max_sz, char **buffer_o
     buff[did_read] = 0;
     return EXB_OK;
 }
+
+
+#ifdef EXB_TRACE
+#define _GNU_SOURCE
+#include <dlfcn.h>
+void __cyg_profile_func_enter(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void __cyg_profile_func_exit(void *this_fn, void *call_site) __attribute__((no_instrument_function));
+void common_func(void* func_address, const char *fmt) __attribute__((no_instrument_function));
+const char* addr2name(void* address) __attribute__((no_instrument_function));
+double exb_time() __attribute__((no_instrument_function));
+void __cyg_profile_func_enter(void* func_address, void* call_site) {
+    common_func( func_address, "enter =>" );
+}
+
+void __cyg_profile_func_exit (void* func_address, void* call_site) {
+    common_func( func_address, "<= exit" );
+}
+
+//credits: https://github.com/tomohikoseven/-finstrument-functions/blob/master/trace.c
+const char* addr2name(void* address) {
+    Dl_info dli;
+    memset(&dli, 0x00, sizeof dli);
+
+    if (dladdr(address, &dli)) {
+        return dli.dli_sname;
+    }
+    return NULL;
+}
+
+void common_func(void* func_address, const char *fmt) {
+    const char *ret = addr2name(func_address);
+    if (ret) {
+        printf("%s %s %f\n", fmt, ret, exb_time());
+    }
+}
+
+#endif

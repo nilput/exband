@@ -12,7 +12,7 @@
 
 
 #define MAX_EVENTS 2048
-#define EPOLL_TIMEOUT 10
+#define EPOLL_TIMEOUT 20
 
 /*
 TODO: Optimization: Switch to edge triggered
