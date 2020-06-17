@@ -91,6 +91,7 @@ int exb_pcontrol_maintain(struct exb_pcontrol *st) {
             st->nchildren++;
         }
     }
+    return EXB_OK;
 }
 
 int exb_pcontrol_add_postfork_hook(struct exb_pcontrol *st,    void (*hook)(void *data), void *data) {

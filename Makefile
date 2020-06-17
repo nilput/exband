@@ -6,7 +6,7 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_events.c src/ex
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_response.c src/exb/http/http_server_listener_select.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_listener_epoll.c src/exb/http/http_server_module.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_threadpool.c src/exb/exb_pcontrol.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/server_config.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_main_config.c
 
 debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all
@@ -14,7 +14,7 @@ trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finst
 trace: all
 debug-no-assert: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DEXB_NO_ASSERTS -fno-inline-small-functions
 debug-no-assert: all
-release: CFLAGS += -g -O2 -Wall -Wno-unused-function 
+release: CFLAGS += -g -O2 -Wall -Wno-unused-function
 release: all
 fast-release: CFLAGS += -flto -mtune=native -march=native -O2 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
 fast-release: all
@@ -30,8 +30,8 @@ profile: server_main libexb.s
 
 libexb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
-server_main: src/exb/server_main.c $(SERVER_MAIN_DEPS) libexb.so
-	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/server_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lexb
+server_main: src/exb/exb_main.c $(SERVER_MAIN_DEPS) libexb.so
+	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lexb
 
 all : server_main libexb.so
 server_main: $(SERVER_MAIN_DEPS)

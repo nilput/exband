@@ -1,6 +1,7 @@
 #ifndef EXB_HTTP_SERVER_INTERNAL_H
 #define EXB_HTTP_SERVER_INTERNAL_H
 #include "http_server.h"
+#include <unistd.h> //close()
 
 //Get the multiplexer handling a particular socket
 static inline struct exb_http_multiplexer *exb_server_get_multiplexer_i(struct exb_server *s, int socket_fd) 

@@ -8,7 +8,7 @@
 #include "exb_pcontrol.h"
 #include "http/http_server.h"
 #include "http/http_server_listener_epoll.h"
-#include "server_config.h"
+#include "exb_main_config.h"
 
 #include "util/varg.h" //argv parsing
 

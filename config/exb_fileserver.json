@@ -6,7 +6,10 @@
                 "rules" : [
                     {
                         "prefix" : "/files/",
-                        "alias": "examples/static-files/"
+                        "destination": {
+                            "type": "filesystem",
+                            "path": "examples/static-files/"
+                        }
                     }
                 ]
                 

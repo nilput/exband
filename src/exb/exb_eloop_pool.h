@@ -13,7 +13,7 @@ struct exb_eloop_pool {
         struct exb_thread *thread;
     } loops[EXB_MAX_ELOOPS];
     int nloops;
-    int rr;
+    int rr; //round robin counter for distributing load
 
     struct exb_threadpool tp;
     struct exb *exb_ref;

@@ -1,0 +1,45 @@
+Coding conventions:
+    Semi global state:
+        No global state is ever used, but in many functions we pass a pointer to exb_ref which is the instance
+        of all state that is almost global, this includes things like custom allocators
+    Memory usage:
+        - we use exb_new and exb_free/exb_realloc, exb_realloc_f, this allows custom allocators
+        - We use these conventions for naming initialization/destruction functions:
+            
+            *_init/*_deinit:
+                init: Initialize the object, and any resources owned by the object
+                deinit: Destroy any resources owned by the object, rendering the object invalid
+                
+            *_new/*_destroy:
+                new: Allocate memory for the object itself, then initialize it and its resources
+                destroy: Destroy any resources owned by the object, AND free the storage for the object itself
+
+            for example assume we have this object ignoring error handling:
+
+            struct object {
+                int num;
+                char *foo_owned;
+            };
+            string_init(struct object *obj, int num, const char *foo_source) {
+                obj->num = num;
+                obj->foo_owned = dups(foo_source);
+            }
+            string_init_transfer(struct object *obj, int num, char *foo) {
+                obj->num = num;
+                obj->foo_owned = foo;
+            }
+            string_deinit(struct object *obj, int num, const char *foo_source) {
+                free(obj->foo_owned);
+            }
+            string_new(int num, const char *foo_source) {
+                struct object *obj = malloc(sizeof *obj);
+                string_init(obj, num, foo_source);
+                return obj;
+            }
+            string_destroy(struct object *obj, int num, const char *foo_source) {
+                string_deinit(obj);
+                free(obj);
+            }
+                
+
+

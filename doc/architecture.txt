@@ -1,5 +1,8 @@
+
 In all modes we assume we have 1 server (For example listening on port 80)
 Modes of operation:
     1 event loop, io done within the loop
     1 event loop, io done in separate threads
-    multiple event loops, io done within the loops
+    multiple event loops and multiple threads, io done within the loops
+    multiple processes, each 1 loop, io done within the loop
+

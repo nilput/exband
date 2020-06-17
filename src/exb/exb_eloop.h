@@ -460,7 +460,7 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
             rv = exb_eloop_q_pop_next(eloop, &ev);
             if (rv != EXB_OK)
                 break;
-            exb_assert_s(ev.handle, "ev.handle == NULL");
+            exb_assert_s(!!ev.handle, "ev.handle == NULL");
             ev.handle(ev);
         }
         if (rv != EXB_OK && rv != EXB_OUT_OF_RANGE_ERR) {
@@ -474,7 +474,7 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
             rv = exb_eloop_d_pop_next(eloop, &ev);
             if (rv != EXB_OK)
                 break;
-            exb_assert_s(ev.handle, "ev.handle == NULL");
+            exb_assert_s(!!ev.handle, "ev.handle == NULL");
             ev.handle(ev);
         }
         

@@ -21,7 +21,7 @@ int exb_sleep_until_timestamp_ex(struct exb_timestamp now, struct exb_timestamp 
 int exb_sleep_until_timestamp(struct exb_timestamp ts) {
     return exb_sleep_until_timestamp_ex(exb_timestamp_now(), ts);   
 }
-//returns unix time in seconds with at least ms accuarcy
+//returns unix time in seconds with at least ms accuracy
 double exb_time() {
     struct timeval tv;
     int rv = gettimeofday(&tv, NULL);

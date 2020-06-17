@@ -1,0 +1,18 @@
+This file is for listing bugs in the codebase, including ones not discovered yet
+
+* Hypothetical bugs:
+    *For functions that take ownership of arguments, stick to one convention for dealing with
+      errors, there are two choices:
+        1- destroy the arguments in all cases, even in the case of an error
+        2- never destroy the arguments in case of errors, and make that the responsibility of the caller
+        example for #1:
+            int save_str_in_config(char *mallocd_str) {
+                int rv = try_to_save(mallocd_str);
+                if (rv != 0) {
+                    free(mallocd_str);
+                }
+                return rv;
+            }
+      Solution:
+        enforce one way of doing this, by checking all code
+        if functions need a different way, then they should be named to indicate that

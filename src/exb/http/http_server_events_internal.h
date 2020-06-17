@@ -622,7 +622,7 @@ static void on_http_read_sync(struct exb_event ev) {
     if (err.error_code != EXB_OK) {
         exb_request_handle_http_error(rqstate);
     }
-    return err;
+    
 }
 
 static void on_http_read_async(struct exb_event ev) {
@@ -631,7 +631,7 @@ static void on_http_read_async(struct exb_event ev) {
     exb_assert_h(rqstate->is_read_scheduled, "");
     RQSTATE_EVENT(stderr, "Handling EXB_HTTP_READ for rqstate %p\n", rqstate);
     exb_request_async_read_from_client(rqstate);
-    return err;
+    
 }
 
 
@@ -683,7 +683,7 @@ static void on_http_send_sync(struct exb_event ev) {
     }
 
     ret:
-    return err;
+    0;
 }
 
 
@@ -699,7 +699,7 @@ static void on_http_send_async(struct exb_event ev) {
     exb_response_async_write(rqstate);
 
     ret:
-    return err;
+    0;
 }
 
 static void on_http_input_buffer_full(struct exb_event ev) {
@@ -724,7 +724,7 @@ static void on_http_did_read(struct exb_event ev) {
     exb_assert_h(rqstate->istate != EXB_HTTP_I_ST_DEAD, ""); 
     int len  = ev.msg.u.iip.arg1;
     err = exb_request_on_bytes_read(rqstate, rqstate->input_buffer_len, len);
-    return err;
+    0;
 }
 
 static void on_http_did_write(struct exb_event ev) {
