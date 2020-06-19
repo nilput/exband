@@ -7,8 +7,8 @@ struct basic_module {
     struct exb *exb_ref;
     int count;
 };
-static int handle_request(struct exb_http_server_module *module, struct exb_request_state *rqstate, int reason) {
-    struct basic_module *mod = (struct basic_module *) module;
+static int handle_request(void *rqh_state, struct exb_request_state *rqstate, int reason) {
+    struct basic_module *mod = (struct basic_module *) rqh_state;
 
     struct exb_str path;
     //exb_request_repr(rqstate);
@@ -36,7 +36,7 @@ int handler_init(struct exb *exb, struct exb_server *server, char *module_args, 
     mod->head.destroy = destroy_module;
     mod->count = 0;
     
-    if (exb_server_set_module_request_handler(server, (struct exb_http_server_module*)mod, handle_request) != EXB_OK) {
+    if (exb_server_set_request_handler(server, mod, handle_request) != EXB_OK) {
         destroy_module((struct exb_http_server_module*)mod, exb);
         return EXB_MODULE_LOAD_ERROR;
     }

@@ -53,7 +53,10 @@ static void exb_http_request_resolve(struct exb_request_state *rqstate) {
     struct exb_server *server = rqstate->server;
     struct exb_http_server_config *config = &rqstate->server->config;
     for (int i=0; i < config->nrules; i++) {
-        
+        if (exb_http_request_matches_rule(rqstate, config->request_rules + i)) {
+            exb_http_request_resolve_to_sink(rqstate, config, config->request_rules[i].sink_id);
+            break;
+        }
     }
 }
 

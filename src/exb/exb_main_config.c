@@ -197,7 +197,7 @@ int json_token_strcmp(char *json_str, jsmntok_t *t, const char *str) {
     return strncmp(json_str + t->start, str, strlen(str));
 }
 int json_get_as_boolean(char *json_str, jsmntok_t *t, int *out) {
-    *out = -1;
+    *out = 0;
     if (t->type == JSMN_PRIMITIVE || t->type == JSMN_STRING) {
         if ((t->end - t->start) == 4 && strncmp("true", json_str + t->start, 4) == 0) {
             *out = 1;
@@ -313,8 +313,8 @@ static int parse_rule_destination(struct exb *exb_ref,
                                   struct exb_request_sink *sink_out)
 {
     char *path_str = NULL;
-    jsmntok_t *dtype = json_get(ep->full_file, ep->tokens, "type");
-    jsmntok_t *path = json_get(ep->full_file, ep->tokens, "path");
+    jsmntok_t *dtype = json_get(ep->full_file, obj, "type");
+    jsmntok_t *path = json_get(ep->full_file, obj, "path");
     if (!dtype ||
         !path ||
         json_token_strcmp(ep->full_file, dtype, "filesystem") != 0 ||
@@ -323,6 +323,7 @@ static int parse_rule_destination(struct exb *exb_ref,
     {
         return EXB_CONFIG_ERROR;
     }
+    //takes ownership of path_str
     int rv = exb_request_sink_filesystem_init(exb_ref, path_str, sink_out);
     if (rv != EXB_OK) {
         exb_free(exb_ref, path_str);
@@ -344,7 +345,7 @@ static int parse_rule(struct exb *exb_ref,
                       struct exb_request_rule *rule_out)
 {
     char *prefix_str = NULL;
-    jsmntok_t *prefix = json_get(ep->full_file, ep->tokens, "path");
+    jsmntok_t *prefix = json_get(ep->full_file, obj, "prefix");
     if (!prefix ||
         json_get_as_string_copy(exb_ref, ep->full_file, prefix, 0, &prefix_str) != EXB_OK
        ) 
@@ -404,7 +405,10 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     int integer;
     char *string;
     jsmntok_t *obj = NULL;
-
+    obj = json_get(ep.full_file, ep.tokens, "event.threadpool");
+    if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
+        config_out->tp_threads = integer;
+    }
     obj = json_get(ep.full_file, ep.tokens, "http.port");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         http_server_config_out->http_listen_port = integer;
@@ -415,6 +419,9 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     }
     obj = json_get(ep.full_file, ep.tokens, "event.processes");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
+        if (integer < 1) {
+            integer = 1;
+        }
         config_out->nproc = integer;
     }
     obj = json_get(ep.full_file, ep.tokens, "event.polling");
@@ -427,13 +434,11 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
         string = NULL;
     }
     obj = json_get(ep.full_file, ep.tokens, "event.aio");
-    if (obj && json_get_as_boolean(ep.full_file, obj, &integer) == 0) {
+    if (obj && (json_get_as_boolean(ep.full_file, obj, &integer) == 0)) {
         http_server_config_out->http_use_aio = !!integer;
     }
-    obj = json_get(ep.full_file, ep.tokens, "event.threadpool");
-    if (obj) {
-        dump(ep.full_file, obj, 1, 0);
-    }
+    
+    
    
    rv = load_json_rules(exb_ref, &ep, config_out, http_server_config_out);
    rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
@@ -486,12 +491,13 @@ static int load_json_modules(struct exb *exb_ref,
                 goto on_error_1;
             }
 
+
             if (args->type == JSMN_OBJECT) {
                 rv = json_to_key_eq_value_new(exb_ref, ep->full_file, args, &args_str);
-                exb_free(exb_ref, path_str);
-                exb_free(exb_ref, args_str);
                 if (rv != EXB_OK) {
                     rv = EXB_CONFIG_ERROR;
+                    exb_free(exb_ref, path_str);
+                    exb_free(exb_ref, args_str);
                     goto on_error_1;
                 }
             }
@@ -520,7 +526,7 @@ static int load_json_rules(struct exb *exb_ref,
     char *string;
     jsmntok_t *obj = NULL;
     int rv = EXB_OK;
-    obj = json_get(ep->full_file, ep->tokens, "rules");
+    obj = json_get(ep->full_file, ep->tokens, "http.rules");
     if (obj) {
         if (obj->type != JSMN_ARRAY) {
             rv = EXB_CONFIG_ERROR;
@@ -546,7 +552,7 @@ static int load_json_rules(struct exb *exb_ref,
             }
 
             /*This is one of possibly many qualifications for the rule*/
-            jsmntok_t *prefix_obj = json_get(ep->full_file, prefix_obj, "prefix");
+            jsmntok_t *prefix_obj = json_get(ep->full_file, rule_obj, "prefix");
 
             if (!destination_obj || !prefix_obj) {
                 rv = EXB_CONFIG_ERROR;

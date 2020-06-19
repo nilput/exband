@@ -74,6 +74,7 @@ static int fileserv_handler(void *unused, struct exb_request_state *rqstate, int
 		exb_response_append_body_buffer_wrote(rqstate, read_bytes);
 		
 		if (*remaining_in_file == 0) {
+			close(fd);
 			exb_response_end(rqstate);
 		}
 	}

@@ -16,3 +16,6 @@ This file is for listing bugs in the codebase, including ones not discovered yet
       Solution:
         enforce one way of doing this, by checking all code
         if functions need a different way, then they should be named to indicate that
+
+
+* Real bug: threadpool / aio are broken

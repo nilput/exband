@@ -69,7 +69,7 @@ static void exb_request_call_handler(struct exb_request_state *rqstate, enum exb
 
 
 static void exb_request_resolve_and_call_handler(struct exb_request_state *rqstate) {
-    
+    exb_http_request_resolve(rqstate);
     rqstate->request_handler(rqstate->rqh_state, rqstate, EXB_HTTP_HANDLER_HEADERS);
 }
 
