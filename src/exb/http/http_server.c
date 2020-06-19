@@ -51,15 +51,10 @@ static struct exb_error make_socket (uint16_t port, int *out)
     return error;
 }
 
-static void default_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
+static int default_handler(void *handler_state, struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
     exb_response_append_body(rqstate, "Not found\r\n", 11);
     exb_response_end(rqstate);
-}
-static void module_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
-    exb_assert_h(rqstate->server && rqstate->server->handler_module && rqstate->server->module_request_handler, "");
-    //TODO: dont ignore, also too many indirections that can be easily avoided!
-    struct exb_server *s = rqstate->server;
-    int ignored = s->module_request_handler(s->handler_module, rqstate, reason);
+    return EXB_OK;
 }
 
 static void server_postfork(void *data) {
@@ -70,15 +65,13 @@ static void server_postfork(void *data) {
 }
 struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config) {
     struct exb_error err = {0};
-    s->exb = exb_ref;
-    s->elist = elist;
-    s->request_handler   = default_handler;
-    s->handler_module    = NULL;
-    s->module_request_handler = NULL;
-    s->n_loaded_modules = 0;
-    s->pcontrol = pcontrol;
-
-    s->config = config;
+    s->exb                    = exb_ref;
+    s->elist                  = elist;
+    s->request_handler_state  = NULL;
+    s->request_handler        = default_handler;
+    s->n_loaded_modules       = 0;
+    s->pcontrol               = pcontrol;
+    s->config                 = config;
 
     if (config.http_use_aio) {
         s->on_read = on_http_read_async;
@@ -167,10 +160,12 @@ err0:
     }
     return err;
 }
-int exb_server_set_module_request_handler(struct exb_server *s, struct exb_http_server_module *mod, exb_module_request_handler_func func) {
-    s->request_handler = module_handler;
-    s->handler_module = mod;
-    s->module_request_handler = func;
+
+/*Sets request handler for all http requests, the handler must terminate the request by sending a response*/
+
+int exb_server_set_request_handler(struct exb_server *s, void *handler_state, exb_request_handler_func func) {
+    s->request_handler = func;
+    s->request_handler_state = handler_state;
     return EXB_OK;
 }
 
@@ -385,11 +380,7 @@ void exb_server_deinit(struct exb_server *s) {
     close(s->listen_socket_fd);
 }
 
-/*Sets request handler for all http requests, the handler must terminate the request by sending a response*/
-int exb_server_set_request_handler(struct exb_server *s, void (*handler)(struct exb_request_state *rqstate, enum exb_request_handler_reason reason)) {
-    s->request_handler = handler;
-    return EXB_OK;
-}
+
 
 //Switch implementation of the listener, for example from select() -> epoll()
 int exb_server_listener_switch(struct exb_server *s, const char *listener_name) {

@@ -1,6 +1,7 @@
 #ifndef HTTP_SOCKET_MULTIPLEXER_H
 #define HTTP_SOCKET_MULTIPLEXER_H
 #include <netinet/in.h>
+#include "http_request_d.h"
 enum exb_http_multiplexer_state {
     EXB_MP_EMPTY,
     EXB_MP_ACTIVE,

@@ -5,6 +5,7 @@ SERVER_MAIN_DEPS := src/exb/exb_utils.c src/exb/http/http_server.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_events.c src/exb/http/http_request.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_response.c src/exb/http/http_server_listener_select.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_listener_epoll.c src/exb/http/http_server_module.c
+SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/exb_fileserv.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_threadpool.c src/exb/exb_pcontrol.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_main_config.c
 
@@ -28,12 +29,11 @@ profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DEXB_NO_
 profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
 profile: server_main libexb.s
 
+all : exb libexb.so
 libexb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
-server_main: src/exb/exb_main.c $(SERVER_MAIN_DEPS) libexb.so
+exb: src/exb/exb_main.c $(SERVER_MAIN_DEPS) libexb.so
 	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lexb
 
-all : server_main libexb.so
-server_main: $(SERVER_MAIN_DEPS)
 clean: 
-	@rm -f server_main libexb.so oprofile_data perf.data* 2>/dev/null || true
+	@rm -f exb libexb.so oprofile_data perf.data* 2>/dev/null || true

@@ -14,7 +14,7 @@ Header/Method/Version parsing                  [x]
 Response                                       [x]      
 Infinite Request/Response                      [x]
 Infinite No.Headers                            [ ]      
-Infinite No.Sockets                            [ ]      
+Infinite No.Sockets                            [ ]       This works with epoll
 Request Timeout                                [ ]      
 Request Keepalive Timeout                      [ ]      
 TCP/Slow request DDOS Protection               [ ]      
@@ -22,6 +22,7 @@ Date header                                    [ ]
 logging                                        [ ]
      Log each request with ip+timestamp        [ ]
      Log errors                                [ ]
+     Adjustable logging format                 [ ]
 Stacktraces in places they're relevant         [ ]      
 HTTP Error reasons                             [ ]      
 Serving files handler                          [ ]
@@ -38,10 +39,7 @@ DO a periodic clean up or a MRU based cleanup  \
 DO a periodic clean up or a MRU based cleanup  \
    of request recycle lists                    [ ]
 
-DO A performance testing setup, that targets   \
-   the event loop and the threadpool, (without \
-   actual http/io events, just measuring how   \
-   fast the communication/parsing is)          [ ]
+
 
 Ensure compatibility with 32bit systems        \
  (avoid long long)                             [ ]
@@ -59,6 +57,30 @@ dont add epollout for socket immediately, only \
  do that if writing proves to be a problem for \
  a particular socket                           [ ]
 
- update select to fix bugs when socket no is too big \
-/ new wants_read/wants_write flags and\
+ update select to fix bugs when socket no is   \
+ too big new wants_read/wants_write flags and  \
  ->currently_reading being null                [ ]
+
+ Have the input buffer owned by the multiplexer\
+ rather than the request state                 [ ]
+
+Known length streaming response                [ ]  
+
+Multiple switchable file serve implementations \
+(sendfile/read write streaming)                [ ]
+
+A non-socket http requests input path for      \
+testing / profiling                            [ ]
+
+A non-socket http requests output path for     \
+testing / profiling                            [ ]
+
+DO A performance testing setup, that targets   \
+   the event loop and the threadpool, (without \
+   actual http/io events, just measuring how   \
+   fast the communication/parsing is)          [ ]
+
+codebase static analysis                       [ ]
+
+automated profiling scenarios that are         \
+automatically logged                           [ ]

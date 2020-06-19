@@ -5,56 +5,17 @@
 #include "../exb_str.h"
 #include "http_server_events.h"
 #include "http_status.h"
-#define HTTP_HEADERS_BUFFER_INIT_SIZE 512
-#define HTTP_OUTPUT_BUFFER_INIT_SIZE 2048
-#define EXB_HTTP_RESPONSE_HEADER_MAX 16
-#define HTTP_STATUS_MAX_SZ 64
+#include "http_response_d.h"
 
-struct exb_request_state;
-static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate);
-
-enum exb_http_response_state {
-    EXB_HTTP_R_ST_INIT,
-    EXB_HTTP_R_ST_READY_HEADERS,
-    EXB_HTTP_R_ST_READY_BODY,
-    EXB_HTTP_R_ST_SENDING,
-    EXB_HTTP_R_ST_DONE,
-    EXB_HTTP_R_ST_DEAD
-};
-struct exb_response_header {
-    struct exb_str key;
-    struct exb_str value;
-};
-struct exb_response_headers {
-    struct exb_response_header headers[EXB_HTTP_RESPONSE_HEADER_MAX];
-    int len;
-};
-struct exb_response_state {
-    char *output_buffer; //layout: [space?] STATUS . HEADERS . BODY
-    int output_buffer_cap;
-    enum exb_http_response_state state;
-    
-    //bool is_chunked; //currently not supported
-    int written_bytes;
-    
-    int headers_bytes; //whenever we set a header we accumulate it length + crlf to this member
-                       //inititalized to 2 (because there's a final crlf after all headers)
-    int status_begin_index;  //inititalized to -1
-    int status_len;          //inititalized to -1
-    int headers_begin_index; //inititalized to -1
-    int headers_len;         //inititalized to -1
-    int body_begin_index;    //inititalized to HEADERS_BUFFER_INIT_SIZE
-    int body_len;            //inititalized to 0
-
-    int status_code;
-    struct exb_response_headers headers;
-};
 /*
     The way we do responses is:
         Our goal is ending up with one buffer that has status.headers.body contigously
         What we do is: assume status + headers have x size, then start writing body at offset x
         then, at the end, once we know status + headers size write them before the body
 */
+
+struct exb_request_state;
+static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate);
 
 static int exb_response_state_init(struct exb_response_state *resp_state, struct exb_request_state *req, struct exb_eloop *eloop) {
     exb_assert_h(!!eloop, "");
@@ -121,6 +82,10 @@ int exb_response_add_header_c(struct exb_request_state *rqstate, char *name, cha
 //doesnt take ownership
 int exb_response_set_header_c(struct exb_request_state *rqstate, char *name, char *value);
 
+//doesnt own location
+int exb_response_redirect_and_end(struct exb_request_state *rqstate, int status_code, const char *location);
+int exb_response_end(struct exb_request_state *rqstate);
+
 static size_t exb_response_body_available_bytes(struct exb_request_state *rqstate) {
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
     return rsp->output_buffer_cap - rsp->body_begin_index - rsp->body_len;
@@ -130,8 +95,9 @@ static size_t exb_response_body_length(struct exb_request_state *rqstate) {
     return rsp->body_len;
 }
 int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t cap);
+
 //the bytes are copied to output buffer
-static int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len) {
+static int exb_response_append_body_i(struct exb_request_state *rqstate, char *s, int len) {
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
     
     int available_bytes = exb_response_body_available_bytes(rqstate);
@@ -145,7 +111,34 @@ static int exb_response_append_body(struct exb_request_state *rqstate, char *s, 
     return EXB_OK;
 }
 
+/*
+get a pointer for writing directly to the output buffer
+*/
+static int exb_response_append_body_buffer_ptr(struct exb_request_state *rqstate, char **buffer_out, size_t *max_len) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
+    *buffer_out = rsp->output_buffer + rsp->body_begin_index + rsp->body_len;
+    *max_len    = exb_response_body_available_bytes(rqstate);
+    return EXB_OK;
+}
+
+/*
+When using exb_response_append_body_buffer_ptr() to write directly to the buffer
+this must be called afterwards to indicate how many bytes were written
+*/
+static int exb_response_append_body_buffer_wrote(struct exb_request_state *rqstate, size_t len) {
+    struct exb_response_state *rsp = exb_request_get_response(rqstate);
+    rsp->body_len += len;
+    return EXB_OK;
+}
+
+static int exb_response_append_body_cstr_i(struct exb_request_state *rqstate, char *s) {
+    return exb_response_append_body_i(rqstate, s, strlen(s));
+}
+
+//the same functions with external linkage
+int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len);
 int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s);
+
 
 static int exb_response_prepare_headers(struct exb_request_state *rqstate, struct exb_eloop *eloop) {
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
@@ -209,8 +202,26 @@ static void exb_response_set_status_code(struct exb_request_state *rqstate, int 
     rsp->status_code = status_code;
 }
 
-//doesnt own location
-int exb_response_redirect_and_end(struct exb_request_state *rqstate, int status_code, const char *location);
-int exb_response_end(struct exb_request_state *rqstate);
+static int exb_response_return_error(struct exb_request_state *rqstate, int status_code, char *content) {
+    exb_response_set_status_code(rqstate, status_code);
+    exb_response_append_body_cstr(rqstate, content);
+    return exb_response_end(rqstate);;
+}
+
+/*
+called if an error occurs before or possibly after sending the headers,
+this tries to recover from that
+an example of this is read() successfully reading 100 bytes, then fails after that for some reason
+the recovery from that should involve: padding the response with 0s, for each of the n bytes remaining
+maybe trailer headers can be used for that?
+*/
+static int exb_response_on_error_mid_transfer(struct exb_request_state *rqstate) {
+    /*TODO: BROKEN*/
+    exb_response_set_status_code(rqstate, 500);
+    exb_response_append_body_cstr(rqstate, "transfer error");
+    return exb_response_end(rqstate);;
+}
+
+
 
 #endif

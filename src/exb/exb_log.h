@@ -37,10 +37,18 @@ static int exb_logger_logvf(struct exb *exb, int level, const char *fmt, va_list
     exb_str_deinit(exb, &str);
     return EXB_OK;
 }
+
 static int exb_logger_logf(struct exb *exb, int level, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     int rv = exb_logger_logvf(exb, level, fmt, ap);
+    va_end(ap);
+    return rv;
+}
+static int exb_logger_log_eventf(struct exb *exb, int event_type, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = exb_logger_logvf(exb, 1, fmt, ap);
     va_end(ap);
     return rv;
 }

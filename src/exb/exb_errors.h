@@ -42,6 +42,9 @@ enum exb_errors {
 
 #undef CPERR
 #define CPERR(error_name) {error_name, #error_name,},
+
+
+#define EXB_UNUSED(thing) ((void) thing)
 struct exb_error_str {
     int error_code;
     const char *error_name;

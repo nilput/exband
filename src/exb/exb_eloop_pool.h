@@ -84,7 +84,7 @@ static void *exb_eloop_pool_thread_runner(void *p) {
     return NULL;
 }
 
-//cpu offset is used for cpu affinity, it's not important (can be 0)
+//cpu offset is used for cpu affinity, it's not important (can be -1)
 static struct exb_error exb_eloop_pool_run(struct exb_eloop_pool *elist, int cpu_offset) {
     for (int i=0; i<elist->nloops; i++) {
         exb_thread_new(elist->exb_ref, i, &elist->tp, exb_eloop_pool_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);

@@ -19,6 +19,8 @@ static int exb_thread_join(struct exb_thread *thread) {
     return rv == 0 ? EXB_OK : EXB_THREAD_ERROR;
 }
 
+int exb_hw_cpu_count();
+
 static int exb_thread_new(struct exb *exb_ref, int tid, struct exb_threadpool *tp, void *(*run)(void *), void *data, struct exb_thread **new_thread) {
     void *p = exb_malloc(exb_ref, sizeof(struct exb_thread));
     if (!p)
@@ -28,7 +30,8 @@ static int exb_thread_new(struct exb *exb_ref, int tid, struct exb_threadpool *t
     t->tid = tid;
     t->tp = tp;
     t->data = data;
-    t->bind_cpu = -1;
+    t->bind_cpu = tid % exb_hw_cpu_count();
+    exb_assert_h(t->bind_cpu >= 0, "invalid thread id");
     int rv = pthread_create(&t->thread, NULL, run, t);
     if (rv != 0) {
         exb_free(exb_ref, t);

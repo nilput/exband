@@ -1,18 +1,13 @@
 {
     "http" : {
-        "servers" : [
+        "port" : "8085",
+        "rules" : [
             {
-                "port" : "8085",
-                "rules" : [
-                    {
-                        "prefix" : "/files/",
-                        "destination": {
-                            "type": "filesystem",
-                            "path": "examples/static-files/"
-                        }
-                    }
-                ]
-                
+                "prefix" : "/files/",
+                "destination": {
+                    "type": "filesystem",
+                    "path": "examples/static-files/"
+                }
             }
         ]
     },
@@ -22,15 +17,5 @@
         "polling" : "epoll",
         "aio" : false,
         "threadpool": 0
-    },
-    "modules": [
-        {
-            "path": "examples/basic/basic.so:handler",
-            "args" : {
-                "db_path" : "./db.sqlite3",
-                "db_reinit" : 0,
-                "site_link" : "http://127.0.0.1:8085"
-            }
-        }
-    ]
+    }
 }

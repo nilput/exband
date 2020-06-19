@@ -41,3 +41,6 @@ request life time:
     
 but we cannot immediately destroy requests when they're scheduled
 so we treat requests as being cancelled when there's an error
+
+
+a request handler is resolved as soon as headers are available

@@ -4,64 +4,26 @@
 #include "../exb_errors.h"
 #include "../exb_log.h"
 #include "../exb_build_config.h"
-#include "http_request.h"
+#include "http_request_d.h"
 #include "http_request_rules.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "http_server_config.h"
-#include "exb_request_state_recycle_array.h"
+#include "http_request_state_recycle_array.h"
+#include "http_server_d.h"
 
 
 
 /*
-
     Server uses one or more event loops
         has a bunch of roles:  Accepts connections
                                Select (see whether there are sockets available for read/write, and schedule the appropriate handler to be ran in the event loop
 
-        Server schedules itself to be ran in one of the event loops
-        it manages the lifetime of requests and stores their state
+        Schedules itself to be ran in one of the event loops to call epoll/select
+        Manages the lifetime of requests and stores their state
+        Stores loaded modules
 */
 
-struct exb_pcontrol;
-struct exb_eloop_pool;
-
-
-typedef void (*exb_server_request_handler_func)(struct exb_request_state *rqstate, enum exb_request_handler_reason reason);
-
-struct exb_server {
-    struct exb *exb;                 //not owned, must outlive
-    struct exb_eloop_pool *elist;    //not owned, must outlive
-    struct exb_pcontrol *pcontrol;   //not owned, must outlive
-
-    void (*on_read)(struct exb_event ev);
-    void (*on_send)(struct exb_event ev);
-
-    int port;
-    int listen_socket_fd;
-
-    struct {
-        struct exb_server_listener *listener;
-        struct exb_request_state_recycle_array rq_cyc;
-    } loop_data[EXB_MAX_ELOOPS];
-
-    /*we either have a handler module (dynamic library) or a simple request handler*/
-    /*simple*/
-    exb_server_request_handler_func request_handler;
-    /*dynamically loaded*/
-    struct exb_http_server_module  *handler_module; //must be present in loaded_modules too
-    exb_module_request_handler_func module_request_handler;
-
-    struct exb_http_server_config config; //owned
-
-    struct {
-        struct exb_http_server_module *module;
-        void *dll_module_handle;
-    } loaded_modules[EXB_SERVER_MAX_MODULES];
-    int n_loaded_modules;
-
-    struct exb_http_multiplexer mp[EXB_SOCKET_MAX] EXB_ALIGN(64);
-};
 
 /*
 single socket -> multiple concurrent requests
@@ -89,8 +51,8 @@ struct exb_error exb_server_listen(struct exb_server *s);
 
 void exb_server_cancel_requests(struct exb_server *s, int socket_fd);
 void exb_server_close_connection(struct exb_server *s, int socket_fd);
-int  exb_server_set_request_handler(struct exb_server *s, void (*handler)(struct exb_request_state *rqstate, enum exb_request_handler_reason reason));
-int  exb_server_set_module_request_handler(struct exb_server *s, struct exb_http_server_module *mod, exb_module_request_handler_func func);
+/*Sets request handler for all http requests, the handler must terminate the request by sending a response*/
+int  exb_server_set_request_handler(struct exb_server *s, void *handler_state, exb_request_handler_func handler_func);
 void exb_server_deinit(struct exb_server *s);
 
 struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, int socket_fd);

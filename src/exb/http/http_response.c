@@ -22,10 +22,16 @@ int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t ca
     return EXB_OK;
 }
 
-int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s) {
-    return exb_response_append_body(rqstate, s, strlen(s));
-}
 
+
+int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len)
+{
+    return exb_response_append_body_i(rqstate, s, len);
+}
+int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s)
+{
+    return exb_response_append_body_cstr_i(rqstate, s);
+}
 
 
 //Takes ownership of both name and value

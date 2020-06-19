@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
     ordie(rv);
     rv = exb_pcontrol_init(&pcontrol, exb_config.nproc);
     ordie(rv);
-    fprintf(stderr, "spawning %d eloop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
+    fprintf(stderr, "spawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
     
     rv = exb_threadpool_set_nthreads(&elist.tp, exb_config.tp_threads);
     fprintf(stderr, "spawning %d thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
@@ -90,6 +90,7 @@ int main(int argc, char *argv[]) {
         erv.error_code = exb_server_listener_switch(&server, "epoll");
         ordie(erv.error_code);
     }
+    int cpu_count =  exb_hw_cpu_count();
     while (exb_pcontrol_running(&pcontrol)) {
         if (exb_pcontrol_is_single_process(&pcontrol) || exb_pcontrol_is_worker(&pcontrol)) {
             if (!exb_pcontrol_is_single_process(&pcontrol)) {
@@ -98,7 +99,7 @@ int main(int argc, char *argv[]) {
             }
             erv = exb_server_listen(&server);
             ordie(erv.error_code);
-            erv = exb_eloop_pool_run(&elist, exb_pcontrol_worker_id(&pcontrol));
+            erv = exb_eloop_pool_run(&elist, exb_pcontrol_worker_id(&pcontrol) % cpu_count);
             ordie(erv.error_code);
             erv = exb_eloop_pool_join(&elist);
             ordie(erv.error_code);
@@ -106,6 +107,10 @@ int main(int argc, char *argv[]) {
         else if (exb_pcontrol_is_master(&pcontrol)) {
             exb_pcontrol_maintain(&pcontrol);
             exb_sleep(50);
+        }
+        else {
+            fprintf(stderr, "invalid run state\n");
+            break;
         }
     }
     

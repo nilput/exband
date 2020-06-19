@@ -17,6 +17,11 @@ struct exb_msg {
             void *argp1;
             void *argp2;
         } pp;
+        struct {
+            int arg1;
+            int arg2;
+            size_t sz;
+        } iiz;
     } u;
     
 };

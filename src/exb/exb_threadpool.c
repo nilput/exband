@@ -6,8 +6,9 @@
 #include <sys/resource.h>
 #include <sched.h>
 #include <pthread.h>
-int exb_hw_cpu_count(int core_id) {
-    return sysconf(_SC_NPROCESSORS_ONLN);
+int exb_hw_cpu_count() {
+    int count = sysconf(_SC_NPROCESSORS_ONLN);
+    return count <= 0 ? 1 : count;
 }
 int exb_hw_bind_to_core(int core_id) {
     int num_cores = sysconf(_SC_NPROCESSORS_ONLN);

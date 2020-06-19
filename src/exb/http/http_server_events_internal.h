@@ -7,6 +7,7 @@
 #include "http_server_internal.h"
 #include "http_request.h"
 #include "http_response.h"
+#include "http_request_handler_resolution.h"
 #include "../exb_build_config.h"
 #include "http_parse.h"
 
@@ -63,10 +64,16 @@ static void exb_request_handle_socket_error(struct exb_request_state *rqstate) {
 }
 
 static void exb_request_call_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
-    rqstate->server->request_handler(rqstate, reason);
+    rqstate->request_handler(rqstate->rqh_state, rqstate, reason);
 }
 
-static void exb_request_lifetime(struct exb_http_multiplexer *mp, struct exb_request_state *rqstate) {
+
+static void exb_request_resolve_and_call_handler(struct exb_request_state *rqstate) {
+    
+    rqstate->request_handler(rqstate->rqh_state, rqstate, EXB_HTTP_HANDLER_HEADERS);
+}
+
+static void exb_request_lifetime_checks(struct exb_http_multiplexer *mp, struct exb_request_state *rqstate) {
     if (!rqstate->is_read_scheduled && !rqstate->is_send_scheduled ) {
         //FIXME: if cancelled, are we sure no one else has a reference to it?
         if ((rqstate->istate == EXB_HTTP_I_ST_DONE && rqstate->resp.state == EXB_HTTP_R_ST_DONE) || rqstate->is_cancelled) {
@@ -91,7 +98,7 @@ static void exb_request_on_request_done(struct exb_request_state *rqstate) {
     exb_assert_h(!rqstate->is_read_scheduled, "");
     exb_assert_h(rqstate->istate == EXB_HTTP_I_ST_DONE || rqstate->is_cancelled, "");
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-    exb_request_lifetime(mp, rqstate);
+    exb_request_lifetime_checks(mp, rqstate);
 }
 
 static void exb_request_on_response_done(struct exb_request_state *rqstate) {
@@ -100,7 +107,7 @@ static void exb_request_on_response_done(struct exb_request_state *rqstate) {
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     exb_assert_h(mp->next_response == rqstate, "");
     exb_http_multiplexer_pop_response(mp);
-    exb_request_lifetime(mp, rqstate);
+    exb_request_lifetime_checks(mp, rqstate);
 }
 
 
@@ -195,7 +202,7 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
                 goto ret;
             }
             rqstate->istate = EXB_HTTP_I_ST_WAITING_FOR_BODY;
-            exb_request_call_handler(rqstate, EXB_HTTP_HANDLER_HEADERS);
+            exb_request_resolve_and_call_handler(rqstate);
         }
     }
     if (rqstate->istate == EXB_HTTP_I_ST_WAITING_FOR_BODY ) 
@@ -572,7 +579,7 @@ static struct exb_error exb_request_read_from_client(struct exb_request_state *r
     int nbytes;
     struct exb_error err = {0};
     
-    #ifdef EXB_USE_READ_WRITE_FOR_TCP
+#ifdef EXB_USE_READ_WRITE_FOR_TCP
     nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
 #else
     nbytes = recv(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes, MSG_DONTWAIT);
@@ -599,7 +606,6 @@ static struct exb_error exb_request_read_from_client(struct exb_request_state *r
         }
         //TODO error handling, also why not directly deal with the event
         exb_eloop_append(rqstate->eloop, ev); 
-        //fprintf(stderr, "EOF");
     }
     else {
         avbytes -= nbytes;
@@ -714,6 +720,7 @@ static void on_http_input_buffer_full(struct exb_event ev) {
     mark_read_scheduled(rqstate, 0);
     /*TODO: else reschedule?*/
 }
+
 static void on_http_did_read(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     struct exb_error err = exb_make_error(EXB_OK);
