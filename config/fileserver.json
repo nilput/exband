@@ -3,10 +3,11 @@
         "port" : "8085",
         "rules" : [
             {
-                "prefix" : "",
+                "prefix" : "/files/",
                 "destination": {
                     "type": "filesystem",
-                    "path": "examples/static-files/"
+                    "path": "examples/static-files/",
+                    "alias": true
                 }
             }
         ]

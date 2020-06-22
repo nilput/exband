@@ -315,6 +315,10 @@ static int parse_rule_destination(struct exb *exb_ref,
     char *path_str = NULL;
     jsmntok_t *dtype = json_get(ep->full_file, obj, "type");
     jsmntok_t *path = json_get(ep->full_file, obj, "path");
+    jsmntok_t *alias = json_get(ep->full_file, obj, "alias");
+    int is_alias = 0;
+    if (!alias || json_get_as_boolean(ep->full_file, alias, &is_alias) != EXB_OK)
+        is_alias = 0;
     if (!dtype ||
         !path ||
         json_token_strcmp(ep->full_file, dtype, "filesystem") != 0 ||
@@ -324,7 +328,7 @@ static int parse_rule_destination(struct exb *exb_ref,
         return EXB_CONFIG_ERROR;
     }
     //takes ownership of path_str
-    int rv = exb_request_sink_filesystem_init(exb_ref, path_str, sink_out);
+    int rv = exb_request_sink_filesystem_init(exb_ref, path_str, is_alias, sink_out);
     if (rv != EXB_OK) {
         exb_free(exb_ref, path_str);
         return rv;
@@ -583,6 +587,8 @@ static int load_json_rules(struct exb *exb_ref,
                 exb_request_sink_deinit(exb_ref, &sink);
                 goto on_error_1;
             }
+            
+
             int sink_id = -1;
             rv = exb_http_server_config_add_sink(exb_ref, http_server_config_out, sink, &sink_id);
             if (rv != EXB_OK) {
@@ -597,6 +603,7 @@ static int load_json_rules(struct exb *exb_ref,
                 exb_http_server_config_remove_sink(exb_ref, http_server_config_out, sink_id);
                 return rv;
             }
+            
         }
     }
     return EXB_OK;

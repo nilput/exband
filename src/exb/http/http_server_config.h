@@ -52,6 +52,22 @@ static void exb_http_server_config_deinit(struct exb *exb_ref, struct exb_http_s
 }
 
 
+/*Must be called before the sink is ready*/
+/*This does possible optimizations or remaining initilization that depends on the parent rule*/
+//Internal function
+static int exb_http_server_config_request_rule_sink_fixup_(struct exb *exb_ref,
+                                       struct exb_http_server_config *config,
+                                       int rule_id,
+                                       int sink_id) 
+{
+    struct exb_request_rule *rule = config->request_rules + rule_id;
+    struct exb_request_sink *sink = config->request_sinks + sink_id;
+    if (sink->stype == EXB_REQ_SINK_FILESYSTEM) {
+        return exb_request_sink_filesystem_fixup(exb_ref, rule, sink);
+    }
+    return EXB_OK;
+}
+
 //transfers ownership
 static int exb_http_server_config_add_rule(struct exb *exb_ref,
                                            struct exb_http_server_config *config,
@@ -61,7 +77,12 @@ static int exb_http_server_config_add_rule(struct exb *exb_ref,
         return EXB_OUT_OF_RANGE_ERR;
     }
     config->request_rules[config->nrules] = rule;
+    int rv = exb_http_server_config_request_rule_sink_fixup_(exb_ref, config, config->nrules, rule.sink_id);
+    if (rv != EXB_OK) {
+        return rv;
+    }
     config->nrules++;
+
     return EXB_OK;
 }
 
@@ -78,6 +99,8 @@ static int exb_http_server_config_add_sink(struct exb *exb_ref,
     *sink_id_out = config->nrulesinks++;
     return EXB_OK;
 }
+
+
 static int exb_http_server_config_remove_sink(struct exb *exb_ref,
                                               struct exb_http_server_config *config,
                                               int sink_id)

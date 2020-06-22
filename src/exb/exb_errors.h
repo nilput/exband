@@ -33,9 +33,13 @@
     CPERR(EXB_MUTEX_ERROR) \
     CPERR(EXB_THREAD_ERROR) \
     CPERR(EXB_CONFIG_ERROR) \
+    CPERR(EXB_INTERNAL_ERROR) \
     CPERR(EXB_NOMEM_ERR) 
 #undef CPERR
 #define CPERR(error_name) error_name,
+
+struct exb;
+
 enum exb_errors {
    EXB_ERR_LIST
 };
@@ -85,6 +89,11 @@ static inline struct exb_error exb_make_error(int error_code) {
 }
 static struct exb_error exb_prop_error(struct exb_error src) {
     return src;
+}
+
+static int exb_on_config_error(struct exb *exb_ref, char *error_msg) {
+    fprintf(stderr, "Config Error: %s\n", error_msg);
+    return EXB_OK;
 }
 
 #endif

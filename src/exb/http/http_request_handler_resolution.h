@@ -36,9 +36,17 @@ static int exb_http_request_resolve_to_sink(struct exb_request_state *rqstate,
     if (sink->stype == EXB_REQ_SINK_FILESYSTEM) {
         struct exb_str_slice slice;
         char *s  = NULL;
+        
         exb_request_get_path_slice(rqstate, &s, &slice);
-        exb_fileserv(rqstate, sink->u.fs.fs_path.str, sink->u.fs.fs_path.len, s + slice.index, slice.len);
-        return EXB_OK;
+        if (sink->u.fs.alias_len > slice.len)
+            return EXB_INTERNAL_ERROR;
+        char *resource_path      = s + slice.index + sink->u.fs.alias_len;
+        size_t resource_path_len = slice.len - sink->u.fs.alias_len;
+        return exb_fileserv(rqstate,
+                            sink->u.fs.fs_path.str,
+                            sink->u.fs.fs_path.len,
+                            resource_path,
+                            resource_path_len);
     }
     else if (sink->stype == EXB_REQ_SINK_NONE) {
         return EXB_OK;

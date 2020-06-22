@@ -1,5 +1,6 @@
 #ifndef EXB_REQUEST_RULES_H
 #define EXB_REQUEST_RULES_H
+#include "../exb_errors.h"
 /*
 abstractions used:
     rule: something to match requests on, for example a prefix path like "/files"
@@ -31,6 +32,8 @@ enum exb_request_sink_type {
 
 struct exb_request_sink_filesystem {
     struct exb_str fs_path;
+    int alias_len; //Initialized to 0, if alias:true is present in config
+                   //then this gets patched to the length of the prefix in the parent config rule
 };
 
 struct exb_request_sink {
@@ -67,11 +70,28 @@ static int exb_request_prefix_rule_deinit(struct exb *exb_ref,
     return EXB_OK;
 }
 
+static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
+                                             struct exb_request_rule *rule,
+                                             struct exb_request_sink *sink)
+{
+    struct exb_request_sink_filesystem *sink_fs = &sink->u.fs;
+    if (sink->u.fs.alias_len) {
+        //at this stage alias_len is used as a boolean
+        if (rule->type != EXB_REQ_RULE_PATH_PREFIX) {
+            exb_on_config_error(exb_ref, "Alias can only be used with prefix rules");
+            return EXB_CONFIG_ERROR;
+        }
+        sink->u.fs.alias_len = rule->u.prefix_rule.prefix.len;
+    }
+    return EXB_OK;
+}
+
 /*Sink functions*/
 /*Filesystem sink functions*/
 //transfers ownership of path
 static int exb_request_sink_filesystem_init(struct exb *exb_ref,
                                             char *path,
+                                            int is_alias,
                                             struct exb_request_sink *sink_out)
 {
     int rv;
@@ -81,6 +101,8 @@ static int exb_request_sink_filesystem_init(struct exb *exb_ref,
     if ((rv = exb_str_init_transfer(exb_ref, path, &sink_fs->fs_path)) != EXB_OK) {
         return rv;
     }
+    //This is only temporary, this gets fixed in fixup function
+    sink_fs->alias_len = is_alias;
 
     return EXB_OK;
 }
