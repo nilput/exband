@@ -1,5 +1,4 @@
 garbage
-exb
 .vscode
 src/util/.gitignore
 tests/c/test_recycle
@@ -22,3 +21,4 @@ src/exb/mods/python/build/_exb_ffi.*
 .cipd
 diff.txt
 doc/build_time.txt
+/exb
