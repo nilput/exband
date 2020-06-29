@@ -4,13 +4,13 @@
 #include "../exb_errors.h"
 #include "../exb_log.h"
 #include "../exb_build_config.h"
-#include "http_request_d.h"
+#include "http_request_def.h"
 #include "http_request_rules.h"
 #include "http_socket_multiplexer.h"
 #include "http_server_module.h"
 #include "http_server_config.h"
 #include "http_request_state_recycle_array.h"
-#include "http_server_d.h"
+#include "http_server_def.h"
 
 
 

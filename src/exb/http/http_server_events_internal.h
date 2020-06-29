@@ -667,7 +667,7 @@ static void on_http_send_sync(struct exb_event ev) {
         if (written == -1) {
             if (errno != EWOULDBLOCK && errno != EAGAIN) {
                 err =  exb_make_error(EXB_WRITE_ERR);
-                goto ret;
+                return;
             }
         }
         else {
@@ -681,15 +681,12 @@ static void on_http_send_sync(struct exb_event ev) {
     exb_assert_h(!mp->wants_write, "");
     if (err.error_code != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
-        goto ret;
+        return;
     }
     mark_send_scheduled(rqstate, 0);
     if (rqstate->resp.state == EXB_HTTP_R_ST_DONE) {
         exb_request_on_response_done(rqstate);
     }
-
-    ret:
-    0;
 }
 
 
@@ -704,8 +701,6 @@ static void on_http_send_async(struct exb_event ev) {
 
     exb_response_async_write(rqstate);
 
-    ret:
-    0;
 }
 
 static void on_http_input_buffer_full(struct exb_event ev) {
@@ -731,7 +726,6 @@ static void on_http_did_read(struct exb_event ev) {
     exb_assert_h(rqstate->istate != EXB_HTTP_I_ST_DEAD, ""); 
     int len  = ev.msg.u.iip.arg1;
     err = exb_request_on_bytes_read(rqstate, rqstate->input_buffer_len, len);
-    0;
 }
 
 static void on_http_did_write(struct exb_event ev) {

@@ -3,8 +3,8 @@
 #include "../exb_str.h"
 #include "http_response.h"
 #include "http_request_handler.h"
-#include "http_request_d.h"
-#include "http_server_d.h"
+#include "http_request_def.h"
+#include "http_server_def.h"
 #include <stdbool.h>
 
 
@@ -57,6 +57,7 @@ static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_
     rqstate->headers.h_content_length_idx    = -1;
     rqstate->headers.h_content_type_idx      = -1;
     rqstate->headers.h_transfer_encoding_idx = -1;
+    rqstate->headers.h_host_idx = -1;
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
     struct exb_error err = exb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &rqstate->input_buffer_cap);
@@ -82,6 +83,13 @@ static int exb_request_get_path_slice(struct exb_request_state *rqstate, char **
     *slice_out = rqstate->path_s;
     *out = rqstate->input_buffer;
     return EXB_OK;
+}
+//must be freed with exb_str_deinit
+//assumes str_out is uninitialized
+static int exb_request_get_path_copy(struct exb_request_state *rqstate, struct exb_str *str_out) {
+    exb_str_init_empty(str_out);
+    int rv = exb_str_slice_to_copied_str(rqstate->server->exb, rqstate->path_s, rqstate->input_buffer, str_out);
+    return rv;
 }
 
 static void exb_request_state_deinit(struct exb_request_state *rqstate, struct exb *exb) {

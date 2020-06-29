@@ -1,99 +1,10 @@
 #include "exb.h"
 #include "exb_str.h"
+#include "exb_utils.h"
 #include "exb_build_config.h"
 #include "http/http_server_config.h"
 #include "util/varg.h" //argv parsing
-#include "util/ini_reader.h"
 #include "jsmn/jsmn.h"
-
-static int load_ini_config(const char *config_path, struct exb *exb_ref, struct exb_config *config_out, struct exb_http_server_config *http_server_config_out) {
-    int err = EXB_OK;
-    FILE *f = fopen(config_path, "r");
-    if (!f) {
-        return EXB_NOT_FOUND;
-    }
-
-    struct ini_config *c = ini_parse(exb_ref, f);
-    if (!c) {
-        fclose(f);
-        return EXB_CONFIG_ERROR;
-    }
-    fclose(f);
-    f = NULL;
-    struct ini_pair *p = ini_get_value(c, "n_event_loops");
-    if (p) {
-        int count = atoi(c->input.str + p->value.index);
-        config_out->nloops = count;
-    }
-    p = ini_get_value(c, "n_processes");
-    if (p) {
-        int count = atoi(c->input.str + p->value.index);
-        config_out->nproc = count;
-    }
-    p = ini_get_value(c, "threadpool_size");
-    if (p) {
-        int count = atoi(c->input.str + p->value.index);
-        config_out->tp_threads = count;
-    }
-    p = ini_get_value(c, "polling_backend");
-    if (p) {
-        err = exb_str_slice_to_copied_str(exb_ref, p->value, c->input.str, &http_server_config_out->polling_backend);
-        if (err != EXB_OK)
-            goto err_1;
-    }
-    p = ini_get_value(c, "http_port");
-    if (p) {
-        int port = atoi(c->input.str + p->value.index);
-        http_server_config_out->http_listen_port = port;
-    }
-    p = ini_get_value(c, "http_aio");
-    if (p) {
-        int boolean = atoi(c->input.str + p->value.index);
-        http_server_config_out->http_use_aio = !!boolean;
-    }
-    struct exb_str tmp;
-    exb_str_init_empty(&tmp);
-    for (int i=0; i<EXB_SERVER_MAX_MODULES; i++) {
-        if (i == 0)
-            err = exb_sprintf(exb_ref, &tmp, "http_server_module");
-        else
-            err = exb_sprintf(exb_ref, &tmp, "http_server_module_%d", i);
-        if (err != EXB_OK) {
-            goto err_1;
-        }
-        p = ini_get_value(c, tmp.str);
-        if (p) {
-            err = exb_str_slice_to_copied_str(exb_ref, p->value, c->input.str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_spec);
-            if (err != EXB_OK)
-                goto err_1;
-        }
-        else {
-            continue;
-        }
-        if (i == 0)
-            err = exb_sprintf(exb_ref, &tmp, "http_server_module_args");
-        else
-            err = exb_sprintf(exb_ref, &tmp, "http_server_module_%d_args", i);
-        if (err != EXB_OK) {
-            goto err_1;
-        }
-        p = ini_get_value(c, tmp.str);
-        if (p) {
-            err = exb_str_slice_to_copied_str(exb_ref, p->value, c->input.str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_args);
-            if (err != EXB_OK)
-                goto err_1;
-        }
-        http_server_config_out->n_modules++;
-    }
-    exb_str_deinit(exb_ref, &tmp);
-    ini_destroy(exb_ref, c);
-    return EXB_OK;
-    err_1:
-    ini_destroy(exb_ref, c);
-    exb_config_deinit(exb_ref, config_out);
-    exb_http_server_config_deinit(exb_ref, http_server_config_out);
-    return err;
-}
 
 //example path: foo.bar
 /*
@@ -109,21 +20,21 @@ int tokcount(jsmntok_t *t) {
     } else if (t->type == JSMN_STRING) {
         return 1;
     } else if (t->type == JSMN_OBJECT) {
-        int j = 0;
+        int j = 1;
         for (int i = 0; i < t->size; i++) {
-            jsmntok_t *key = t + 1 + j;
+            jsmntok_t *key = t + j;
             j += tokcount(key);
             if (key->size > 0) {
-                j += tokcount(t + 1 + j);
+                j += tokcount(t + j);
             }
         }
-        return j + 1;
+        return j;
     } else if (t->type == JSMN_ARRAY) {
-        int j = 0;
+        int j = 1;
         for (int i = 0; i < t->size; i++) {
-            j += tokcount(t + 1 + j);
+            j += tokcount(t + j);
         }
-        return j + 1;
+        return j;
     }
     return 0;
 }
@@ -149,13 +60,13 @@ jsmntok_t *json_get(char *json_str, jsmntok_t *t, const char *path) {
             jsmntok_t *val = NULL;
             j += tokcount(key);
             if (key->size > 0) {
-                if (key->type == JSMN_STRING                     &&
-                (key->end - key->start) == (next - path)         &&
-                memcmp(key->start + json_str, keyname, next - path) == 0)
+                if ( key->type == JSMN_STRING                      &&
+                    (key->end - key->start) == (next - path)       &&
+                    memcmp(key->start + json_str, keyname, next - path) == 0)
                 {
                     return json_get(json_str, t + 1 + j, next[0] == '.' ? next + 1 : next);
                 }
-                j += tokcount(t + 1 + j);
+                j += tokcount(t + j);
             }
         }
     }
@@ -307,7 +218,6 @@ initializes a request rule's sink from a json object
 */
 static int parse_rule_destination(struct exb *exb_ref,
                                   struct exb_json_parser_state *ep,
-                                  struct exb_config *config_in,
                                   struct exb_http_server_config *http_server_config_in,
                                   jsmntok_t *obj,
                                   struct exb_request_sink *sink_out)
@@ -342,7 +252,6 @@ initializes a request rule from a json object
 */
 static int parse_rule(struct exb *exb_ref,
                       struct exb_json_parser_state *ep,
-                      struct exb_config *config_in,
                       struct exb_http_server_config *http_server_config_in,
                       jsmntok_t *obj,
                       int sink_id,
@@ -366,13 +275,19 @@ static int parse_rule(struct exb *exb_ref,
 
 static int load_json_rules(struct exb *exb_ref,
                            struct exb_json_parser_state *ep,
-                           struct exb_config *config_out,
+                           jsmntok_t *parent,
                            struct exb_http_server_config *http_server_config_out);
 static int load_json_modules(struct exb *exb_ref,
                              struct exb_json_parser_state *ep,
                              struct exb_config *config_out,
                              struct exb_http_server_config *http_server_config_out);
+static int load_json_servers(struct exb *exb_ref,
+                             struct exb_json_parser_state *ep,
+                             jsmntok_t *parent,
+                             struct exb_http_server_config *http_server_config_out);
 
+
+/*in case of failure, currently the only good course of action is to destroy exb and start it again*/
 static int load_json_config(const char *config_path, struct exb *exb_ref, struct exb_config *config_out, struct exb_http_server_config *http_server_config_out) {
     FILE *f = fopen(config_path, "r");
     if (!f) {
@@ -388,6 +303,7 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     f = NULL;
     
     int rv = JSMN_ERROR_NOMEM;
+    bool has_toplevel_listen = false;
     while (rv == JSMN_ERROR_NOMEM) {
         ep.ntokens = ep.ntokens == 0 ? 8 : ep.ntokens * 2;
         ep.tokens = exb_realloc_f(exb_ref, ep.tokens, sizeof(jsmntok_t) * ep.ntokens);
@@ -413,9 +329,13 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         config_out->tp_threads = integer;
     }
-    obj = json_get(ep.full_file, ep.tokens, "http.port");
+    obj = json_get(ep.full_file, ep.tokens, "http.listen");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
-        http_server_config_out->http_listen_port = integer;
+        int rv = exb_http_server_config_add_domain(exb_ref, http_server_config_out, integer, true);
+        if (rv != EXB_OK) {
+            goto on_error_1;
+        }
+        has_toplevel_listen = true;
     }
     obj = json_get(ep.full_file, ep.tokens, "event.loops");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
@@ -443,10 +363,26 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     }
     
     
-   
-   rv = load_json_rules(exb_ref, &ep, config_out, http_server_config_out);
+   if (has_toplevel_listen) {
+       rv = load_json_rules(exb_ref, &ep, ep.tokens, http_server_config_out);
+       if (rv != EXB_OK) {
+           goto on_error_1;
+       }
+   }
    rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
+   if (rv != EXB_OK) {
+        goto on_error_1;
+    }
+
+   obj = json_get(ep.full_file, ep.tokens, "http.servers");
+   if (obj && obj->type == JSMN_ARRAY) {
+       rv = load_json_servers(exb_ref, &ep, obj, http_server_config_out);
+       if (rv != EXB_OK) {
+           goto on_error_1;
+       }
+   }
     
+   exb_free(exb_ref, ep.tokens);
    return EXB_OK;
    on_error_1:
    exb_free(exb_ref, ep.tokens);
@@ -454,6 +390,148 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
 }
 
 
+static int load_json_server_ssl(struct exb *exb_ref,
+                             struct exb_json_parser_state *ep,
+                             jsmntok_t *parent,
+                             struct exb_ssl_config_entry *ssl_entry_out)
+{
+    exb_ssl_config_entry_init(exb_ref, ssl_entry_out);
+    int port = 0;
+    char *ca_path = NULL;
+    char *private_key_path = NULL;
+    char *public_key_path  = NULL;
+    char *dh_params_path   = NULL;
+    char *ssl_protocols    = NULL;
+    char *ssl_ciphers      = NULL;
+    bool is_default = false;
+    jsmntok_t *obj = NULL;
+    int rv = EXB_OK;
+    if ((obj = json_get(ep->full_file, parent, "listen"))) {
+        if (json_get_as_integer(ep->full_file, obj, &port) != 0 || port < 0) {
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_1;
+        }
+        ssl_entry_out->listen_port = port;
+    }
+    if ((obj = json_get(ep->full_file, parent, "ca_path"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &ca_path)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, ca_path, &ssl_entry_out->ca_path)) != EXB_OK  )
+            goto on_error_1;
+    }
+    if ((obj = json_get(ep->full_file, parent, "public_key"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &public_key_path)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, public_key_path, &ssl_entry_out->public_key_path)) != EXB_OK  )
+            goto on_error_1;
+    }
+    if ((obj = json_get(ep->full_file, parent, "dh_params"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &dh_params_path)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, dh_params_path, &ssl_entry_out->dh_params_path)) != EXB_OK  )
+            goto on_error_1;
+    }
+    if ((obj = json_get(ep->full_file, parent, "private_key"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &private_key_path)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, private_key_path, &ssl_entry_out->private_key_path)) != EXB_OK  )
+            goto on_error_1;
+    }
+    if ((obj = json_get(ep->full_file, parent, "ssl_protocols"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &ssl_protocols)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, ssl_protocols, &ssl_entry_out->ssl_protocols)) != EXB_OK  )
+            goto on_error_1;
+    }
+    if ((obj = json_get(ep->full_file, parent, "ssl_ciphers"))) {
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &ssl_ciphers)) != EXB_OK ||
+            (rv = exb_str_assign_transfer(exb_ref, ssl_ciphers, &ssl_entry_out->ssl_ciphers)) != EXB_OK  )
+            goto on_error_1;
+    }
+
+    return EXB_OK;
+on_error_1:
+    free(ca_path);
+    free(public_key_path);
+    free(private_key_path);
+    free(ssl_protocols);
+    free(ssl_ciphers);
+    free(dh_params_path);
+    return rv;
+}
+
+static int load_json_servers(struct exb *exb_ref,
+                             struct exb_json_parser_state *ep,
+                             jsmntok_t *parent,
+                             struct exb_http_server_config *http_server_config_out)
+{
+    int rv = EXB_OK;
+    int offset = 1;
+    for (int i=0; i<parent->size; i++) {
+        if (i >= EXB_MAX_DOMAINS) {
+            rv = EXB_OUT_OF_RANGE_ERR;
+            goto on_error_1;
+        }
+        jsmntok_t *domain_obj = parent + offset;
+        if (domain_obj->type != JSMN_OBJECT) {
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_1;
+        }
+        int port = 0;
+        int is_default = 0;
+        char *server_name = NULL;
+        
+        jsmntok_t *obj = NULL;
+        
+        
+        if ((obj = json_get(ep->full_file, domain_obj, "default"))) {
+            if (json_get_as_boolean(ep->full_file, obj, &is_default))
+                goto on_error_1;
+        }
+        if ((obj = json_get(ep->full_file, domain_obj, "listen"))) {
+            if (json_get_as_integer(ep->full_file, obj, &port) != 0 || port < 0)
+                goto on_error_1;
+        }
+        if ((obj = json_get(ep->full_file, domain_obj, "server_name"))) {
+            if (json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &server_name) != 0)
+                goto on_error_1;
+        }
+
+        jsmntok_t *ssl_obj = json_get(ep->full_file, domain_obj, "ssl");
+        struct exb_ssl_config_entry *ssl_entry = NULL;
+        #ifdef EXB_WITH_SSL
+            struct exb_ssl_config_entry ssl_entry_l;
+            if (ssl_obj) {
+                if (ssl_obj->type != JSMN_OBJECT) {
+                    exb_free(exb_ref, server_name);
+                    goto on_error_1;
+                }
+                if (load_json_server_ssl(exb_ref, ep, ssl_obj, &ssl_entry_l) != EXB_OK) {
+                    exb_free(exb_ref, server_name);
+                    goto on_error_1;
+                }
+                ssl_entry = &ssl_entry_l; //this is safe, because the called function copies the contents
+            }
+            
+        #endif //EXB_WITH_SSL
+        
+        rv = exb_http_server_config_add_domain_ex(exb_ref, http_server_config_out, port, is_default, server_name, ssl_entry);
+        exb_free(exb_ref, server_name);
+        server_name = NULL;
+        #ifdef EXB_WITH_SSL
+        if (ssl_entry)
+            exb_ssl_config_entry_deinit(exb_ref, ssl_entry);
+        #endif //EXB_WITH_SSL
+        if (rv != EXB_OK) {
+            goto on_error_1;
+        }
+        rv = load_json_rules(exb_ref, ep, domain_obj, http_server_config_out);
+        if (rv != EXB_OK) {
+            goto on_error_1;
+        }
+        offset += tokcount(domain_obj);
+    }
+
+    return EXB_OK;
+    on_error_1:
+    return rv;
+
+}
 
 static int load_json_modules(struct exb *exb_ref,
                              struct exb_json_parser_state *ep,
@@ -472,12 +550,13 @@ static int load_json_modules(struct exb *exb_ref,
             goto on_error_1;
         }
         
+        int offset = 1;
         for (int i=0; i<obj->size; i++) {
-            if (i >= EXB_SERVER_MAX_MODULES - 1) {
+            if (i >= EXB_SERVER_MAX_MODULES) {
                 rv = EXB_OUT_OF_RANGE_ERR;
                 goto on_error_1;
             }
-            jsmntok_t *module_obj = obj + 1 + i; //1 is the offset to the next token
+            jsmntok_t *module_obj = obj + offset;
             if (module_obj->type != JSMN_OBJECT) {
                 rv = EXB_CONFIG_ERROR;
                 goto on_error_1;
@@ -514,6 +593,7 @@ static int load_json_modules(struct exb *exb_ref,
             exb_str_init_transfer(exb_ref, path_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_spec);
             exb_str_init_transfer(exb_ref, args_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_args);
             http_server_config_out->n_modules++;
+            offset += tokcount(module_obj);
         }
     }
     return EXB_OK;
@@ -523,14 +603,14 @@ static int load_json_modules(struct exb *exb_ref,
 
 static int load_json_rules(struct exb *exb_ref,
                            struct exb_json_parser_state *ep,
-                           struct exb_config *config_out,
+                           jsmntok_t *parent,
                            struct exb_http_server_config *http_server_config_out)
 {
     int integer;
     char *string;
     jsmntok_t *obj = NULL;
     int rv = EXB_OK;
-    obj = json_get(ep->full_file, ep->tokens, "http.rules");
+    obj = json_get(ep->full_file, parent, "rules");
     if (obj) {
         if (obj->type != JSMN_ARRAY) {
             rv = EXB_CONFIG_ERROR;
@@ -538,7 +618,7 @@ static int load_json_rules(struct exb *exb_ref,
         }
         
         for (int i=0; i<obj->size; i++) {
-            if (i >= EXB_SERVER_MAX_MODULES - 1) {
+            if (i >= EXB_SERVER_MAX_RULES) {
                 rv = EXB_OUT_OF_RANGE_ERR;
                 goto on_error_1;
             }
@@ -567,7 +647,6 @@ static int load_json_rules(struct exb *exb_ref,
             struct exb_request_sink sink;
             rv = parse_rule_destination(exb_ref,
                                             ep,
-                                            config_out,
                                             http_server_config_out,
                                             destination_obj,
                                             &sink);
@@ -577,7 +656,6 @@ static int load_json_rules(struct exb *exb_ref,
 
             rv = parse_rule(exb_ref,
                             ep,
-                            config_out,
                             http_server_config_out,
                             rule_obj,
                             0,
@@ -621,20 +699,8 @@ int exb_load_configuration(struct vargstate *vg, struct exb *exb_ref, struct exb
 
     int explicit = varg_get_str(vg, "-c", &config_file) == VARG_OK;
     if (!explicit) {
-        FILE *tmp = NULL;
-        //try config/exb.ini or config/exb.json as a default
-        for (int i=0; i<2 && (!tmp); i++) {
-            config_file = i == 0 ? "config/exb.ini" : "config/exb.json";
-            FILE *tmp = fopen(config_file, "r");
-            if (tmp) {
-                fclose(tmp);
-                break;
-            }
-        }
+        config_file = "config/exb.json";
     }
     
-    if (exb_strc_endswith(config_file, ".json")) {
-        return load_json_config(config_file, exb_ref, config_out, http_server_config_out);
-    }
-    return load_ini_config(config_file, exb_ref, config_out, http_server_config_out);
+    return load_json_config(config_file, exb_ref, config_out, http_server_config_out);
 }

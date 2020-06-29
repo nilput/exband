@@ -1,6 +1,14 @@
+
 {
     "http" : {
-        "listen" : "8085"
+        "servers" : [
+            {
+                "listen" : "8085"
+            },
+            {
+                "listen" : "8086"
+            }
+        ]
     },
     "event" : {
         "processes" : 0,

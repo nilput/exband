@@ -39,8 +39,10 @@ int exb_server_listener_select_new(struct exb_server *s, struct exb_eloop *eloop
     
     /* Initialize the set of active sockets. */
     FD_ZERO(&lis->active_fd_set);
-    FD_SET(s->listen_socket_fd, &lis->active_fd_set);
-
+    for (int i=0; i<s->n_listen_sockets; i++) {
+        FD_SET(s->listen_sockets[i].socket_fd, &lis->active_fd_set);
+    }
+    
     *listener = (struct exb_server_listener *) lis;
     return EXB_OK;
 }
@@ -58,8 +60,11 @@ static int exb_server_listener_select_listen(struct exb_server_listener *listene
     }
 
     /* Service Connection requests. */
-    if (FD_ISSET(s->listen_socket_fd, &lis->read_fd_set)) {
-        exb_server_accept_new_connections(s, lis->eloop);
+    for (int i=0; i<s->n_listen_sockets; i++) {
+        if (FD_ISSET(s->listen_sockets[i].socket_fd, &lis->read_fd_set)) {
+            exb_server_accept_new_connections(s, lis->eloop);
+            break;
+        }
     }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {

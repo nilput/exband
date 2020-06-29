@@ -6,11 +6,21 @@
 /*End Eloop env config*/
 
 /*Server configuration*/
-#define LISTEN_BACKLOG 8000
+#define LISTEN_BACKLOG 2000
 #define EXB_SOCKET_MAX 8192
 #define EXB_SERVER_MAX_MODULES 11
 #define EXB_SERVER_MAX_RULES   32
 #define EXB_HTTP_MIN_DELAY 0//ms
+
+#define EXB_WITH_SSL        1
+#define EXB_WITH_OPENSSL_DH
+//#undef EXB_WITH_OPENSSL_DH
+#define EXB_USE_OPENSSL_ECDH
+//#undef EXB_USE_OPENSSL_ECDH
+#define EXB_SNI_MAX_DOMAINS 8
+
+
+#define EXB_MAX_DOMAINS     8
 
 #define EXB_USE_READ_WRITE_FOR_TCP
 #undef  EXB_USE_READ_WRITE_FOR_TCP

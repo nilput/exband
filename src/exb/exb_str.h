@@ -278,6 +278,9 @@ static int exb_str_init_copy(struct exb *exb, struct exb_str *str, struct exb_st
     }
     return EXB_OK;
 }
+static int exb_str_copy(struct exb *exb, struct exb_str *str, struct exb_str *src) {
+    return exb_str_strlcpy(exb, str, src->str, src->len);
+}
 //transfer ownership, string must be allocated with exb_malloc
 static int exb_str_init_transfer(struct exb *exb, char *src_str, struct exb_str *dest) {
     exb_str_init_empty(dest);
@@ -286,6 +289,11 @@ static int exb_str_init_transfer(struct exb *exb, char *src_str, struct exb_str 
     dest->flags = EXB_STR_DYNAMIC;
     dest->str = src_str;
     return EXB_OK;
+}
+//destroys dest
+static int exb_str_assign_transfer(struct exb *exb, char *src_str, struct exb_str *dest) {
+    exb_str_deinit(exb, dest);
+    return exb_str_init_transfer(exb, src_str, dest);
 }
 static int exb_str_new_copy(struct exb *exb, struct exb_str **strp, struct exb_str *src) {
     int rv = exb_str_new(exb, strp);

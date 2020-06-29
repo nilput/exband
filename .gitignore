@@ -21,3 +21,4 @@ perf.data*
 src/exb/mods/python/build/_exb_ffi.*
 .cipd
 diff.txt
+doc/build_time.txt

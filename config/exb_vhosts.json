@@ -1,0 +1,51 @@
+{
+    "http" : {
+        "servers" : [
+            {
+                "server_name" : "site_a.local",
+                "listen" : "80",
+                "rules": [
+                    {
+                        "prefix": "/",
+                        "destination": {
+                            "type": "filesystem",
+                            "path": "/var/www/site_a.local/html/",
+                            "alias": true
+                        }
+                    }
+                ]
+            },
+            {
+                "server_name" : "site_b.local",
+                "listen" : "80",
+                "rules": [
+                    {
+                        "prefix": "/",
+                        "destination": {
+                            "type": "filesystem",
+                            "path": "/var/www/site_b.local/html/",
+                            "alias": true
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "event" : {
+        "processes" : 0,
+        "loops" : 4,
+        "polling" : "epoll",
+        "aio" : false,
+        "threadpool": 0
+    },
+    "modules": [
+        {
+            "path": "examples/basic/basic.so:handler",
+            "args" : {
+                "db_path" : "./db.sqlite3",
+                "db_reinit" : 0,
+                "site_link" : "http://127.0.0.1:8085"
+            }
+        }
+    ]
+}

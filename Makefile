@@ -8,9 +8,17 @@ SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_listener_epoll.
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/exb_fileserv.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_threadpool.c src/exb/exb_pcontrol.c
 SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_main_config.c
+OPTIONAL := 
 
-debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
+
+ifneq ($(or $(WITH_SSL), 0), 0)
+OPTIONAL += mod_ssl
+CFLAGS += -DEXB_WITH_SSL
+endif
+
+debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all
+
 trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 
 trace: all
 debug-no-assert: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DEXB_NO_ASSERTS -fno-inline-small-functions
@@ -29,7 +37,9 @@ profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DEXB_NO_
 profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
 profile: server_main libexb.s
 
-all : exb libexb.so
+mod_ssl:
+
+all : exb $(OPTIONAL) libexb.so
 libexb.so: $(SERVER_MAIN_DEPS)
 	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
 exb: src/exb/exb_main.c $(SERVER_MAIN_DEPS) libexb.so

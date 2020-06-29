@@ -82,5 +82,9 @@ DO A performance testing setup, that targets   \
 
 codebase static analysis                       [ ]
 
-automated profiling scenarios that are         \
-automatically logged                           [ ]
+automated profiling benchmarks during build    [ ]
+
+listeners on multiple ports                    [ ]
+rules on specific domains                      [ ]
+SSL                                            [ ]
+SSL SNI                                        [ ]

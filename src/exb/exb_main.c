@@ -81,9 +81,12 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "spawning %d thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
     ordie(rv);
     
-    fprintf(stderr, "Listening on port %d\n", exb_http_server_config.http_listen_port);
+
     erv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
     ordie(erv.error_code);
+
+    for (int i=0; i<server.n_listen_sockets; i++)
+        exb_logger_logf(&exb_state, EXB_LOG_INFO, "Listening on port %d\n", server.listen_sockets[i].port);
 
     if (exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "epoll", 5)) {
         fprintf(stderr, "using epoll\n");

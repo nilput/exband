@@ -6,3 +6,9 @@ Modes of operation:
     multiple event loops and multiple threads, io done within the loops
     multiple processes, each 1 loop, io done within the loop
 
+
+Vhosts, rules and sinks:
+    domains are described in exb_http_domain_config structs in http config, each domain is associated with a set of rules
+    rules like: an http path prefix to be mapped to a filesystem for example
+    rules point to sinks, a sink can be a filesystem path, or a module (like a web app)
+    

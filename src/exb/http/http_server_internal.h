@@ -18,26 +18,28 @@ static int exb_server_accept_new_connections(struct exb_server *s, struct exb_el
     struct sockaddr_in clientname;
     socklen_t size = sizeof(&clientname);
     int err = EXB_OK;
-    for (int i=0; i<100; i++) {
-        new_socket = accept(s->listen_socket_fd,
-                    (struct sockaddr *) &clientname,
-                    &size);
-        if (new_socket < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                err = EXB_ACCEPT_ERR;
+    for (int j=0; j<s->n_listen_sockets; j++) {
+        for (int i=0; i<100; i++) {
+            new_socket = accept(s->listen_sockets[j].socket_fd,
+                        (struct sockaddr *) &clientname,
+                        &size);
+            if (new_socket < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                    err = EXB_ACCEPT_ERR;
+                }
+                break;
             }
-            break;
-        }
-        if (new_socket >= EXB_SOCKET_MAX) {
-            err = EXB_OUT_OF_RANGE_ERR;
-            break;
-        }
-        struct exb_http_multiplexer *nm = exb_server_get_multiplexer_i(s, new_socket);
-        exb_assert_h(nm && (nm->state == EXB_MP_EMPTY || nm->state == EXB_MP_DEAD), "");
-        err = exb_server_init_multiplexer(s, eloop, new_socket, clientname);
-        if (err != EXB_OK) {
-            close(new_socket);
-            break;
+            if (new_socket >= EXB_SOCKET_MAX) {
+                err = EXB_OUT_OF_RANGE_ERR;
+                break;
+            }
+            struct exb_http_multiplexer *nm = exb_server_get_multiplexer_i(s, new_socket);
+            exb_assert_h(nm && (nm->state == EXB_MP_EMPTY || nm->state == EXB_MP_DEAD), "");
+            err = exb_server_init_multiplexer(s, eloop, new_socket, clientname);
+            if (err != EXB_OK) {
+                close(new_socket);
+                break;
+            }
         }
     }
     return err;

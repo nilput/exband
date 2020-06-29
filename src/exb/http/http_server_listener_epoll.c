@@ -40,13 +40,13 @@ int exb_server_listener_epoll_new(struct exb_server *s, struct exb_eloop *eloop,
     int err = EXB_OK;
     if (!lis)
         return EXB_NOMEM_ERR;
-    lis->head.destroy = exb_server_listener_epoll_destroy;
-    lis->head.listen  = exb_server_listener_epoll_listen;
-    lis->head.close_connection  = exb_server_listener_epoll_close_connection;
-    lis->head.new_connection    = exb_server_listener_epoll_new_connection;
-    lis->head.get_fds           = exb_server_listener_epoll_get_fds;
-    lis->server = s;
-    lis->eloop = eloop;
+    lis->head.destroy          = exb_server_listener_epoll_destroy;
+    lis->head.listen           = exb_server_listener_epoll_listen;
+    lis->head.close_connection = exb_server_listener_epoll_close_connection;
+    lis->head.new_connection   = exb_server_listener_epoll_new_connection;
+    lis->head.get_fds          = exb_server_listener_epoll_get_fds;
+    lis->server     = s;
+    lis->eloop      = eloop;
     lis->highest_fd = 0;
     
     lis->efd = epoll_create1(0);
@@ -56,18 +56,19 @@ int exb_server_listener_epoll_new(struct exb_server *s, struct exb_eloop *eloop,
     }
     {
         struct epoll_event event;
-        event.data.fd = s->listen_socket_fd;
-        //event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                      //read()   write()    ^edge triggered
+        for (int i=0; i < s->n_listen_sockets; i++) {
+            event.data.fd = s->listen_sockets[i].socket_fd;
+            //event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+                        //read()   write()    ^edge triggered
+            
+            event.events = EPOLLIN | EPOLLOUT;
+                        //read()   write() 
 
-        
-        event.events = EPOLLIN | EPOLLOUT;
-                       //read()   write() 
-
-        int rv = epoll_ctl(lis->efd, EPOLL_CTL_ADD, s->listen_socket_fd, &event);
-        if (s < 0) {
-            err = EXB_EPOLL_INIT_ERROR;
-            goto err_2;
+            int rv = epoll_ctl(lis->efd, EPOLL_CTL_ADD, s->listen_sockets[i].socket_fd, &event);
+            if (s < 0) {
+                err = EXB_EPOLL_INIT_ERROR;
+                goto err_2;
+            }
         }
     }
 
@@ -97,9 +98,12 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
         struct epoll_event *ev = lis->events + i;
         struct exb_http_multiplexer *m = exb_server_get_multiplexer_i(s, ev->data.fd);
         if (m->state != EXB_MP_ACTIVE) {
-            if (ev->data.fd == s->listen_socket_fd)
-                incoming_connections = 1;
-            continue; //can be stdin or whatever
+            for (int j=0; j<s->n_listen_sockets; j++) {
+                if (s->listen_sockets[j].socket_fd == ev->data.fd) {
+                    incoming_connections = 1;
+                }
+            }
+            continue; //can be a listening socket
         }
         exb_assert_h(m->eloop == lis->eloop, "");
         exb_assert_h(!!m->next_response, "");
@@ -134,7 +138,9 @@ static int exb_server_listener_epoll_destroy(struct exb_server_listener *listene
     struct exb_server *s = lis->server;
 
     struct epoll_event event;
-    epoll_ctl(lis->efd, EPOLL_CTL_DEL, s->listen_socket_fd, &event);
+    for (int i=0; i<s->n_listen_sockets; i++) {
+        epoll_ctl(lis->efd, EPOLL_CTL_DEL, s->listen_sockets[i].socket_fd, &event);
+    }
     close(lis->efd);
     exb_free(s->exb, listener);
     

@@ -70,6 +70,9 @@ static void process_relevant_header(struct exb_request_state *rqstate, char *ibu
     else if (exb_strcasel_eq(ibuff + key.index, key.len, "Connection", 10)) {
         rqstate->headers.h_connection_idx = idx;
     }
+    else if (exb_strcasel_eq(ibuff + key.index, key.len, "Host", 4)) {
+        rqstate->headers.h_host_idx = idx;
+    }
 }
 
 static void exb_unknown_standard_header_value(struct exb_request_state *rqstate, int header_idx) {

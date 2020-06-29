@@ -24,15 +24,15 @@ static int handle_request(void *rqh_state, struct exb_request_state *rqstate, in
     exb_str_deinit(mod->exb_ref, &path);   
     return 0;
 }
-static void destroy_module(struct exb_http_server_module *module, struct exb *exb) {
-    exb_free(exb, module);
+static void destroy_module(struct exb_http_server_module *module, struct exb *exb_ref) {
+    exb_free(exb_ref, module);
 }
-int handler_init(struct exb *exb, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
+int handler_init(struct exb *exb_ref, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
     (void) module_args;
-    struct basic_module *mod = exb_malloc(exb, sizeof(struct basic_module));
+    struct basic_module *mod = exb_malloc(exb_ref, sizeof(struct basic_module));
     if (!mod)
         return EXB_NOMEM_ERR;
-    mod->exb_ref = exb;
+    mod->exb_ref = exb_ref;
     mod->head.destroy = destroy_module;
     mod->count = 0;
     
