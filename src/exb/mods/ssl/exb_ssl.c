@@ -19,7 +19,7 @@ is statically linked, and is a first class citizen in terms of configuration and
 
 #ifdef EXB_USE_OPENSSL_DH
     #include <openssl/dh.h>
-    //Source: lighttp
+//Source: lighttp
 static DH* load_dh_params_4096(void) {
     const unsigned char dh4096_p[] = {
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xC9,0x0F,0xDA,0xA2,
@@ -153,7 +153,7 @@ static int exb_ssl_openssl_init_domain(struct exb *exb,
         goto on_error_1;
     }
 
-#ifdef EXB_WITH_OPENSSL_DH
+#ifdef EXB_USE_OPENSSL_DH
     DH *dh = NULL;
     /* Support for Diffie-Hellman key exchange */
     if (NULL != dh_params_file) {

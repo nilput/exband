@@ -22,3 +22,4 @@ src/exb/mods/python/build/_exb_ffi.*
 diff.txt
 doc/build_time.txt
 /exb
+obj/

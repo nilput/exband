@@ -1,20 +1,28 @@
-.PHONY: clean all
-CFLAGS := -I othersrc/ -I third_party/ -fPIC 
 LDLIBS := -pthread -ldl
-SERVER_MAIN_DEPS := src/exb/exb_utils.c src/exb/http/http_server.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_events.c src/exb/http/http_request.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_response.c src/exb/http/http_server_listener_select.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/http_server_listener_epoll.c src/exb/http/http_server_module.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/http/exb_fileserv.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_threadpool.c src/exb/exb_pcontrol.c
-SERVER_MAIN_DEPS := $(SERVER_MAIN_DEPS) src/exb/exb_main_config.c
-OPTIONAL := 
+CFLAGS = -I othersrc/ -I third_party/ -fPIC 
+EXB_SRC = src/exb/exb_utils.c src/exb/http/http_server.c \
+                     src/exb/http/http_server_events.c src/exb/http/http_request.c \
+                     src/exb/http/http_response.c src/exb/http/http_server_listener_select.c \
+                     src/exb/http/http_server_listener_epoll.c src/exb/http/http_server_module.c \
+                     src/exb/http/exb_fileserv.c \
+                     src/exb/exb_threadpool.c src/exb/exb_pcontrol.c \
+                     src/exb/exb_main_config.c
+EXB_OBJ = $(patsubst %.c,%.o, $(patsubst src/%,obj/%, $(EXB_SRC)))
+EXB_LINK = 
+OPTIONAL = 
+DEP := $(EXB_OBJ:.o=.d)
+
 
 
 ifneq ($(or $(WITH_SSL), 0), 0)
 OPTIONAL += mod_ssl
 CFLAGS += -DEXB_WITH_SSL
 endif
+
+debug:
+all: exb $(OPTIONAL) obj/libexb.so
+
+-include $(DEP)
 
 debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
 debug: all
@@ -34,16 +42,24 @@ san: all
 san-thread: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=thread
 san-thread: al
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
-profile: SERVER_MAIN_DEPS += othersrc/dbgperf/dbgperf.c
-profile: server_main libexb.s
+profile: EXB_SRC += othersrc/dbgperf/dbgperf.c
+profile: server_main obj/libexb.s
 
-mod_ssl:
+include src/exb/mods/ssl/module.mk
+mod_ssl: obj/libexb_mod_ssl.a
+mod_ssl: EXB_LINK_ARCHIVES += -Wl,--whole-archive obj/libexb_mod_ssl.a -Wl,--no-whole-archive
 
-all : exb $(OPTIONAL) libexb.so
-libexb.so: $(SERVER_MAIN_DEPS)
-	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $(SERVER_MAIN_DEPS) $(LDLIBS)
-exb: src/exb/exb_main.c $(SERVER_MAIN_DEPS) libexb.so
-	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c  $(LDLIBS) -L. -Wl,-rpath=\$$ORIGIN/ -lexb
+
+obj/%.o: src/%.c
+	@mkdir -p '$(@D)'
+	$(CC) -c -MMD $(CFLAGS) -o $@ $<
+
+obj/libexb.so: $(EXB_OBJ)
+	$(CC)  -shared -o $@ $(CFLAGS) $(LDFLAGS) -L ./obj $(EXB_LINK_ARCHIVES) $(LDLIBS) $(EXB_OBJ)
+exb: src/exb/exb_main.c obj/libexb.so
+	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c -L ./obj -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/ -lexb $(LDLIBS)
 
 clean: 
-	@rm -f exb libexb.so oprofile_data perf.data* 2>/dev/null || true
+	@rm -f exb perf.data* 2>/dev/null || true
+	@rm -rf obj oprofile_data
+.PHONY: clean all

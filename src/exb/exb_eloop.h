@@ -25,6 +25,7 @@ struct exb_delayed_event {
     struct exb_event event;
     unsigned char tolerate_preexec;
 };
+
 struct exb_delayed_event_node {
     struct exb_delayed_event cur;
     unsigned char storage; //>=EXB_ELOOP_DEVENT_BUFFER_COUNT means malloc'd
@@ -57,13 +58,14 @@ static struct exb_event exb_eloop_make_eloop_event(struct exb_eloop *eloop, enum
     ev.msg.u.iip.arg2 = 0;
     return ev;
 }
+
 struct exb_eloop {
     struct exb *exb; //not owned, must outlive
     struct exb_threadpool *threadpool; //not owned, must outlive
     struct exb_ts_event_queue tsq;
     
     int eloop_id;
-    
+
     unsigned ev_id; //counter
     int do_stop;
 
