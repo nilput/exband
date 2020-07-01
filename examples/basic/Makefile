@@ -10,7 +10,7 @@ release: CFLAGS += -g3 -O3 -Wall -Wno-unused-function
 release: all
 
 basic.so: basic.c
-	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@  $^ $(LDLIBS)
+	$(CC)  -shared $(CFLAGS) $(LDFLAGS) -o $@ -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/ $^ $(LDLIBS)
 
 all: basic.so
 clean: 

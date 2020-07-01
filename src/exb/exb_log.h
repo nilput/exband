@@ -14,6 +14,9 @@ enum EXB_LOG_LEVEL {
 };
 
 static int exb_logger_logvf(struct exb *exb, int level, const char *fmt, va_list ap_in) {
+#ifdef EXB_NO_LOGGIN
+    return 0;
+#endif
     va_list ap;
     va_copy(ap, ap_in);
     char tbuf[2];
@@ -39,6 +42,7 @@ static int exb_logger_logvf(struct exb *exb, int level, const char *fmt, va_list
 }
 
 static int exb_logger_logf(struct exb *exb, int level, const char *fmt, ...) {
+    
     va_list ap;
     va_start(ap, fmt);
     int rv = exb_logger_logvf(exb, level, fmt, ap);

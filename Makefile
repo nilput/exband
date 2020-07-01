@@ -7,6 +7,7 @@ EXB_SRC = src/exb/exb_utils.c src/exb/http/http_server.c \
                      src/exb/http/exb_fileserv.c \
                      src/exb/exb_threadpool.c src/exb/exb_pcontrol.c \
                      src/exb/exb_main_config.c
+LDFLAGS := -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/
 EXB_OBJ = $(patsubst %.c,%.o, $(patsubst src/%,obj/%, $(EXB_SRC)))
 EXB_LINK = 
 OPTIONAL = 
@@ -20,7 +21,7 @@ CFLAGS += -DEXB_WITH_SSL
 endif
 
 debug:
-all: exb $(OPTIONAL) obj/libexb.so
+all: exb exb_static $(OPTIONAL) obj/libexb.so
 
 -include $(DEP)
 
@@ -33,7 +34,7 @@ debug-no-assert: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-u
 debug-no-assert: all
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function
 release: all
-fast-release: CFLAGS += -flto -mtune=native -march=native -O2 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
+fast-release: CFLAGS += -flto -mtune=native -march=native -O2 -Wall -Wno-unused-function -DEXB_NO_ASSERTS -DEXB_NO_LOGGIN
 fast-release: all
 no-release: CFLAGS += -g -O1 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
 no-release: all
@@ -43,7 +44,7 @@ san-thread: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=
 san-thread: al
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
 profile: EXB_SRC += othersrc/dbgperf/dbgperf.c
-profile: server_main obj/libexb.s
+profile: obj/libexb.so
 
 include src/exb/mods/ssl/module.mk
 mod_ssl: obj/libexb_mod_ssl.a
@@ -63,7 +64,9 @@ obj/%.o: src/%.c
 obj/libexb.so: $(EXB_OBJ)
 	$(CC)  -shared -o $@ $(CFLAGS) $(LDFLAGS) -L ./obj $(EXB_LINK_ARCHIVES) $(LDLIBS) $(EXB_OBJ)
 exb: src/exb/exb_main.c obj/libexb.so
-	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c -L ./obj -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/ -lexb $(LDLIBS)
+	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c -L ./obj  -lexb $(LDLIBS)
+exb_static: src/exb/exb_main.c $(EXB_OBJ)
+	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c $(EXB_OBJ)  -L ./obj -lexb $(LDLIBS)
 
 clean: 
 	@rm -f exb perf.data* 2>/dev/null || true
