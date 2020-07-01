@@ -49,6 +49,12 @@ include src/exb/mods/ssl/module.mk
 mod_ssl: obj/libexb_mod_ssl.a
 mod_ssl: EXB_LINK_ARCHIVES += -Wl,--whole-archive obj/libexb_mod_ssl.a -Wl,--no-whole-archive
 
+examples:
+	for d in basic hello_world pastebin; do \
+		(cd "examples/$$d" && $(MAKE) -B) || exit 1; \
+	done
+
+
 
 obj/%.o: src/%.c
 	@mkdir -p '$(@D)'
@@ -62,4 +68,4 @@ exb: src/exb/exb_main.c obj/libexb.so
 clean: 
 	@rm -f exb perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
-.PHONY: clean all
+.PHONY: clean all examples

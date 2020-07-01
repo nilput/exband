@@ -40,6 +40,7 @@ struct exb_server {
     struct {
         struct exb_http_server_module *module;
         void *dll_module_handle;
+        int missing_symbols;
     } loaded_modules[EXB_SERVER_MAX_MODULES];
     int n_loaded_modules;
 

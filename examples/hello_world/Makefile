@@ -1,4 +1,4 @@
-EXB_LIB_DIR := ../../
+EXB_LIB_DIR := ../../obj/
 EXB_INCLUDE_DIR := ../../src/
 CFLAGS := -I ../../othersrc/ -fPIC -I $(EXB_INCLUDE_DIR)
 LDLIBS := -L $(EXB_LIB_DIR) -lexb

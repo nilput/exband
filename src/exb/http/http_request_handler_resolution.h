@@ -51,6 +51,12 @@ static int exb_http_request_resolve_to_sink(struct exb_request_state *rqstate,
     else if (sink->stype == EXB_REQ_SINK_NONE) {
         return EXB_OK;
     }
+    else if (sink->stype == EXB_REQ_SINK_FPTR) {
+        exb_assert_h(sink->u.fptr.func, "invalid fptr request sink");
+        rqstate->rqh_state       = sink->u.fptr.rqh_state;
+        rqstate->request_handler = sink->u.fptr.func;
+        return EXB_OK;
+    }
     else {
         exb_assert_s(0, "invalid request sink");
     }

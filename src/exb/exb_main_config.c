@@ -1,5 +1,6 @@
 #include "exb.h"
 #include "exb_str.h"
+#include "exb_log.h"
 #include "exb_utils.h"
 #include "exb_build_config.h"
 #include "http/http_server_config.h"
@@ -54,9 +55,9 @@ jsmntok_t *json_get(char *json_str, jsmntok_t *t, const char *path) {
     strncpy(keyname, path, next - path);
     keyname[next - path] = 0;
     if (t->type == JSMN_OBJECT) {
-        int j = 0;
+        int j = 1;
         for (int i = 0; i < t->size; i++) {
-            jsmntok_t *key = t + 1 + j;
+            jsmntok_t *key = t + j;
             jsmntok_t *val = NULL;
             j += tokcount(key);
             if (key->size > 0) {
@@ -64,7 +65,9 @@ jsmntok_t *json_get(char *json_str, jsmntok_t *t, const char *path) {
                     (key->end - key->start) == (next - path)       &&
                     memcmp(key->start + json_str, keyname, next - path) == 0)
                 {
-                    return json_get(json_str, t + 1 + j, next[0] == '.' ? next + 1 : next);
+                    if (strcmp(next, "") == 0)
+                        return t + j;
+                    return json_get(json_str, t + j, next[0] == '.' ? next + 1 : next);
                 }
                 j += tokcount(t + j);
             }
@@ -102,6 +105,20 @@ int json_get_as_string_copy(struct exb *exb_ref, char *json_str, jsmntok_t *t, i
     }
     *out = s;
     return json_tok_to_buff(s, t->end - t->start + 1, json_str, t);
+}
+
+//Assumes str_out is uninitialized
+int json_get_as_string_copy_1(struct exb *exb_ref, char *json_str, jsmntok_t *t, int do_coerce, struct exb_str *str_out) {
+    char *s = NULL;
+    int rv = EXB_OK;
+    if ((rv = json_get_as_string_copy(exb_ref, json_str, t, do_coerce, &s)) != EXB_OK)
+        return rv;
+    rv = exb_str_init_transfer(exb_ref, s, str_out);
+    if (rv != EXB_OK) {
+        exb_free(exb_ref, s);
+        return rv;
+    }
+    return EXB_OK;
 }
 //return value like strcmp
 int json_token_strcmp(char *json_str, jsmntok_t *t, const char *str) {
@@ -213,6 +230,8 @@ struct exb_json_parser_state {
     int ntokens;
 };
 
+
+
 /*
 initializes a request rule's sink from a json object
 */
@@ -222,27 +241,51 @@ static int parse_rule_destination(struct exb *exb_ref,
                                   jsmntok_t *obj,
                                   struct exb_request_sink *sink_out)
 {
-    char *path_str = NULL;
     jsmntok_t *dtype = json_get(ep->full_file, obj, "type");
-    jsmntok_t *path = json_get(ep->full_file, obj, "path");
-    jsmntok_t *alias = json_get(ep->full_file, obj, "alias");
-    int is_alias = 0;
-    if (!alias || json_get_as_boolean(ep->full_file, alias, &is_alias) != EXB_OK)
-        is_alias = 0;
-    if (!dtype ||
-        !path ||
-        json_token_strcmp(ep->full_file, dtype, "filesystem") != 0 ||
-        json_get_as_string_copy(exb_ref, ep->full_file, path, 0, &path_str) != EXB_OK
-      ) 
-    {
+    int rv = EXB_OK;
+    if (dtype && json_token_strcmp(ep->full_file, dtype, "filesystem") == 0) {
+        char *path_str = NULL;
+        int is_alias = 0;
+        jsmntok_t *path = json_get(ep->full_file, obj, "path");
+        if (!path || json_get_as_string_copy(exb_ref, ep->full_file, path, 0, &path_str) != EXB_OK) {
+            return EXB_CONFIG_ERROR;
+        }
+        jsmntok_t *alias = json_get(ep->full_file, obj, "alias");
+        if (!alias || json_get_as_boolean(ep->full_file, alias, &is_alias) != EXB_OK) {
+            is_alias = 0;
+        }
+        rv = exb_request_sink_filesystem_init(exb_ref, path_str, is_alias, sink_out);
+        if (rv != EXB_OK) {
+            exb_free(exb_ref, path_str);
+            return rv;
+        }
+    }
+    else if (dtype && json_token_strcmp(ep->full_file, dtype, "handler") == 0) {
+        char *handler_name_str = NULL;
+        jsmntok_t *handler_name = json_get(ep->full_file, obj, "name");
+        if (!handler_name || json_get_as_string_copy(exb_ref, ep->full_file, handler_name, 0, &handler_name_str) != EXB_OK) {
+            return EXB_CONFIG_ERROR;
+        }
+        int reference_sink_id;
+        rv = exb_http_server_config_lookup_handler(exb_ref, http_server_config_in, handler_name_str, &reference_sink_id);
+        if (rv != EXB_OK) {
+            exb_log_error(exb_ref, "Handler '%s' was not found\n", handler_name_str);
+            exb_free(exb_ref, handler_name_str);
+            return EXB_CONFIG_ERROR;
+        }
+        exb_free(exb_ref, handler_name_str);
+        handler_name_str = NULL;
+
+        rv = exb_request_sink_intermediate_ref_to_sink_init(exb_ref, reference_sink_id, sink_out);
+        if (rv != EXB_OK) {
+            exb_free(exb_ref, handler_name_str);
+            return EXB_CONFIG_ERROR;
+        }
+    }
+    else {
         return EXB_CONFIG_ERROR;
     }
     //takes ownership of path_str
-    int rv = exb_request_sink_filesystem_init(exb_ref, path_str, is_alias, sink_out);
-    if (rv != EXB_OK) {
-        exb_free(exb_ref, path_str);
-        return rv;
-    }
     return EXB_OK;
 
 }
@@ -362,17 +405,20 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
         http_server_config_out->http_use_aio = !!integer;
     }
     
-    
-   if (has_toplevel_listen) {
-       rv = load_json_rules(exb_ref, &ep, ep.tokens, http_server_config_out);
-       if (rv != EXB_OK) {
-           goto on_error_1;
-       }
-   }
    rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
    if (rv != EXB_OK) {
         goto on_error_1;
-    }
+   }
+    
+   if (has_toplevel_listen) {
+       obj = json_get(ep.full_file, ep.tokens, "http");
+       if (obj) {
+            rv = load_json_rules(exb_ref, &ep, obj, http_server_config_out);
+            if (rv != EXB_OK) {
+                goto on_error_1;
+            }
+       }
+   }
 
    obj = json_get(ep.full_file, ep.tokens, "http.servers");
    if (obj && obj->type == JSMN_ARRAY) {
@@ -544,58 +590,119 @@ static int load_json_modules(struct exb *exb_ref,
     jsmntok_t *obj = NULL;
     int rv = EXB_OK;
     obj = json_get(ep->full_file, ep->tokens, "modules");
-    if (obj) {
-        if (obj->type != JSMN_ARRAY) {
+    if (!obj)  {
+        return EXB_OK;
+    }
+    if (obj->type != JSMN_ARRAY) {
+        return EXB_CONFIG_ERROR;
+    }
+        
+    int offset = 1;
+    for (int i=0; i<obj->size; i++) {
+        if (i >= EXB_SERVER_MAX_MODULES) {
+            rv = EXB_OUT_OF_RANGE_ERR;
+            goto on_error_1;
+        }
+        jsmntok_t *module_obj = obj + offset;
+        if (module_obj->type != JSMN_OBJECT) {
             rv = EXB_CONFIG_ERROR;
             goto on_error_1;
         }
-        
-        int offset = 1;
-        for (int i=0; i<obj->size; i++) {
-            if (i >= EXB_SERVER_MAX_MODULES) {
-                rv = EXB_OUT_OF_RANGE_ERR;
-                goto on_error_1;
-            }
-            jsmntok_t *module_obj = obj + offset;
-            if (module_obj->type != JSMN_OBJECT) {
-                rv = EXB_CONFIG_ERROR;
-                goto on_error_1;
-            }
-            jsmntok_t *path = json_get(ep->full_file, module_obj, "path");
-            jsmntok_t *args = json_get(ep->full_file, module_obj, "args");
-            if (!path || !args) {
-                rv = EXB_CONFIG_ERROR;
-                goto on_error_1;
-            }
-            char *path_str;
-            char *args_str;
-            if (json_get_as_string_copy(exb_ref, ep->full_file, path, 0, &path_str) != EXB_OK) {
-                rv = EXB_CONFIG_ERROR;
-                goto on_error_1;
-            }
+        jsmntok_t *path = json_get(ep->full_file, module_obj, "path");
+        jsmntok_t *args = json_get(ep->full_file, module_obj, "args");
+        if (!path || !args) {
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_1;
+        }
+        char *path_str = NULL;
+        char *args_str = NULL;
+        if (json_get_as_string_copy(exb_ref, ep->full_file, path, 0, &path_str) != EXB_OK) {
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_2;
+        }
 
 
-            if (args->type == JSMN_OBJECT) {
-                rv = json_to_key_eq_value_new(exb_ref, ep->full_file, args, &args_str);
+        if (args->type == JSMN_OBJECT) {
+            rv = json_to_key_eq_value_new(exb_ref, ep->full_file, args, &args_str);
+            if (rv != EXB_OK) {
+                rv = EXB_CONFIG_ERROR;
+                goto on_error_2;
+            }
+        }
+        else if (json_get_as_string_copy(exb_ref, ep->full_file, args, 0, &args_str) != EXB_OK){
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_2;
+        }
+
+        struct exb_str import_name;
+        exb_str_init_empty(&import_name);
+        jsmntok_t *import_list_json = json_get(ep->full_file, module_obj, "import");
+        struct exb_str_list *import_list = &http_server_config_out->module_specs[http_server_config_out->n_modules].import_list;
+        rv = exb_str_list_init(exb_ref, import_list);
+        if (rv != EXB_OK) {
+            goto on_error_2;
+        }
+        if (import_list_json) {
+            if (import_list_json->type == JSMN_STRING) {
+                if ((rv = json_get_as_string_copy_1(exb_ref, ep->full_file, import_list_json, 0, &import_name)) != EXB_OK){
+                    goto on_error_3;
+                }
+                if ((rv = exb_str_list_push(exb_ref, import_list, &import_name)) != EXB_OK){
+                    exb_str_deinit(exb_ref, &import_name);
+                    goto on_error_3;
+                }
+                rv = exb_http_server_config_add_named_empty_fptr_sink(exb_ref,
+                                                                      http_server_config_out,
+                                                                      import_name.str,
+                                                                      i);
                 if (rv != EXB_OK) {
-                    rv = EXB_CONFIG_ERROR;
-                    exb_free(exb_ref, path_str);
-                    exb_free(exb_ref, args_str);
-                    goto on_error_1;
+                    goto on_error_3;
                 }
             }
-            else if (json_get_as_string_copy(exb_ref, ep->full_file, args, 0, &args_str) != EXB_OK){
-                exb_free(exb_ref, path_str);
-                rv = EXB_CONFIG_ERROR;
-                goto on_error_1;
+            else if (import_list_json->type == JSMN_ARRAY) {
+                int j_offset = 1;
+                for (int j=0; j < import_list_json->size; j++) {
+                    jsmntok_t *import_name_obj = obj + offset;
+                    if (import_name_obj->type != JSMN_STRING) {
+                        rv = EXB_CONFIG_ERROR;
+                        goto on_error_3;
+                    }
+                    offset += tokcount(import_name_obj);
+                    if ((rv = json_get_as_string_copy_1(exb_ref, ep->full_file, import_name_obj, 0, &import_name)) != EXB_OK) {
+                        goto on_error_3;
+                    }
+                    if ((rv = exb_str_list_push(exb_ref, import_list, &import_name)) != EXB_OK){
+                        exb_str_deinit(exb_ref, &import_name);
+                        goto on_error_3;
+                    }
+                    rv = exb_http_server_config_add_named_empty_fptr_sink(exb_ref,
+                                                                        http_server_config_out,
+                                                                        import_name.str,
+                                                                        i);
+                    if (rv != EXB_OK) {
+                        goto on_error_3;
+                    }
+                }
             }
-            
-            exb_str_init_transfer(exb_ref, path_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_spec);
-            exb_str_init_transfer(exb_ref, args_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_args);
-            http_server_config_out->n_modules++;
-            offset += tokcount(module_obj);
+            else {
+                goto on_error_3;
+            }
         }
+        
+        exb_str_init_transfer(exb_ref, path_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_spec);
+        exb_str_init_transfer(exb_ref, args_str, &http_server_config_out->module_specs[http_server_config_out->n_modules].module_args);
+        http_server_config_out->n_modules++;
+        offset += tokcount(module_obj);
+        continue;
+
+        on_error_3:
+        exb_str_list_deinit(exb_ref, import_list);
+        on_error_2:
+        exb_free(exb_ref, args_str);
+        exb_free(exb_ref, path_str);
+        goto on_error_1;
     }
+
     return EXB_OK;
     on_error_1:
     return rv;
@@ -702,5 +809,10 @@ int exb_load_configuration(struct vargstate *vg, struct exb *exb_ref, struct exb
         config_file = "config/exb.json";
     }
     
-    return load_json_config(config_file, exb_ref, config_out, http_server_config_out);
+    int rv = load_json_config(config_file, exb_ref, config_out, http_server_config_out);
+    if (rv != EXB_OK) {
+        exb_http_server_config_deinit(exb_ref, http_server_config_out);
+        *http_server_config_out = exb_http_server_config_default(exb_ref);
+    }
+    return rv;
 }

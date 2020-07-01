@@ -154,7 +154,15 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
     
 
     for (int i=0; i<config.n_modules; i++) {
-        int error = exb_http_server_module_load(exb_ref, s, config.module_specs[i].module_spec.str, config.module_specs[i].module_args.str, &s->loaded_modules[s->n_loaded_modules].module, &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
+        s->loaded_modules[s->n_loaded_modules].missing_symbols = config.module_specs[i].import_list.len;
+        int error = exb_http_server_module_load(exb_ref,
+                                                s,
+                                                i,
+                                                config.module_specs[i].module_spec.str,
+                                                config.module_specs[i].module_args.str,
+                                                &config.module_specs[i].import_list,
+                                                &s->loaded_modules[s->n_loaded_modules].module,
+                                                &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
         if (error != EXB_OK) {
             err = exb_make_error(EXB_MODULE_LOAD_ERROR);
             goto err4;
@@ -415,6 +423,34 @@ void exb_server_deinit(struct exb_server *s) {
     
 }
 
+
+//Called by module loader, handler_name is not owned
+void exb_http_server_module_on_load_resolve_handler(struct exb *exb_ref,
+                                                    struct exb_server *server,
+                                                    int module_id,
+                                                    struct exb_http_server_module *module,
+                                                    char *handler_name, 
+                                                    exb_request_handler_func func)
+{
+    int sink_id = -1;
+    int rv = exb_http_server_config_lookup_handler(exb_ref,
+                                                   &server->config,
+                                                   handler_name,
+                                                   &sink_id);
+    if (rv == EXB_OK && func) {
+        if (server->config.request_sinks[sink_id].stype != EXB_REQ_SINK_FPTR) {
+            exb_log_error(exb_ref, "Resolving %s in module_id: %d, failed, invalid sink type\n", handler_name, module_id);
+            return;
+        }
+        else if (server->config.request_sinks[sink_id].u.fptr.module_id != module_id) {
+            exb_log_error(exb_ref, "Resolving %s in module_id: %d, failed, non matching module_id\n", handler_name, module_id);
+            return;
+        }
+        server->config.request_sinks[sink_id].u.fptr.func = func;
+        server->config.request_sinks[sink_id].u.fptr.rqh_state = module;
+        server->loaded_modules[module_id].missing_symbols--;
+    }
+}
 
 
 //Switch implementation of the listener, for example from select() -> epoll()

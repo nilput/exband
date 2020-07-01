@@ -2,11 +2,22 @@
 #include <string.h>
 #include "../exb.h"
 #include "../exb_str.h"
+#include "../exb_str_list.h"
+#include "../exb_log.h"
 #include "http_server_module.h"
 #include "http_server_module_internal.h"
+#include "http_request_handler.h"
+
 /*name := "dll_name:func_name"*/
-int exb_http_server_module_load(struct exb *exb_ref, struct exb_server *server, char *handler_name, char *module_args, struct exb_http_server_module **module_out, void **handle_out) {
-    
+int exb_http_server_module_load(struct exb *exb_ref,
+                                struct exb_server *server,
+                                int module_id,
+                                char *handler_name,
+                                char *module_args,
+                                struct exb_str_list *import_list,
+                                struct exb_http_server_module **module_out,
+                                void **handle_out) 
+{
     char *seperator = strchr(handler_name, ':');
     if (!seperator)
         return EXB_INVALID_ARG_ERR;
@@ -34,8 +45,17 @@ int exb_http_server_module_load(struct exb *exb_ref, struct exb_server *server, 
         return EXB_NOT_FOUND;
     }
     exb_http_server_module_init_func init_func = dlsym(handle, func_name.str);
-    int init_success = init_func != NULL && (init_func(exb_ref, server, module_args, module_out) == 0);
+    int init_success = init_func != NULL && (init_func(exb_ref, server, module_args, module_out) == 0) && module_out;
     if (init_success) {
+        for (int i=0; i < import_list->len; i++) {
+            exb_request_handler_func handler = dlsym(handle, import_list->elements[i].str); //can be NULL
+            exb_http_server_module_on_load_resolve_handler(exb_ref,
+                                                   server,
+                                                   module_id,
+                                                   *module_out,
+                                                   import_list->elements[i].str, 
+                                                   handler);
+        }
         *handle_out = handle;
     }
     else {

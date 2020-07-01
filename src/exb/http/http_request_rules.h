@@ -1,6 +1,7 @@
 #ifndef EXB_REQUEST_RULES_H
 #define EXB_REQUEST_RULES_H
 #include "../exb_errors.h"
+#include "http_request_handler.h"
 /*
 abstractions used:
     rule: something to match requests on, for example a prefix path like "/files"
@@ -28,6 +29,8 @@ struct exb_request_rule {
 enum exb_request_sink_type {
     EXB_REQ_SINK_NONE, //Represents a removed sink, DO NOT USE THIS AS A CATCH ALL
     EXB_REQ_SINK_FILESYSTEM,
+    EXB_REQ_SINK_FPTR,
+    EXB_REQ_SINK_INTERMEDIATE_REF_TO_SINK, //this gets optimized out
 };
 
 struct exb_request_sink_filesystem {
@@ -36,10 +39,18 @@ struct exb_request_sink_filesystem {
                    //then this gets patched to the length of the prefix in the parent config rule
 };
 
+struct exb_request_sink_fptr {
+    exb_request_handler_func func;
+    void *rqh_state;
+    int module_id;
+};
+
 struct exb_request_sink {
     enum exb_request_sink_type stype;
     union {
         struct exb_request_sink_filesystem fs;
+        struct exb_request_sink_fptr fptr;
+        int reference_to_sink_id;
     } u;
 };
 
@@ -63,6 +74,7 @@ static int exb_request_prefix_rule_init(struct exb *exb_ref,
 
     return EXB_OK;
 }
+
 static int exb_request_prefix_rule_deinit(struct exb *exb_ref,
                                          struct exb_request_path_prefix_rule *prule)
 {
@@ -70,21 +82,62 @@ static int exb_request_prefix_rule_deinit(struct exb *exb_ref,
     return EXB_OK;
 }
 
-static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
-                                             struct exb_request_rule *rule,
-                                             struct exb_request_sink *sink)
+
+
+static int exb_request_sink_intermediate_ref_to_sink_fixup(struct exb *exb_ref,
+                                                                struct exb_request_rule *rule,
+                                                                struct exb_request_sink *sink)
 {
-    struct exb_request_sink_filesystem *sink_fs = &sink->u.fs;
-    if (sink->u.fs.alias_len) {
-        //at this stage alias_len is used as a boolean
-        if (rule->type != EXB_REQ_RULE_PATH_PREFIX) {
-            exb_on_config_error(exb_ref, "Alias can only be used with prefix rules");
-            return EXB_CONFIG_ERROR;
-        }
-        sink->u.fs.alias_len = rule->u.prefix_rule.prefix.len;
-    }
+    EXB_UNUSED(exb_ref);
+    EXB_UNUSED(rule);
+    EXB_UNUSED(sink);
     return EXB_OK;
 }
+
+static int exb_request_sink_intermediate_ref_to_sink_deinit(struct exb *exb_ref,
+                                        struct exb_request_sink_fptr *sink_fptr)
+{
+    return EXB_OK;
+}
+
+static int exb_request_sink_intermediate_ref_to_sink_init(struct exb *exb_ref,
+                                                          int sink_id,
+                                                          struct exb_request_sink  *sink_out)
+{
+    sink_out->stype = EXB_REQ_SINK_INTERMEDIATE_REF_TO_SINK;
+    sink_out->u.reference_to_sink_id = sink_id;
+    return EXB_OK;
+}
+
+
+static int exb_request_sink_fptr_deinit(struct exb *exb_ref,
+                                        struct exb_request_sink_fptr *sink_fptr)
+{
+    return EXB_OK;
+}
+
+static int exb_request_sink_fptr_init(struct exb *exb_ref,
+                                      int module_id,
+                                      exb_request_handler_func func,
+                                      struct exb_request_sink  *sink_out)
+{
+    sink_out->stype = EXB_REQ_SINK_FPTR;
+    struct exb_request_sink_fptr *sink_fptr = &sink_out->u.fptr;
+    sink_fptr->func = func;
+    sink_fptr->module_id = module_id;
+    return EXB_OK;
+}
+
+static int exb_request_sink_fptr_fixup(struct exb *exb_ref,
+                                       struct exb_request_rule *rule,
+                                       struct exb_request_sink *sink)
+{
+    EXB_UNUSED(exb_ref);
+    EXB_UNUSED(rule);
+    EXB_UNUSED(sink);
+    return EXB_OK;
+}
+
 
 /*Sink functions*/
 /*Filesystem sink functions*/
@@ -113,6 +166,24 @@ static int exb_request_sink_filesystem_deinit(struct exb *exb_ref,
     return EXB_OK;
 }
 
+static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
+                                             struct exb_request_rule *rule,
+                                             struct exb_request_sink *sink)
+{
+    struct exb_request_sink_filesystem *sink_fs = &sink->u.fs;
+    if (sink->u.fs.alias_len) {
+        //at this stage alias_len is used as a boolean
+        if (rule->type != EXB_REQ_RULE_PATH_PREFIX) {
+            exb_on_config_error(exb_ref, "Alias can only be used with prefix rules");
+            return EXB_CONFIG_ERROR;
+        }
+        sink->u.fs.alias_len = rule->u.prefix_rule.prefix.len;
+    }
+    return EXB_OK;
+}
+
+
+
 static int exb_request_rule_deinit(struct exb *exb_ref,
                                    struct exb_request_rule *rule)
 {
@@ -131,6 +202,9 @@ static int exb_request_sink_deinit(struct exb *exb_ref,
 {
     if (sink->stype == EXB_REQ_SINK_FILESYSTEM) {
         exb_request_sink_filesystem_deinit(exb_ref, &sink->u.fs);
+    }
+    else if (sink->stype == EXB_REQ_SINK_FPTR) {
+        exb_request_sink_fptr_deinit(exb_ref, &sink->u.fptr);
     }
     else if (sink->stype != EXB_REQ_SINK_NONE) {
         exb_assert_h(0, "invalid sink type");

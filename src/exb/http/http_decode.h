@@ -226,7 +226,7 @@ static int exb_urlencode_decode_parts(struct exb *exb_ref, struct exb_form_parts
             int written = 0;
             //decode key
             rv = exb_urlencode_decode(parts_out->buff.str + parts_out->buff.len + 1, //dest
-                                        parts_out->buff.cap - parts_out->buff.len - 1, //destsz
+                                        parts_out->buff.zcap - parts_out->buff.len - 1, //destsz
                                         &written, //destlen
                                         src + part_begin, //src
                                         eq_idx - part_begin); //srclen
@@ -242,7 +242,7 @@ static int exb_urlencode_decode_parts(struct exb *exb_ref, struct exb_form_parts
             parts_out->buff.str[parts_out->buff.len] = 0;
             //decode value
             rv = exb_urlencode_decode(parts_out->buff.str + parts_out->buff.len + 1, //dest
-                                        parts_out->buff.cap - parts_out->buff.len - 1, //destsz
+                                        parts_out->buff.zcap - parts_out->buff.len - 1, //destsz
                                         &written, //destlen
                                         src + eq_idx + 1, //src
                                         part_end - eq_idx - 1); //srclen
