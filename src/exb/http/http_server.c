@@ -10,6 +10,10 @@
 #include <fcntl.h> /* nonblocking sockets */
 #include <errno.h> 
 
+#ifdef EXB_WITH_SSL
+    #include "../mods/ssl/exb_ssl.h"
+#endif
+
 #include "../exb_errors.h"
 #include "../exb_eloop_pool.h"
 #include "../exb_pcontrol.h"
@@ -17,7 +21,7 @@
 #include "http_server_events_internal.h"
 #include "http_parse.h"
 #include "http_request.h"
-#include "http_socket_multiplexer.h"
+#include "http_socket_multiplexer_internal.h"
 
 #include "http_server_listener_select.h"
 #include "http_server_listener_epoll.h"
@@ -27,9 +31,9 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-static struct exb_error make_socket (uint16_t port, int *out)
+static struct exb_error make_socket(uint16_t port, int *out)
 {
-    int sock = socket (PF_INET, SOCK_STREAM, 0);
+    int sock = socket(PF_INET, SOCK_STREAM, 0);
     struct exb_error error = {0};
     if (sock < 0) {
         error = exb_make_error(EXB_SOCKET_ERR);
@@ -42,7 +46,7 @@ static struct exb_error make_socket (uint16_t port, int *out)
     name.sin_family = AF_INET;
     name.sin_port = htons(port);
     name.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
+    if (bind(sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
         error = exb_make_error(EXB_BIND_ERR);
         return error;
     }
@@ -65,6 +69,7 @@ static void server_postfork(void *data) {
 }
 struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config) {
     struct exb_error err = {0};
+    memset(&s->ssl_interface, 0, sizeof s->ssl_interface);
     s->exb                    = exb_ref;
     s->elist                  = elist;
     s->request_handler_state  = NULL;
@@ -74,30 +79,29 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
     s->pcontrol               = pcontrol;
     s->config                 = config;
 
-    if (config.http_use_aio) {
-        s->on_read = on_http_read_async;
-        s->on_send = on_http_send_async;
-    }
-    else {
-        s->on_read = on_http_read_sync;
-        s->on_send = on_http_send_sync;
-    }
-
-
-    for (int i=0; i<EXB_SOCKET_MAX; i++) {
-        exb_http_multiplexer_init(&s->mp[i], NULL, -1, i);
-    }
+    exb_http_multiplexer_init_clear(s->mp, EXB_SOCKET_MAX);
+    
     for (int i=0; i<s->config.n_domains; i++) {
         struct exb_http_domain_config *domain = &s->config.domains[i];
         /* Create sockets and set them up to accept connections. */
         bool already_defined = false;
-        if (domain->http_listen_port) {
+        for (int k=0; k<2; k++) {
+            int port = 0;
+            if (k == 0 && domain->http_listen_port) {
+                port = domain->http_listen_port;
+            }
+            else if (k == 1 && domain->ssl_config.listen_port) {
+                port = domain->ssl_config.listen_port;
+            }
+            else {
+                continue;
+            }
             for (int j = 0; j < i; j++) {
-                if (s->listen_sockets[j].port == domain->http_listen_port) {
-                    if (s->listen_sockets[j].is_ssl) {
+                if (s->listen_sockets[j].port == port) {
+                    if (s->listen_sockets[j].is_ssl != s->listen_sockets[i].is_ssl) {
                         exb_log_error(exb_ref,
-                                      "Error: attempting to use port %d for both HTTPS and HTTP\n",
-                                       domain->http_listen_port);
+                                    "Error: attempting to use port %d for both HTTPS and HTTP\n",
+                                    port);
                         err = exb_make_error(EXB_CONFIG_ERROR);
                         goto err1;
                     }
@@ -108,7 +112,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
             if (already_defined)
                 continue;
             int socket_fd = -1;
-            err = make_socket(domain->http_listen_port, &socket_fd);
+            err = make_socket(port, &socket_fd);
             if (err.error_code) {
                 err = exb_prop_error(err);
                 goto err0;
@@ -118,8 +122,8 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
                 goto err1;
             }
             s->listen_sockets[s->n_listen_sockets].socket_fd = socket_fd;
-            s->listen_sockets[s->n_listen_sockets].is_ssl = false;
-            s->listen_sockets[s->n_listen_sockets].port = domain->http_listen_port;
+            s->listen_sockets[s->n_listen_sockets].is_ssl = (k == 1);
+            s->listen_sockets[s->n_listen_sockets].port = port;
             if (listen(socket_fd, LISTEN_BACKLOG) < 0) { 
                 exb_log_error(exb_ref, "Listen(%d backlog) failed, trying with 128", LISTEN_BACKLOG);
                 if (listen(socket_fd, 128) < 0) {
@@ -169,6 +173,17 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         }
         s->n_loaded_modules++;
     }
+#ifdef EXB_WITH_SSL
+    if (s->n_loaded_modules >= EXB_SERVER_MAX_MODULES) {
+        exb_log_error(exb_ref, "max n modules exceeded");
+        goto err4;
+    }
+    s->loaded_modules[s->n_loaded_modules].missing_symbols = 0;
+    s->loaded_modules[s->n_loaded_modules].dll_module_handle = NULL;
+    int error = exb_ssl_init(exb_ref, s, "", &s->loaded_modules[s->n_loaded_modules].module);
+    if (error != 0) 
+        goto err4;
+#endif
 
     if (exb_pcontrol_add_postfork_hook(s->pcontrol, server_postfork, s) != EXB_OK) {
         goto err4;
@@ -194,7 +209,7 @@ err1:
     
 err0:
     for (int i=0; i<EXB_SOCKET_MAX; i++) {
-        exb_http_multiplexer_deinit(&s->mp[i]);
+        exb_http_multiplexer_deinit(s, &s->mp[i]);
     }
     return err;
 }
@@ -228,6 +243,11 @@ struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, in
 
 struct exb_eloop * exb_server_get_any_eloop(struct exb_server *s) {
     return exb_eloop_pool_get_any(s->elist);
+}
+
+struct exb_eloop * exb_server_get_eloop(struct exb_server *s, int eloop_id) {
+    exb_assert_h(eloop_id >= 0 && eloop_id < s->elist->nloops, "invalid eloop_id");
+    return s->elist->loops[eloop_id].loop;
 }
 
 //this is bad
@@ -273,7 +293,7 @@ void exb_server_destroy_rqstate(struct exb_server *server, struct exb_eloop *elo
 }
 
 
-int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, int socket_fd, struct sockaddr_in clientname) {
+int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, int socket_fd, bool is_ssl, struct sockaddr_in clientname) {
     int flags = fcntl(socket_fd, F_GETFL, 0);
     exb_assert_h(flags != -1, "");
     if ((flags = fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK)) == -1) {
@@ -290,24 +310,28 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
         return EXB_SOCKET_ERR;
 
     int eloop_idx = exb_server_eloop_id(s, eloop);
-    if (eloop_idx == -1) {
+    if (eloop_idx < 0) {
         return EXB_INVALID_ARG_ERR;
     }
     struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
     exb_assert_h(eloop_idx < s->elist->nloops, "");
     exb_eloop_pool_get_any(s->elist);
     exb_assert_h(!!eloop, "");
-    exb_http_multiplexer_init(mp, eloop, eloop_idx, socket_fd);
+    int rv = exb_http_multiplexer_init(mp, s, eloop, eloop_idx, socket_fd, is_ssl, s->config.http_use_aio);
+    if (rv != EXB_OK) {
+        return rv;
+    }
 
     mp->state = EXB_MP_ACTIVE;
     
     mp->clientname = clientname;
 
+//TODO: error handling
     struct exb_request_state *rqstate = exb_server_new_rqstate(s, mp->eloop, socket_fd);
-    fprintf(stderr,
+    exb_logger_logf(s->exb, EXB_LOG_INFO,
             "Server: connection from host %s, port %hu. assigned to eloop: %d/%d, process: %d\n",
-            inet_ntoa (clientname.sin_addr),
-            ntohs (clientname.sin_port), eloop_idx, s->elist->nloops, getpid());
+            inet_ntoa(clientname.sin_addr),
+            ntohs(clientname.sin_port), eloop_idx, s->elist->nloops, getpid());
     listener->new_connection(listener, socket_fd);
     
     mp->currently_reading = rqstate;
@@ -338,16 +362,16 @@ void exb_server_cancel_requests(struct exb_server *s, int socket_fd) {
     struct exb_event ev;
     int rv;
     RQSTATE_EVENT(stderr, "Server marked requests as cancelled for socket %d, and scheduled HTTP_CANCEL event\n", mp->socket_fd);
-    exb_event_http_init(s, &ev, EXB_HTTP_CANCEL, s, socket_fd);
+    exb_event_http_init(s, mp, &ev, EXB_HTTP_CANCEL, s, socket_fd);
     if ((rv = exb_eloop_append(mp->eloop, ev)) != EXB_OK) {
-        //HMM, what to do
+        //TODO: error handling
         abort();
     }
 }
 void exb_server_close_connection(struct exb_server *s, int socket_fd) {
     int eloop_idx = s->mp[socket_fd].eloop_idx;
     struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
-    exb_http_multiplexer_deinit(s->mp + socket_fd);
+    exb_http_multiplexer_deinit(s, s->mp + socket_fd);
     listener->close_connection(listener, socket_fd);
     close(socket_fd);
     RQSTATE_EVENT(stderr, "Server closed connection on socket %d\n", socket_fd);
@@ -406,7 +430,7 @@ struct exb_error exb_server_listen(struct exb_server *s) {
 void exb_server_deinit(struct exb_server *s) {
 
     for (int i=0; i<EXB_SOCKET_MAX; i++) {
-        exb_http_multiplexer_deinit(&s->mp[i]);
+        exb_http_multiplexer_deinit(s, &s->mp[i]);
     }
     exb_http_server_config_deinit(s->exb, &s->config);
     for (int i=0; i<s->elist->nloops; i++) {
@@ -423,8 +447,10 @@ void exb_server_deinit(struct exb_server *s) {
     
 }
 
-
-//Called by module loader, handler_name is not owned
+/*
+Called by module loader, to resolve named request handlers
+handler_name is not owned
+*/
 void exb_http_server_module_on_load_resolve_handler(struct exb *exb_ref,
                                                     struct exb_server *server,
                                                     int module_id,
@@ -522,6 +548,11 @@ rollback:
     return rv;
 }
 
+int exb_server_set_ssl_interface(struct exb_server *s, struct exb_ssl_interface *ssl_if)
+{
+    s->ssl_interface = *ssl_if;
+    return EXB_OK;
+}
 
 #ifdef EXB_WITH_SSL
     int exb_ssl_config_entries_iter(struct exb_server *server, int *iter_state, struct exb_ssl_config_entry **entry_out, int *domain_id_out)

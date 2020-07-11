@@ -84,7 +84,6 @@ err_1:
 static int exb_server_listener_epoll_listen(struct exb_server_listener *listener) {
     struct exb_server_listener_epoll *lis = (struct exb_server_listener_epoll *) listener;
     struct exb_server *s = lis->server;
-    struct exb_error err = {0};
 
     /*int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);*/
     int n = epoll_wait(lis->efd, lis->events, MAX_EVENTS, EPOLL_TIMEOUT);
@@ -129,9 +128,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
     }
 
 
-    
-    ret:
-    return err.error_code;
+    return EXB_OK;
 }
 static int exb_server_listener_epoll_destroy(struct exb_server_listener *listener) {
     struct exb_server_listener_epoll *lis = (struct exb_server_listener_epoll *) listener;

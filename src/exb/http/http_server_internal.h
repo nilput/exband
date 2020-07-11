@@ -35,7 +35,7 @@ static int exb_server_accept_new_connections(struct exb_server *s, struct exb_el
             }
             struct exb_http_multiplexer *nm = exb_server_get_multiplexer_i(s, new_socket);
             exb_assert_h(nm && (nm->state == EXB_MP_EMPTY || nm->state == EXB_MP_DEAD), "");
-            err = exb_server_init_multiplexer(s, eloop, new_socket, clientname);
+            err = exb_server_init_multiplexer(s, eloop, new_socket, s->listen_sockets[j].is_ssl, clientname);
             if (err != EXB_OK) {
                 close(new_socket);
                 break;

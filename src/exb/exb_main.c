@@ -86,7 +86,9 @@ int main(int argc, char *argv[]) {
     ordie(erv.error_code);
 
     for (int i=0; i<server.n_listen_sockets; i++)
-        exb_logger_logf(&exb_state, EXB_LOG_INFO, "Listening on port %d\n", server.listen_sockets[i].port);
+        exb_logger_logf(&exb_state, EXB_LOG_INFO, "Listening on port %d%s\n",
+                                                 server.listen_sockets[i].port,
+                                                 server.listen_sockets[i].is_ssl ? " ssl" : "");
 
     if (exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "epoll", 5)) {
         fprintf(stderr, "using epoll\n");

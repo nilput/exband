@@ -5,13 +5,30 @@ is statically linked, and is a first class citizen in terms of configuration and
 */
 #include "../../exb.h"
 #include "../../http/http_server_module.h"
+#include "../../http/http_server.h"
 #include "../../http/http_request.h"
 #include "../../exb_build_config.h"
 #include "exb_ssl_config_entry.h"
+#include "exb_ssl.h"
+
+//read/recv/write
+#include <unistd.h>
+#include <errno.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+
+
+enum exb_ssl_state_openssl_flags {
+    EXB_SSL_STATE_OPENSSL_ACCEPTED = 1,
+};
+
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L 
+    //reason: older versions require thread synchronization
+    #error unsupported version of openssl
+#endif
 
 #if defined(EXB_USE_OPENSSL_ECDH) && OPENSSL_VERSION_NUMBER >= 0x0090800fL
 #include <openssl/ecdh.h>
@@ -95,16 +112,13 @@ static DH* load_dh_params_4096(void) {
 }
 #endif
 
-
-
 struct exb_ssl_module {
     struct exb_http_server_module head;
     struct exb *exb_ref;
+    struct exb_server *server_ref;
     /*Each set of domain / certifcate pair will have a different context for SNI*/
-    SSL_CTX *contexts[EXB_SNI_MAX_DOMAINS]; //Mapped to each domain
-    
+    SSL_CTX *contexts[EXB_SNI_MAX_DOMAINS]; //Mapped to each domain_id
 };
-
 
 static void exb_ssl_destroy(struct exb_http_server_module *module, struct exb *exb) {
     exb_free(exb, module);
@@ -120,9 +134,9 @@ static int exb_ssl_openssl_init_domain(struct exb *exb,
 	const char *default_ciphers = "HIGH !aNULL !3DES +kEDH +kRSA !kSRP !kPSK";
 	const char *default_ecdh_curve = "prime256v1";
 
-	const char *ciphers = NULL;
-    const char *private_key_file = NULL;
-    const char *public_key_file = NULL;
+	const char *ciphers = entry->ssl_ciphers.len ? entry->ssl_ciphers.str : NULL;
+    const char *private_key_file = entry->private_key_path.len ? entry->private_key_path.str : NULL;
+    const char *public_key_file = entry->public_key_path.len ? entry->public_key_path.str : NULL;
     const char *ca_file = NULL; 
     const char *dh_params_file = NULL; 
     const char *ecdh_curve = NULL;
@@ -226,7 +240,7 @@ static int exb_ssl_openssl_init_domain(struct exb *exb,
         goto on_error_1;
     }
 
-    if (SSL_CTX_set_session_id_context(ssl_ctx, "exband", 6) != 1) {
+    if (SSL_CTX_set_session_id_context(ssl_ctx, (unsigned char *)"exband", 6) != 1) {
         exb_log_error(exb, "SSL_CTX_set_session_id_context(): %s", ERR_error_string(ERR_get_error(), NULL));
         goto on_error_1;
     }
@@ -234,6 +248,8 @@ static int exb_ssl_openssl_init_domain(struct exb *exb,
 
     SSL_CTX_set_default_read_ahead(ssl_ctx, 1);
     SSL_CTX_set_mode(ssl_ctx, SSL_CTX_get_mode(ssl_ctx) | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
+    mod->contexts[domain_id] = ssl_ctx;
     return EXB_OK;
 on_error_1:
     return rv;
@@ -256,6 +272,254 @@ on_error_1:
     /*TODO: free all contexts*/
     return rv;
 }
+
+int exb_ssl_connection_init(struct exb_http_server_module *mod, struct exb_http_multiplexer *mp)
+{
+    
+    struct exb_ssl_module *ssl_mod = (struct exb_ssl_module *) mod;
+    struct exb_http_ssl_state *ssl_state = &mp->ssl_state;
+    memset(ssl_state, 0, sizeof *ssl_state);
+    exb_assert_h(!!ssl_mod->contexts[0], "");
+    BIO *rbio = BIO_new(BIO_s_mem());
+    BIO *wbio = BIO_new(BIO_s_mem());
+    SSL *ssl  = SSL_new(ssl_mod->contexts[ssl_state->ssl_context_id]);
+    if (!rbio || !wbio || !ssl) {
+        if (rbio)
+            BIO_free(rbio);
+        if (wbio)
+            BIO_free(wbio);
+        if (ssl)
+            SSL_free(ssl);
+        return EXB_SSL_INIT_ERROR;
+    }
+    SSL_set_accept_state(ssl); /* sets ssl to work in server mode. */
+    SSL_set_bio(ssl, rbio, wbio);
+
+    ssl_state->keep_buff = NULL;
+    ssl_state->keep_buff_len = 0;
+    ssl_state->keep_buff_size = 0;
+
+    ssl_state->ssl_context_id = 0; //temporarily assigned until resolution
+    ssl_state->ssl_obj = ssl;
+    ssl_state->rbio = rbio;
+    ssl_state->wbio = wbio;
+
+    return EXB_OK;
+}
+
+void exb_ssl_connection_deinit(struct exb_http_server_module *mod, struct exb_http_multiplexer *mp)
+{
+    struct exb_http_ssl_state *ssl_state = &mp->ssl_state;
+    struct exb_ssl_module *ssl_mod = (struct exb_ssl_module *) mod;
+    
+    if (ssl_state->keep_buff) {
+        exb_eloop_release_buffer(mp->eloop, ssl_state->keep_buff, ssl_state->keep_buff_size);
+    }
+
+    if (ssl_state->ssl_obj)
+        SSL_free(ssl_state->ssl_obj);
+    ssl_state->ssl_obj = NULL;
+    ssl_state->rbio = ssl_state->wbio = NULL;
+    ssl_state->ssl_context_id = -1;
+    memset(ssl_state, 0, sizeof *ssl_state);
+}
+
+static struct exb_io_result try_send(int socket_fd,
+                                     char *buff,
+                                     size_t buff_len) 
+{
+    ssize_t written = send(socket_fd,
+                           buff,
+                           buff_len,
+                           MSG_DONTWAIT);
+    if (written <= 0) {
+        if (written == 0) {
+            return exb_make_io_result(0, EXB_IO_FLAG_CLIENT_CLOSED);
+        }
+        else if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            return exb_make_io_result(0, 0);
+        }
+        else {
+            return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR);
+        }
+    }
+    return exb_make_io_result(written, 0);
+}
+
+static struct exb_io_result send_from_wbio_or_keep(struct exb_ssl_module *ssl_mod,
+                                         struct exb_http_multiplexer *mp,
+                                         BIO *wbio,
+                                         char *tmp_buff,
+                                         size_t tmp_buff_sz)
+{
+    size_t total_sent = 0;
+    if (EXB_UNLIKELY(mp->ssl_state.keep_buff && mp->ssl_state.keep_buff_len > 0)) {
+        struct exb_io_result pres = try_send(mp->socket_fd,
+                                                 mp->ssl_state.keep_buff,
+                                                 mp->ssl_state.keep_buff_len);
+        if (pres.nbytes > 0 && pres.nbytes < mp->ssl_state.keep_buff_size) {
+            //TODO: optimize to use a ring buffer
+            memmove(mp->ssl_state.keep_buff, 
+                    mp->ssl_state.keep_buff + pres.nbytes,
+                    mp->ssl_state.keep_buff_len - pres.nbytes);
+        }
+        mp->ssl_state.keep_buff_len -= pres.nbytes;
+        if (mp->ssl_state.keep_buff_len != 0) {
+            return pres;
+        }
+        if (pres.nbytes == 0 || pres.flags) {
+            return pres;
+        }
+        total_sent += pres.nbytes;
+    }
+    exb_assert_h(mp->ssl_state.keep_buff || !mp->ssl_state.keep_buff_size, "");
+    if (mp->ssl_state.keep_buff && mp->ssl_state.keep_buff_size < tmp_buff_sz) {
+        tmp_buff_sz = mp->ssl_state.keep_buff_size;
+    }
+    int nread = BIO_read(wbio, tmp_buff, tmp_buff_sz);
+    if (nread <= 0 && !BIO_should_retry(wbio)) {
+        return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
+    }
+    struct exb_io_result sres = try_send(mp->socket_fd, tmp_buff, nread);
+    if (EXB_UNLIKELY(sres.nbytes < nread)) {
+        if (!mp->ssl_state.keep_buff) {
+            size_t keep_buff_sz = 0;
+            exb_assert_h(!!mp->eloop, "");
+            struct exb_error error = exb_eloop_alloc_buffer(mp->eloop, EXB_SSL_RW_BUFFER_SIZE, &mp->ssl_state.keep_buff, &keep_buff_sz);
+            if (error.error_code) {
+                return exb_make_io_result(0, EXB_IO_FLAG_CONN_FATAL);
+            }
+            mp->ssl_state.keep_buff_size = keep_buff_sz;
+        }
+        if (EXB_UNLIKELY(sres.nbytes > (mp->ssl_state.keep_buff_size - mp->ssl_state.keep_buff_len))) {
+            return exb_make_io_result(0, EXB_IO_FLAG_CONN_FATAL);
+        }
+        memcpy(mp->ssl_state.keep_buff + mp->ssl_state.keep_buff_len,
+              tmp_buff + sres.nbytes,
+              nread - sres.nbytes);
+        mp->ssl_state.keep_buff_len += nread - sres.nbytes;
+    }
+    total_sent += sres.nbytes;
+    return exb_make_io_result(total_sent, sres.flags);
+}
+
+struct exb_io_result read_to_rbio_or_fail(struct exb_ssl_module *ssl_mod,
+                                             struct exb_http_multiplexer *mp,
+                                             BIO *rbio,
+                                             char *tmp_buff,
+                                             size_t tmp_buff_sz) 
+{
+    ssize_t nbytes = recv(mp->socket_fd, tmp_buff, tmp_buff_sz, MSG_DONTWAIT);
+    
+    if (nbytes < 0) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            return exb_make_io_result(0, 0);
+        }
+        else {
+            return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR);
+        }
+    }
+    else if (nbytes == 0) {
+        return exb_make_io_result(0, EXB_IO_FLAG_CLIENT_CLOSED);
+    }
+
+    int n = BIO_write(rbio, tmp_buff, nbytes);
+    if (n != nbytes) {
+        // should do: if (n <= 0)  if (!BIO_sock_should_retry())
+        // but in our case, we have no where to store the new bytes
+        return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
+    }
+    return exb_make_io_result(nbytes, 0);
+}
+
+struct exb_io_result exb_ssl_connection_read(struct exb_http_server_module *mod,
+                                             struct exb_http_multiplexer *mp,
+                                             char *output_buffer,
+                                             size_t output_buffer_max)
+{
+    struct exb_ssl_module *ssl_mod = (struct exb_ssl_module *) mod;
+    BIO *rbio = mp->ssl_state.rbio;
+    BIO *wbio = mp->ssl_state.wbio;
+    SSL *ssl  = mp->ssl_state.ssl_obj;
+    exb_assert_h(ssl_mod && rbio && wbio && ssl, "");
+    char buff[EXB_SSL_RW_BUFFER_SIZE];
+
+    struct exb_io_result rres = read_to_rbio_or_fail(ssl_mod, mp, rbio, buff, sizeof buff);
+    if (rres.nbytes == 0 || rres.flags != 0) {
+        return exb_make_io_result(0, rres.flags);
+    }
+
+    if (!(mp->ssl_state.flags & EXB_SSL_STATE_OPENSSL_ACCEPTED)) {
+        for (int i=0; i<3; i++) {
+            int rv = SSL_accept(ssl);
+            if (rv == 1) {
+                mp->ssl_state.flags |= EXB_SSL_STATE_OPENSSL_ACCEPTED;
+                break; /*success*/
+            }
+            int ssl_err = SSL_get_error(ssl, rv);
+            if (ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE) {
+                struct exb_io_result sres = send_from_wbio_or_keep(ssl_mod,
+                                                                    mp,
+                                                                    wbio,
+                                                                    buff,
+                                                                    sizeof buff);
+                if (sres.flags)
+                    return exb_make_io_result(0, sres.flags); //0 because it's not plaintext bytes
+                else if (!sres.nbytes)
+                    break;
+                sres = read_to_rbio_or_fail(ssl_mod, mp, rbio, buff, sizeof buff);
+                if (sres.flags)
+                    return exb_make_io_result(0, sres.flags); //0 because it's not plaintext bytes
+                else if (!sres.nbytes)
+                    break;
+            }
+            else {
+                return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
+            }
+        }
+    }
+    int nread = SSL_read(mp->ssl_state.ssl_obj, output_buffer, output_buffer_max);
+    if (nread <= 0) {
+        int ssl_err_2 = SSL_get_error(ssl, nread);
+        if (ssl_err_2 != SSL_ERROR_WANT_WRITE && ssl_err_2 != SSL_ERROR_WANT_READ) {
+            return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
+        }
+        return exb_make_io_result(0, 0);
+    }
+    return exb_make_io_result(nread, 0);
+}
+struct exb_io_result exb_ssl_connection_write(struct exb_http_server_module *mod,
+                                              struct exb_http_multiplexer *mp,
+                                              char *buffer,
+                                              size_t buffer_len)
+{
+    struct exb_ssl_module *ssl_mod = (struct exb_ssl_module *) mod;
+    BIO *rbio = mp->ssl_state.rbio;
+    BIO *wbio = mp->ssl_state.wbio;
+    SSL *ssl  = mp->ssl_state.ssl_obj;
+    exb_assert_h(ssl_mod && rbio && wbio && ssl, "");
+
+    char buff[EXB_SSL_RW_BUFFER_SIZE];
+
+    int nbytes = SSL_write(ssl, buffer, buffer_len);
+    if (nbytes <= 0) {
+        int ssl_error = SSL_get_error(ssl, nbytes);
+        if (ssl_error != SSL_ERROR_WANT_READ && ssl_error != SSL_ERROR_WANT_WRITE) {
+            return exb_make_io_result(0, EXB_IO_ERR_SSL | EXB_IO_FLAG_CONN_FATAL);
+        }
+    }
+    
+    
+    struct exb_io_result sres = send_from_wbio_or_keep(ssl_mod,
+                                                       mp,
+                                                       wbio,
+                                                       buff,
+                                                       sizeof buff);
+    return exb_make_io_result(nbytes, sres.flags);
+}
+
+
+
 int exb_ssl_init(struct exb *exb,
                  struct exb_server *server,
                  char *module_args,
@@ -265,13 +529,25 @@ int exb_ssl_init(struct exb *exb,
     struct exb_ssl_module *mod = exb_malloc(exb, sizeof(struct exb_ssl_module));
     if (!mod)
         return EXB_NOMEM_ERR;
-    mod->exb_ref = exb;
+    mod->exb_ref    = exb;
+    mod->server_ref = server;
     mod->head.destroy = exb_ssl_destroy;
     int rv = exb_ssl_openssl_init(exb, server, mod);
     if (rv != EXB_OK) {
         exb_ssl_destroy((struct exb_http_server_module *)mod, exb);
         return rv;
-    }    
+    }
+    struct exb_ssl_interface ssl_if = { .module = (struct exb_http_server_module *)mod,
+                                        .ssl_connection_init = exb_ssl_connection_init,
+                                        .ssl_connection_read = exb_ssl_connection_read,
+                                        .ssl_connection_write = exb_ssl_connection_write,
+                                        .ssl_connection_deinit = exb_ssl_connection_deinit 
+                                    };
+    rv = exb_server_set_ssl_interface(server, &ssl_if);
+    if (rv != EXB_OK) {
+        exb_ssl_destroy((struct exb_http_server_module *)mod, exb);
+        return rv;
+    }
     *module_out = (struct exb_http_server_module*)mod;
     return EXB_OK;
 }

@@ -48,9 +48,9 @@ struct exb_request_sink_fptr {
 struct exb_request_sink {
     enum exb_request_sink_type stype;
     union {
-        struct exb_request_sink_filesystem fs;
-        struct exb_request_sink_fptr fptr;
-        int reference_to_sink_id;
+        struct exb_request_sink_filesystem fs; /*EXB_REQ_SINK_FILESYSTEM*/
+        struct exb_request_sink_fptr fptr; /*EXB_REQ_SINK_FPTR*/
+        int reference_to_sink_id; /*EXB_REQ_SINK_INTERMEDIATE_REF_TO_SINK*/
     } u;
 };
 

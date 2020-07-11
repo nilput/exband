@@ -7,6 +7,11 @@
 #include "exb_assert.h"
 #include "exb_errors.h"
 #include "exb_config.h"
+
+
+#define EXB_LIKELY(c) (c)
+#define EXB_UNLIKELY(c) (c)
+
 #ifdef TRACK_RQSTATE_EVENTS
     #define RQSTATE_EVENT(f, fmt, ...) fprintf(f, "[%.6f]" fmt, exb_time(), __VA_ARGS__)
 #else

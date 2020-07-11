@@ -496,7 +496,7 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
 }
 
 //TODO: optimize to recycle or use custom allocator
-static struct exb_error exb_eloop_alloc_buffer(struct exb_eloop *eloop, size_t size, char **buff_out, int *cap_out) {
+static struct exb_error exb_eloop_alloc_buffer(struct exb_eloop *eloop, size_t size, char **buff_out, size_t *cap_out) {
     void *p;
     size_t cap;
     if (exb_buffer_recycle_list_pop(eloop->exb, &eloop->buff_cyc, size, &p, &cap) == EXB_OK) {

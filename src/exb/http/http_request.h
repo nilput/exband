@@ -60,7 +60,9 @@ static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_
     rqstate->headers.h_host_idx = -1;
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
-    struct exb_error err = exb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+    size_t buff_cap = 0;
+    struct exb_error err = exb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &buff_cap);
+    rqstate->input_buffer_cap = buff_cap;
     if (err.error_code) {
         return err.error_code;
     }

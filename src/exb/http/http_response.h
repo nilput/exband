@@ -36,10 +36,12 @@ static int exb_response_state_init(struct exb_response_state *resp_state, struct
     resp_state->body_begin_index = HTTP_HEADERS_BUFFER_INIT_SIZE;
     resp_state->body_len = 0;
 
+    size_t buff_sz = 0;
     struct exb_error err = exb_eloop_alloc_buffer(eloop,
                                 HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
                                 &resp_state->output_buffer,
-                                &resp_state->output_buffer_cap);
+                                &buff_sz);
+    resp_state->output_buffer_cap = buff_sz;
     exb_assert_h(resp_state->body_begin_index < resp_state->output_buffer_cap, "");
     if (err.error_code) {
         return err.error_code;
@@ -151,7 +153,7 @@ static int exb_response_prepare_headers(struct exb_request_state *rqstate, struc
     if ((rsp->headers_bytes + HTTP_STATUS_MAX_SZ) > rsp->body_begin_index) {
         //this is unlikely to happen
         char *new_buff;
-        int new_buff_cap;
+        size_t new_buff_cap;
         struct exb_error err = exb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
         if (err.error_code) {
             return err.error_code;

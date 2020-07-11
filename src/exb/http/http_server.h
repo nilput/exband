@@ -38,6 +38,7 @@ struct exb_request_state *exb_server_current_reading_rqstate(struct exb_server *
 struct exb_request_state *exb_server_current_writing_rqstate(struct exb_server *server, int socketfd);
 
 struct exb_eloop * exb_server_get_any_eloop(struct exb_server *s);
+struct exb_eloop * exb_server_get_eloop(struct exb_server *s, int eloop_id);
 
 struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, struct exb_eloop *eloop, int socket_fd);
 //the eloop it was associated with
@@ -47,6 +48,11 @@ struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, stru
 /*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
 
 struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config);
+
+
+//interface is copied, this should be called by the SSL module
+int exb_server_set_ssl_interface(struct exb_server *s, struct exb_ssl_interface *ssl_if);
+
 struct exb_error exb_server_listen(struct exb_server *s);
 
 void exb_server_cancel_requests(struct exb_server *s, int socket_fd);
@@ -56,7 +62,7 @@ int  exb_server_set_request_handler(struct exb_server *s, void *handler_state, e
 void exb_server_deinit(struct exb_server *s);
 
 struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, int socket_fd);
-int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, int socket_fd, struct sockaddr_in clientname);
+int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, int socket_fd, bool is_ssl, struct sockaddr_in clientname);
 /*for gluing the listeners*/
 void exb_server_on_read_available(struct exb_server *s, struct exb_http_multiplexer *m);
 void exb_server_on_write_available(struct exb_server *s, struct exb_http_multiplexer *m);

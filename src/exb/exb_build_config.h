@@ -20,6 +20,11 @@
 //#undef EXB_USE_OPENSSL_ECDH
 #define EXB_SNI_MAX_DOMAINS 8
 
+//This will be allocated on the stack
+//and also used for small buffers that are kept in case we get bytes out of wbio
+// and we have nowhere to store them
+#define EXB_SSL_RW_BUFFER_SIZE 8192
+
 
 #define EXB_MAX_DOMAINS     8
 
