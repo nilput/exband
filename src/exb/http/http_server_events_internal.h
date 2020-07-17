@@ -252,22 +252,8 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
     }
     
     if (rqstate->istate == EXB_HTTP_I_ST_DONE) {
-        
+
         exb_assert_h(rqstate->pstate == EXB_HTTP_P_ST_DONE, "");
-
-
-        if (rqstate->is_persistent) {
-            err = exb_request_fork(rqstate);
-            if (err.error_code != EXB_OK) {
-                exb_request_handle_socket_error(rqstate);
-                goto ret;
-            }
-        }
-        else {
-            struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-            mp->currently_reading = NULL;
-            mp->wants_read = 0;
-        }
 
         if (exb_request_has_body(rqstate)) {
             if (rqstate->body_handling == EXB_HTTP_B_BUFFER) {
@@ -285,6 +271,20 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
         else {
             rqstate->next_request_cursor = rqstate->body_s.index;
         }
+
+        if (rqstate->is_persistent) {
+            err = exb_request_fork(rqstate);
+            if (err.error_code != EXB_OK) {
+                exb_request_handle_socket_error(rqstate);
+                goto ret;
+            }
+        }
+        else {
+            struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+            mp->currently_reading = NULL;
+            mp->wants_read = 0;
+        }
+
         exb_request_on_request_done(rqstate);
     }
    
@@ -777,10 +777,11 @@ static void on_http_ssl_send_sync(struct exb_event ev) {
         
         current_written_bytes += sres.nbytes;
     }
+    mark_send_scheduled(rqstate, 0);
     struct exb_error err = exb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
     exb_assert_h(mp->next_response == rqstate, "");
     exb_assert_h(!mp->wants_write, "");
-    mark_send_scheduled(rqstate, 0);
+    
     if (err.error_code != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
         return;
