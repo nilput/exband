@@ -80,7 +80,7 @@ static void exb_request_resolve_and_call_handler(struct exb_request_state *rqsta
 }
 
 static void exb_request_lifetime_checks(struct exb_http_multiplexer *mp, struct exb_request_state *rqstate) {
-    if (!rqstate->is_read_scheduled && !rqstate->is_send_scheduled ) {
+    if (!rqstate->is_read_scheduled && !rqstate->is_send_scheduled && mp->currently_reading != rqstate) {
         //FIXME: if cancelled, are we sure no one else has a reference to it?
         if ((rqstate->istate == EXB_HTTP_I_ST_DONE && rqstate->resp.state == EXB_HTTP_R_ST_DONE) || rqstate->is_cancelled) {
             if (!rqstate->is_cancelled)
@@ -777,10 +777,10 @@ static void on_http_ssl_send_sync(struct exb_event ev) {
         
         current_written_bytes += sres.nbytes;
     }
+    exb_assert_h(mp->next_response == rqstate, "");
     mark_send_scheduled(rqstate, 0);
     struct exb_error err = exb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
-    exb_assert_h(mp->next_response == rqstate, "");
-    exb_assert_h(!mp->wants_write, "");
+    
     
     if (err.error_code != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
