@@ -24,3 +24,4 @@ doc/build_time.txt
 /exb
 /exb_static
 obj/
+config/rc.md.json

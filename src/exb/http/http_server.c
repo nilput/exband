@@ -351,7 +351,7 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
     
     mp->currently_reading = rqstate;
     mp->wants_read = 1;
-    exb_http_multiplexer_queue_response(mp, rqstate)
+    exb_http_multiplexer_queue_response(mp, rqstate);
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because connection was just accepted\n", rqstate);
     
     return EXB_OK;

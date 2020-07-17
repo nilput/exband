@@ -26,7 +26,7 @@ all: $(OPTIONAL) exb exb_static obj/libexb.so
 
 -include $(DEP)
 
-debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable #-DTRACK_RQSTATE_EVENTS
+debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DTRACK_RQSTATE_EVENTS
 debug: all
 
 trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 

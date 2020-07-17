@@ -1,8 +1,8 @@
 /*
 This is a builtin module, it differs from other dynamically loaded modules in that it
 is statically linked, and is a first class citizen in terms of configuration and loading
-
 */
+
 #include "../../exb.h"
 #include "../../http/http_server_module.h"
 #include "../../http/http_server.h"
@@ -380,6 +380,9 @@ static struct exb_io_result send_from_wbio_or_keep(struct exb_ssl_module *ssl_mo
     if (nread <= 0 && !BIO_should_retry(wbio)) {
         return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
     }
+    else if (nread <= 0) {
+        return exb_make_io_result(0, 0);
+    }
     struct exb_io_result sres = try_send(mp->socket_fd, tmp_buff, nread);
     if (EXB_UNLIKELY(sres.nbytes < nread)) {
         if (!mp->ssl_state.keep_buff) {
@@ -444,15 +447,17 @@ struct exb_io_result exb_ssl_connection_read(struct exb_http_server_module *mod,
     exb_assert_h(ssl_mod && rbio && wbio && ssl, "");
     char buff[EXB_SSL_RW_BUFFER_SIZE];
 
+
     struct exb_io_result rres = read_to_rbio_or_fail(ssl_mod, mp, rbio, buff, sizeof buff);
-    if (rres.nbytes == 0 || rres.flags != 0) {
+    if (rres.flags != 0) {
         return exb_make_io_result(0, rres.flags);
     }
-
+    fprintf(stderr, "read_to_rbio read %d bytes\n", (int)rres.nbytes);
     if (!(mp->ssl_state.flags & EXB_SSL_STATE_OPENSSL_ACCEPTED)) {
         for (int i=0; i<3; i++) {
             int rv = SSL_accept(ssl);
             if (rv == 1) {
+                fprintf(stderr, "SSL_accept success on socket %d\n", mp->socket_fd);
                 mp->ssl_state.flags |= EXB_SSL_STATE_OPENSSL_ACCEPTED;
                 break; /*success*/
             }
@@ -463,11 +468,11 @@ struct exb_io_result exb_ssl_connection_read(struct exb_http_server_module *mod,
                                                                     wbio,
                                                                     buff,
                                                                     sizeof buff);
+                fprintf(stderr, "send_from_Wbio wrote %d bytes\n", (int)sres.nbytes);
                 if (sres.flags)
                     return exb_make_io_result(0, sres.flags); //0 because it's not plaintext bytes
-                else if (!sres.nbytes)
-                    break;
                 sres = read_to_rbio_or_fail(ssl_mod, mp, rbio, buff, sizeof buff);
+                fprintf(stderr, "read_to_rbio read %d bytes\n", (int)sres.nbytes);
                 if (sres.flags)
                     return exb_make_io_result(0, sres.flags); //0 because it's not plaintext bytes
                 else if (!sres.nbytes)
@@ -477,6 +482,18 @@ struct exb_io_result exb_ssl_connection_read(struct exb_http_server_module *mod,
                 return exb_make_io_result(0, EXB_IO_FLAG_IO_ERROR | EXB_IO_FLAG_CONN_FATAL);
             }
         }
+        rres = send_from_wbio_or_keep(ssl_mod,
+                                      mp,
+                                      wbio,
+                                      buff,
+                                      sizeof buff);
+        fprintf(stderr, "send_from_Wbio wrote %d bytes\n", (int)rres.nbytes);
+        if (rres.flags)
+            return exb_make_io_result(0, rres.flags); //0 because it's not plaintext bytes
+        rres = read_to_rbio_or_fail(ssl_mod, mp, rbio, buff, sizeof buff);
+        fprintf(stderr, "read_to_rbio read %d bytes\n", (int)rres.nbytes);
+        if (rres.flags)
+            return exb_make_io_result(0, rres.flags); //0 because it's not plaintext bytes
     }
     int nread = SSL_read(mp->ssl_state.ssl_obj, output_buffer, output_buffer_max);
     if (nread <= 0) {
@@ -486,6 +503,7 @@ struct exb_io_result exb_ssl_connection_read(struct exb_http_server_module *mod,
         }
         return exb_make_io_result(0, 0);
     }
+    fprintf(stderr, "SSL_read read %d bytes\n", (int)nread);
     return exb_make_io_result(nread, 0);
 }
 struct exb_io_result exb_ssl_connection_write(struct exb_http_server_module *mod,

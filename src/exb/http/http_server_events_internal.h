@@ -147,7 +147,7 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
     exb_assert_h(mp && mp->state == EXB_MP_ACTIVE, "");
     
     struct exb_request_state *forked_rqstate = exb_server_new_rqstate(s, mp->eloop, rqstate->socket_fd);
-    exb_assert_h(mp->currently_reading == rqstate, "Tried to fork a request that is not the current one reading on socket");
+    //exb_assert_h(mp->currently_reading == rqstate, "Tried to fork a request that is not the current one reading on socket");
 
     //Copy mistakenly read bytes from older request to the new one
 
@@ -255,22 +255,6 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
         
         exb_assert_h(rqstate->pstate == EXB_HTTP_P_ST_DONE, "");
 
-            if (exb_request_has_body(rqstate)) {
-                if (rqstate->body_handling == EXB_HTTP_B_BUFFER) {
-                    exb_request_call_handler(rqstate, EXB_HTTP_HANDLER_BODY);
-                }
-                else if (rqstate->body_handling != EXB_HTTP_B_DISCARD) {
-                    exb_assert_h(0, "");
-                }
-                    
-                if (!rqstate->is_chunked) {
-                    rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length; 
-                    //otherwise rqstate->next_request_cursor is set during chunked parsing
-                }
-            }
-            else {
-                rqstate->next_request_cursor = rqstate->body_s.index;
-            }
 
         if (rqstate->is_persistent) {
             err = exb_request_fork(rqstate);
@@ -283,6 +267,23 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
             struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
             mp->currently_reading = NULL;
             mp->wants_read = 0;
+        }
+
+        if (exb_request_has_body(rqstate)) {
+            if (rqstate->body_handling == EXB_HTTP_B_BUFFER) {
+                exb_request_call_handler(rqstate, EXB_HTTP_HANDLER_BODY);
+            }
+            else if (rqstate->body_handling != EXB_HTTP_B_DISCARD) {
+                exb_assert_h(0, "");
+            }
+                
+            if (!rqstate->is_chunked) {
+                rqstate->next_request_cursor = rqstate->body_s.index + rqstate->content_length; 
+                //otherwise rqstate->next_request_cursor is set during chunked parsing
+            }
+        }
+        else {
+            rqstate->next_request_cursor = rqstate->body_s.index;
         }
         exb_request_on_request_done(rqstate);
     }
