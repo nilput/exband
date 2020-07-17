@@ -5,14 +5,14 @@
 #include "../exb_log.h"
 #include <stdbool.h>
 
-#ifdef EXB_WITH_SSL
-    #include "../mods/ssl/exb_ssl_config_entry.h"
-#endif
+#include "exb_ssl_config_entry.h"
+
 //This will be treated as an opaque pointer, it will be null in case SSL is not used
 struct exb_ssl_config_entry *ssl_config;
 
 struct exb_http_domain_config {
     int http_listen_port; //0 means no HTTP listen
+    struct exb_str http_listen_ip;
     int rules_begin; //an index in request_rules
     int rules_end;  //an exclusive end index in request_rules
     struct exb_str server_name;
@@ -70,6 +70,7 @@ static struct exb_http_server_config exb_http_server_config_default(struct exb *
 static int exb_http_server_config_add_domain_ex(struct exb *exb_ref,
                                                 struct exb_http_server_config *conf,
                                                 int http_listen_port,
+                                                struct exb_str *http_listen_ip,
                                                 int is_default,
                                                 const char *server_name,
                                                 struct exb_ssl_config_entry *ssl_config)
@@ -79,16 +80,21 @@ static int exb_http_server_config_add_domain_ex(struct exb *exb_ref,
     }
     int rv = EXB_OK;
     struct exb_http_domain_config *domain = &conf->domains[conf->n_domains];
+    exb_str_init_empty(&domain->server_name);
+    exb_str_init_empty(&domain->http_listen_ip);
     if (server_name) {
         rv = exb_str_init_strcpy(exb_ref, &domain->server_name, server_name);
         if (rv != EXB_OK) {
             return rv;
         }
     }
-    else {
-        exb_str_init_empty(&domain->server_name);
+    if (http_listen_ip) {
+        rv = exb_str_init_copy(exb_ref, &domain->http_listen_ip, http_listen_ip);
+        if (rv != EXB_OK) {
+            exb_str_deinit(exb_ref, &domain->server_name);
+            return rv;
+        }
     }
-    
     #ifdef EXB_WITH_SSL
         exb_ssl_config_entry_init(exb_ref, &domain->ssl_config);
         if (ssl_config) {
@@ -109,12 +115,16 @@ static int exb_http_server_config_add_domain_ex(struct exb *exb_ref,
             if (rv == EXB_OK) {
                 rv = exb_str_copy(exb_ref, &ssl_dest->ssl_protocols, &ssl_config->ssl_protocols);
             }
+            if (rv == EXB_OK) {
+                rv = exb_str_copy(exb_ref, &ssl_dest->listen_ip, &ssl_config->listen_ip);
+            }
             if (rv == EXB_OK && server_name) {
                 //This is just a copy, to be accessed by the SSL module
                 rv = exb_str_strcpy(exb_ref, &ssl_dest->server_name, server_name);
             }
             if (rv != EXB_OK) {
                 exb_str_deinit(exb_ref, &domain->server_name);
+                exb_str_deinit(exb_ref, &domain->http_listen_ip);
                 exb_ssl_config_entry_deinit(exb_ref, ssl_dest);
                 return rv;
             }
@@ -175,7 +185,7 @@ static int exb_http_server_config_add_domain(struct exb *exb_ref,
                                              int http_listen_port,
                                              int is_default)
 {
-    return exb_http_server_config_add_domain_ex(exb_ref, conf, http_listen_port, is_default, NULL, NULL);
+    return exb_http_server_config_add_domain_ex(exb_ref, conf, http_listen_port, NULL, is_default, NULL, NULL);
 }
 
 static int exb_http_server_config_remove_rule(struct exb *exb_ref,

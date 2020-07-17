@@ -31,28 +31,40 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-static struct exb_error make_socket(uint16_t port, int *out)
+static struct exb_error make_socket(char *bind_ip, uint16_t port, int *out)
 {
     int sock = socket(PF_INET, SOCK_STREAM, 0);
-    struct exb_error error = {0};
     if (sock < 0) {
-        error = exb_make_error(EXB_SOCKET_ERR);
-        return error;
+        return exb_make_error(EXB_SOCKET_ERR);
     }
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
-        ;//handle err
 
     struct sockaddr_in name;
     name.sin_family = AF_INET;
     name.sin_port = htons(port);
     name.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
-        error = exb_make_error(EXB_BIND_ERR);
-        return error;
+
+    //ipv4 only
+    if (bind_ip != NULL) {
+        if (inet_pton(AF_INET, bind_ip, &name.sin_addr.s_addr) != 1) {
+            return exb_make_error(EXB_INVALID_FORMAT);
+        }
     }
-    fcntl(sock, F_SETFL, O_NONBLOCK); /*make socket non-blocking*/
+
+    //Setting reuse addr has two effects:
+    //1: allow binding quickly during server restarts (useful for development)
+    //2: allows binding even if a socket with 0.0.0.0:80 is bound
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
+        ;//No op (it's okay if this fails)
+
+    if (bind(sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
+        return exb_make_error(EXB_BIND_ERR);
+    }
+
+    //Make socket non-blocking
+    fcntl(sock, F_SETFL, O_NONBLOCK); 
+
     *out = sock;
-    return error;
+    return exb_make_error(EXB_OK);
 }
 
 static int default_handler(void *handler_state, struct exb_request_state *rqstate, int reason) {
@@ -87,12 +99,19 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         bool already_defined = false;
         for (int k=0; k<2; k++) {
             int port = 0;
+            char *bind_ip = NULL;
             if (k == 0 && domain->http_listen_port) {
                 port = domain->http_listen_port;
+                if (domain->http_listen_ip.len)
+                    bind_ip = domain->http_listen_ip.str;
             }
+#ifdef EXB_WITH_SSL
             else if (k == 1 && domain->ssl_config.listen_port) {
                 port = domain->ssl_config.listen_port;
+                if (domain->ssl_config.listen_ip.len)
+                    bind_ip = domain->ssl_config.listen_ip.str;
             }
+#endif
             else {
                 continue;
             }
@@ -112,7 +131,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
             if (already_defined)
                 continue;
             int socket_fd = -1;
-            err = make_socket(port, &socket_fd);
+            err = make_socket(bind_ip, port, &socket_fd);
             if (err.error_code) {
                 err = exb_prop_error(err);
                 goto err0;
@@ -132,11 +151,8 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
                 }
             }
             s->n_listen_sockets++;
-        }
-        
-        
+        }    
     }
-    
     
     int rv = EXB_OK;
     for (int i=0; i<s->elist->nloops; i++) {
@@ -156,7 +172,6 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         goto err2;
     }
     
-
     for (int i=0; i<config.n_modules; i++) {
         s->loaded_modules[s->n_loaded_modules].missing_symbols = config.module_specs[i].import_list.len;
         int error = exb_http_server_module_load(exb_ref,
@@ -167,7 +182,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
                                                 &config.module_specs[i].import_list,
                                                 &s->loaded_modules[s->n_loaded_modules].module,
                                                 &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
-        if (error != EXB_OK) {
+        if (error != EXB_OK || s->loaded_modules[s->n_loaded_modules].missing_symbols > 0) {
             err = exb_make_error(EXB_MODULE_LOAD_ERROR);
             goto err4;
         }
@@ -475,6 +490,9 @@ void exb_http_server_module_on_load_resolve_handler(struct exb *exb_ref,
         server->config.request_sinks[sink_id].u.fptr.func = func;
         server->config.request_sinks[sink_id].u.fptr.rqh_state = module;
         server->loaded_modules[module_id].missing_symbols--;
+    }
+    else {
+        exb_log_error(exb_ref, "Resolving \"%s\" in module_id: %d, failed, symbol not found\n", handler_name, module_id);
     }
 }
 

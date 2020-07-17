@@ -1,12 +1,15 @@
-
 {
     "http" : {
-        "servers" : [
+        "listen" : "127.0.0.1:8080",
+        "rules" : [
             {
-                "listen" : "8080"
-            },
-            {
-                "listen" : "8086"
+                
+                "type": "prefix",
+                "prefix": "/ww",
+                "destination": {
+                    "type": "handler",
+                    "name": "basic_handle_request"
+                }
             }
         ]
     },
@@ -24,7 +27,8 @@
                 "db_path" : "./db.sqlite3",
                 "db_reinit" : 0,
                 "site_link" : "http://127.0.0.1:8080"
-            }
+            },
+            "import" : "basic_handle_request"
         }
     ]
 }

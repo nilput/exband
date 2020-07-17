@@ -8,7 +8,7 @@ is statically linked, and is a first class citizen in terms of configuration and
 #include "../../http/http_server.h"
 #include "../../http/http_request.h"
 #include "../../exb_build_config.h"
-#include "exb_ssl_config_entry.h"
+#include "../../http/exb_ssl_config_entry.h"
 #include "exb_ssl.h"
 
 //read/recv/write

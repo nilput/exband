@@ -9,6 +9,7 @@
 enum EXB_LOG_LEVEL {
     EXB_LOG_NONE,
     EXB_LOG_ERROR,
+    EXB_LOG_WARN,
     EXB_LOG_INFO,
     EXB_LOG_DEBUG,
 };
@@ -36,7 +37,7 @@ static int exb_logger_logvf(struct exb *exb, int level, const char *fmt, va_list
         va_end(ap);
     }
     str.len = needed;
-    fprintf(stderr, "%s", str.str);
+    fprintf(stderr, "%s\n", str.str);
     exb_str_deinit(exb, &str);
     return EXB_OK;
 }
@@ -60,6 +61,13 @@ static int exb_log_error(struct exb *exb, const char *fmt, ...)  {
     va_list ap;
     va_start(ap, fmt);
     int rv = exb_logger_logvf(exb, EXB_LOG_ERROR, fmt, ap);
+    va_end(ap);
+    return rv;
+}
+static int exb_log_warning(struct exb *exb, const char *fmt, ...)  {
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = exb_logger_logvf(exb, EXB_LOG_WARN, fmt, ap);
     va_end(ap);
     return rv;
 }

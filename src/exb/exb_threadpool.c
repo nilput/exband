@@ -54,7 +54,6 @@ int exb_hw_thread_sched_important() {
     if (prio == -1 && errno != 0)
         return EXB_THREAD_ERROR;
     int new_prio = prio;
-    fprintf(stderr, "im PRIO: %d -> %d\n", prio, new_prio);
     setpriority(PRIO_PROCESS, 0, new_prio);
     return EXB_OK;
 }

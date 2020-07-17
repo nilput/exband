@@ -1,12 +1,15 @@
-
 {
     "http" : {
-        "servers" : [
+        "listen" : "8080",
+        "rules" : [
             {
-                "listen" : "8080"
-            },
-            {
-                "listen" : "8086"
+                
+                "type": "prefix",
+                "prefix": "/",
+                "destination": {
+                    "type": "handler",
+                    "name": "handle_request"
+                }
             }
         ]
     },
@@ -19,12 +22,13 @@
     },
     "modules": [
         {
-            "path": "examples/basic/basic.so:handler",
+            "path": "examples/pastebin/pastebin.so:handler",
             "args" : {
                 "db_path" : "./db.sqlite3",
                 "db_reinit" : 0,
                 "site_link" : "http://127.0.0.1:8080"
-            }
+            },
+            "import" : "handle_request"
         }
     ]
 }

@@ -13,7 +13,7 @@
 #define EXB_SERVER_MAX_RULES   32
 #define EXB_HTTP_MIN_DELAY 0//ms
 
-#define EXB_WITH_SSL        1
+//#define EXB_WITH_SSL        0
 #define EXB_WITH_OPENSSL_DH
 //#undef EXB_WITH_OPENSSL_DH
 #define EXB_USE_OPENSSL_ECDH

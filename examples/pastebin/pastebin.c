@@ -23,7 +23,7 @@ static void form(struct exb_request_state *rqstate) {
                                                     "</head>"
                                                     "<body>");
     exb_response_set_header(rqstate, &key, &value);
-    exb_response_append_body_cstr(rqstate, "<p>POWERED BY EXBIN HTTP SERVER</p> <br>");
+    exb_response_append_body_cstr(rqstate, "<p>POWERED BY EXBAND HTTP SERVER</p> <br>");
     exb_response_append_body_cstr(rqstate, "<form action=\"/\" method=\"POST\">"
                                                     "<textarea name=\"f\" rows=\"20\" cols=\"80\" required=""></textarea> <br>"
                                                     "<button> PASTE </button> <br>"
@@ -254,7 +254,7 @@ static struct exb_str get_post_param(struct exb *exb_ref, struct exb_request_sta
     return str;
 }
 
-static int handle_request(struct exb_http_server_module *module, struct exb_request_state *rqstate, int reason) {
+int handle_request(struct exb_http_server_module *module, struct exb_request_state *rqstate, int reason) {
     struct pastebin_module *mod = (struct pastebin_module *) module;
 
     struct exb_str path;
@@ -395,10 +395,6 @@ int handler_init(struct exb *exb, struct exb_server *server, char *module_args, 
         return 1;
     }
 
-    if (exb_server_set_module_request_handler(server, (struct exb_http_server_module*)mod, handle_request) != EXB_OK) {
-        destroy_module((struct exb_http_server_module*)mod, exb);
-        return EXB_MODULE_LOAD_ERROR;
-    }
     *module_out = (struct exb_http_server_module*)mod;
     return EXB_OK;
 }

@@ -71,4 +71,5 @@ exb_static: src/exb/exb_main.c $(EXB_OBJ)
 clean: 
 	@rm -f exb perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
+	@find examples/ -name '*.so' -exec 'rm' '{}' ';'
 .PHONY: clean all examples

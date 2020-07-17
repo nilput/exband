@@ -138,6 +138,37 @@ int json_get_as_boolean(char *json_str, jsmntok_t *t, int *out) {
     }
     return EXB_INVALID_ARG_ERR;
 }
+
+/*
+valid input examples:
+port like:        "80"
+ip and port like: "127.0.0.1:80"
+ip_out is expected to be uninitialized, it will hold a copy, the caller must free it after use
+*/
+
+int split_ip_port_pair(struct exb *exb_ref, char *ip_port, int *port_out, struct exb_str *ip_out)
+{
+    exb_str_init_empty(ip_out);
+    char *colon = strchr(ip_port, ':');
+    while (colon && strchr(colon + 1, ':'))
+        colon = strchr(colon + 1, ':');
+    if (colon) {
+        if ((colon - ip_port) > 0) {
+            int rv = exb_str_strlcpy(exb_ref, ip_out, ip_port, colon - ip_port);
+            if (rv != EXB_OK)
+                return rv;
+        }
+        *port_out = atoi(colon + 1);
+    }
+    else {
+        *port_out = atoi(ip_port);
+    }
+    if (!*port_out) {
+        return EXB_INVALID_FORMAT;
+    }
+    return EXB_OK;
+}
+
 int dump(char *json_str, jsmntok_t *t, int count, int indent) {
     int i, j, k;
     jsmntok_t *key;
@@ -328,6 +359,10 @@ static int load_json_servers(struct exb *exb_ref,
                              struct exb_json_parser_state *ep,
                              jsmntok_t *parent,
                              struct exb_http_server_config *http_server_config_out);
+static int load_json_server(struct exb *exb_ref,
+                             struct exb_json_parser_state *ep,
+                             jsmntok_t *domain_obj,
+                             struct exb_http_server_config *http_server_config_out);
 
 
 /*in case of failure, currently the only good course of action is to destroy exb and start it again*/
@@ -344,9 +379,8 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     }
     fclose(f);
     f = NULL;
-    
+
     int rv = JSMN_ERROR_NOMEM;
-    bool has_toplevel_listen = false;
     while (rv == JSMN_ERROR_NOMEM) {
         ep.ntokens = ep.ntokens == 0 ? 8 : ep.ntokens * 2;
         ep.tokens = exb_realloc_f(exb_ref, ep.tokens, sizeof(jsmntok_t) * ep.ntokens);
@@ -372,14 +406,6 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         config_out->tp_threads = integer;
     }
-    obj = json_get(ep.full_file, ep.tokens, "http.listen");
-    if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
-        int rv = exb_http_server_config_add_domain(exb_ref, http_server_config_out, integer, true);
-        if (rv != EXB_OK) {
-            goto on_error_1;
-        }
-        has_toplevel_listen = true;
-    }
     obj = json_get(ep.full_file, ep.tokens, "event.loops");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         config_out->nloops = integer;
@@ -404,21 +430,17 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     if (obj && (json_get_as_boolean(ep.full_file, obj, &integer) == 0)) {
         http_server_config_out->http_use_aio = !!integer;
     }
-    
-   rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
-   if (rv != EXB_OK) {
-        goto on_error_1;
-   }
-    
-   if (has_toplevel_listen) {
-       obj = json_get(ep.full_file, ep.tokens, "http");
-       if (obj) {
-            rv = load_json_rules(exb_ref, &ep, obj, http_server_config_out);
-            if (rv != EXB_OK) {
-                goto on_error_1;
-            }
-       }
-   }
+    rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
+    if (rv != EXB_OK) {
+            goto on_error_1;
+    }
+    obj = json_get(ep.full_file, ep.tokens, "http.listen");
+    if (obj && (obj = json_get(ep.full_file, ep.tokens, "http"))) {
+        rv = load_json_server(exb_ref, &ep, obj, http_server_config_out);
+        if (rv != EXB_OK) {
+            goto on_error_1;
+        }
+    }
 
    obj = json_get(ep.full_file, ep.tokens, "http.servers");
    if (obj && obj->type == JSMN_ARRAY) {
@@ -453,11 +475,22 @@ static int load_json_server_ssl(struct exb *exb_ref,
     jsmntok_t *obj = NULL;
     int rv = EXB_OK;
     if ((obj = json_get(ep->full_file, parent, "listen"))) {
-        if (json_get_as_integer(ep->full_file, obj, &port) != 0 || port < 0) {
+        char *tmp = NULL;
+        struct exb_str ip;
+        int port = 0;
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &tmp)) != EXB_OK) {
             rv = EXB_CONFIG_ERROR;
             goto on_error_1;
         }
+        if (split_ip_port_pair(exb_ref, tmp, &port, &ip) != 0) {
+            exb_free(exb_ref, tmp);
+            rv = EXB_CONFIG_ERROR;
+            goto on_error_1;
+        }
+        
         ssl_entry_out->listen_port = port;
+        ssl_entry_out->listen_ip = ip;
+        exb_free(exb_ref, tmp);
     }
     if ((obj = json_get(ep->full_file, parent, "ca_path"))) {
         if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &ca_path)) != EXB_OK ||
@@ -501,6 +534,83 @@ on_error_1:
     return rv;
 }
 
+static int load_json_server(struct exb *exb_ref,
+                             struct exb_json_parser_state *ep,
+                             jsmntok_t *domain_obj,
+                             struct exb_http_server_config *http_server_config_out)
+{
+    int rv = EXB_OK;
+    struct exb_str listen_ip;
+    exb_str_init_empty(&listen_ip);
+    
+    int port = 0;
+    int is_default = 0;
+    char *server_name = NULL;
+
+    if (domain_obj->type != JSMN_OBJECT) {
+        return EXB_CONFIG_ERROR;
+    }
+    
+    jsmntok_t *obj = NULL;
+    
+    if ((obj = json_get(ep->full_file, domain_obj, "default"))) {
+        if (json_get_as_boolean(ep->full_file, obj, &is_default) != 0)
+            return EXB_CONFIG_ERROR;
+    }
+    if ((obj = json_get(ep->full_file, domain_obj, "listen"))) {
+        char *tmp = NULL;
+        if ((rv = json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &tmp)) != EXB_OK) {
+            return EXB_CONFIG_ERROR;
+        }
+        if (split_ip_port_pair(exb_ref, tmp, &port, &listen_ip) != 0) {
+            exb_free(exb_ref, tmp);
+            return EXB_CONFIG_ERROR;
+        }
+        exb_free(exb_ref, tmp);
+    }
+    if ((obj = json_get(ep->full_file, domain_obj, "server_name"))) {
+        if (json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &server_name) != 0)
+            return EXB_CONFIG_ERROR;
+    }
+
+    jsmntok_t *ssl_obj = json_get(ep->full_file, domain_obj, "ssl");
+    struct exb_ssl_config_entry *ssl_entry = NULL;
+
+#ifdef EXB_WITH_SSL
+    struct exb_ssl_config_entry ssl_entry_l;
+    if (ssl_obj) {
+        if (ssl_obj->type != JSMN_OBJECT) {
+            exb_free(exb_ref, server_name);
+            exb_str_deinit(exb_ref, &listen_ip);
+            return EXB_CONFIG_ERROR;
+        }
+        if (load_json_server_ssl(exb_ref, ep, ssl_obj, &ssl_entry_l) != EXB_OK) {
+            exb_free(exb_ref, server_name);
+            exb_str_deinit(exb_ref, &listen_ip);
+            return EXB_CONFIG_ERROR;
+        }
+        ssl_entry = &ssl_entry_l; //this is safe, because the called function copies the contents
+    }
+#endif //EXB_WITH_SSL
+    
+    rv = exb_http_server_config_add_domain_ex(exb_ref, http_server_config_out, port, &listen_ip, is_default, server_name, ssl_entry);
+    exb_free(exb_ref, server_name);
+    exb_str_deinit(exb_ref, &listen_ip);
+    server_name = NULL;
+
+#ifdef EXB_WITH_SSL
+    if (ssl_entry)
+        exb_ssl_config_entry_deinit(exb_ref, ssl_entry);
+#endif //EXB_WITH_SSL
+
+    if (rv != EXB_OK) {
+        return rv;
+    }
+
+    rv = load_json_rules(exb_ref, ep, domain_obj, http_server_config_out);
+    return rv;
+}
+
 static int load_json_servers(struct exb *exb_ref,
                              struct exb_json_parser_state *ep,
                              jsmntok_t *parent,
@@ -509,67 +619,10 @@ static int load_json_servers(struct exb *exb_ref,
     int rv = EXB_OK;
     int offset = 1;
     for (int i=0; i<parent->size; i++) {
-        if (i >= EXB_MAX_DOMAINS) {
-            rv = EXB_OUT_OF_RANGE_ERR;
-            goto on_error_1;
-        }
         jsmntok_t *domain_obj = parent + offset;
-        if (domain_obj->type != JSMN_OBJECT) {
-            rv = EXB_CONFIG_ERROR;
+        rv = load_json_server(exb_ref, ep, domain_obj, http_server_config_out);
+        if (rv != EXB_OK)
             goto on_error_1;
-        }
-        int port = 0;
-        int is_default = 0;
-        char *server_name = NULL;
-        
-        jsmntok_t *obj = NULL;
-        
-        
-        if ((obj = json_get(ep->full_file, domain_obj, "default"))) {
-            if (json_get_as_boolean(ep->full_file, obj, &is_default))
-                goto on_error_1;
-        }
-        if ((obj = json_get(ep->full_file, domain_obj, "listen"))) {
-            if (json_get_as_integer(ep->full_file, obj, &port) != 0 || port < 0)
-                goto on_error_1;
-        }
-        if ((obj = json_get(ep->full_file, domain_obj, "server_name"))) {
-            if (json_get_as_string_copy(exb_ref, ep->full_file, obj, 0, &server_name) != 0)
-                goto on_error_1;
-        }
-
-        jsmntok_t *ssl_obj = json_get(ep->full_file, domain_obj, "ssl");
-        struct exb_ssl_config_entry *ssl_entry = NULL;
-        #ifdef EXB_WITH_SSL
-            struct exb_ssl_config_entry ssl_entry_l;
-            if (ssl_obj) {
-                if (ssl_obj->type != JSMN_OBJECT) {
-                    exb_free(exb_ref, server_name);
-                    goto on_error_1;
-                }
-                if (load_json_server_ssl(exb_ref, ep, ssl_obj, &ssl_entry_l) != EXB_OK) {
-                    exb_free(exb_ref, server_name);
-                    goto on_error_1;
-                }
-                ssl_entry = &ssl_entry_l; //this is safe, because the called function copies the contents
-            }
-            
-        #endif //EXB_WITH_SSL
-        
-        rv = exb_http_server_config_add_domain_ex(exb_ref, http_server_config_out, port, is_default, server_name, ssl_entry);
-        exb_free(exb_ref, server_name);
-        server_name = NULL;
-        #ifdef EXB_WITH_SSL
-        if (ssl_entry)
-            exb_ssl_config_entry_deinit(exb_ref, ssl_entry);
-        #endif //EXB_WITH_SSL
-        if (rv != EXB_OK) {
-            goto on_error_1;
-        }
-        rv = load_json_rules(exb_ref, ep, domain_obj, http_server_config_out);
-        if (rv != EXB_OK) {
-            goto on_error_1;
-        }
         offset += tokcount(domain_obj);
     }
 
