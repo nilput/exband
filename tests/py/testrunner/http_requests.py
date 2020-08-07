@@ -1,4 +1,8 @@
+from urllib.parse import urlparse
+import socket
+
 import requests
+
 class RequestsSession(requests.Session):
     def __init__(self, *args, request_timeout=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -21,3 +25,24 @@ class RequestsSession(requests.Session):
     def _fill_kwargs(self, kwargs):
         if ('timeout' not in kwargs) and (self.request_timeout):
             kwargs['timeout'] = self.request_timeout
+
+class RawRequester:
+    def __init__(self):
+        pass
+    def get(self, url, headers=None, http_version=None):
+        if http_version is None:
+            http_version = '1.1'
+        if headers is None:
+            headers = {}
+        parsed = urlparse(url)
+        if parsed.scheme != 'http':
+            raise ValueError('expected an http scheme')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # now connect to the web server on port 80 - the normal http port
+        port = 80
+        if parsed.port:
+            port = int(parsed.port)
+        sock.connect((parsed.hostname, port))
+        
+        
+        

@@ -2,8 +2,8 @@ import pytest
 from .. import invoker
 from ..main import EXBAND_EXECUTABLE_PATH
 from ..exb_config import ConfigBuilder
-from ..requests_session import RequestsSession
-import requests
+from ..http_requests import RequestsSession
+
 
 pytest_config = None
 
