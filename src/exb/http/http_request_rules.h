@@ -154,8 +154,11 @@ static int exb_request_sink_filesystem_init(struct exb *exb_ref,
     if ((rv = exb_str_init_transfer(exb_ref, path, &sink_fs->fs_path)) != EXB_OK) {
         return rv;
     }
-    //This is only temporary, this gets fixed in fixup function
+    sink_out->u.fs.fs_path.len = strlen_excluding_trailing_slash(sink_out->u.fs.fs_path.len);
+    
+    //This is only temporary, this gets fixed in fixup function, currently only storing a boolean value
     sink_fs->alias_len = is_alias;
+    //ugh, this could be refactored so that this information is available at this call
 
     return EXB_OK;
 }
@@ -164,6 +167,12 @@ static int exb_request_sink_filesystem_deinit(struct exb *exb_ref,
 {
     exb_str_deinit(exb_ref, &sink_fs->fs_path);
     return EXB_OK;
+}
+
+static int strlen_excluding_trailing_slash(char *str, int len) {
+    while (str[len - 1] == '/')
+        len--;
+    return len;
 }
 
 static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
@@ -177,7 +186,7 @@ static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
             exb_on_config_error(exb_ref, "Alias can only be used with prefix rules");
             return EXB_CONFIG_ERROR;
         }
-        sink->u.fs.alias_len = rule->u.prefix_rule.prefix.len;
+        sink->u.fs.alias_len = strlen_excluding_trailing_slash(rule->u.prefix_rule.prefix.str, rule->u.prefix_rule.prefix.len);
     }
     return EXB_OK;
 }

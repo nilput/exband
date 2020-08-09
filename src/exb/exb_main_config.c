@@ -619,11 +619,11 @@ static int load_json_servers(struct exb *exb_ref,
     int rv = EXB_OK;
     int offset = 1;
     for (int i=0; i<parent->size; i++) {
-        jsmntok_t *domain_obj = parent + offset;
-        rv = load_json_server(exb_ref, ep, domain_obj, http_server_config_out);
+        jsmntok_t *server_obj = parent + offset;
+        rv = load_json_server(exb_ref, ep, server_obj, http_server_config_out);
         if (rv != EXB_OK)
             goto on_error_1;
-        offset += tokcount(domain_obj);
+        offset += tokcount(server_obj);
     }
 
     return EXB_OK;
@@ -770,6 +770,7 @@ static int load_json_rules(struct exb *exb_ref,
     char *string;
     jsmntok_t *obj = NULL;
     int rv = EXB_OK;
+    int offset = 1;
     obj = json_get(ep->full_file, parent, "rules");
     if (obj) {
         if (obj->type != JSMN_ARRAY) {
@@ -782,8 +783,7 @@ static int load_json_rules(struct exb *exb_ref,
                 rv = EXB_OUT_OF_RANGE_ERR;
                 goto on_error_1;
             }
-
-            jsmntok_t *rule_obj = obj + 1 + i; //1 is the offset to the next token
+            jsmntok_t *rule_obj = obj + offset;
             if (rule_obj->type != JSMN_OBJECT) {
                 rv = EXB_CONFIG_ERROR;
                 goto on_error_1;
@@ -841,7 +841,7 @@ static int load_json_rules(struct exb *exb_ref,
                 exb_http_server_config_remove_sink(exb_ref, http_server_config_out, sink_id);
                 return rv;
             }
-            
+            offset += tokcount(rule_obj);
         }
     }
     return EXB_OK;

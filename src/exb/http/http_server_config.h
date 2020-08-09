@@ -260,11 +260,12 @@ static int exb_http_server_config_add_rule(struct exb *exb_ref,
         return EXB_OUT_OF_RANGE_ERR;
     }
     config->request_rules[config->n_rules] = rule;
+    int rule_id = config->n_rules;
     struct exb_http_domain_config *domain = config->domains + config->n_domains - 1;
     domain->rules_end++;
     config->n_rules++;
 
-    int rv = exb_http_server_config_request_rule_sink_fixup_(exb_ref, config, config->n_rules, rule.sink_id);
+    int rv = exb_http_server_config_request_rule_sink_fixup_(exb_ref, config, rule_id, rule.sink_id);
     if (rv != EXB_OK) {
         domain->rules_end--;
         config->n_rules--;

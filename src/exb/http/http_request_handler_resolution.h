@@ -40,7 +40,11 @@ static int exb_http_request_resolve_to_sink(struct exb_request_state *rqstate,
         exb_request_get_path_slice(rqstate, &s, &slice);
         if (sink->u.fs.alias_len > slice.len)
             return EXB_INTERNAL_ERROR;
-        char *resource_path      = s + slice.index + sink->u.fs.alias_len;
+        // Here we keep the length of the alias in the sink struct, so that it's skipped
+        // for example suppose you aliased "/files/" to "/usr/www/stuff/", the length of the alias 7 is stored
+        // a request with "/files/hello.txt" is made, we strip the first 6 characters of the request (excluding final '/')
+        // it becomes: "/hello.txt"  with the effective root being at /usr/www/stuff/, it's resolved to /usr/www/stuff/hello.txt
+        char  *resource_path     = s + slice.index + sink->u.fs.alias_len;
         size_t resource_path_len = slice.len - sink->u.fs.alias_len;
         return exb_fileserv(rqstate,
                             sink->u.fs.fs_path.str,
