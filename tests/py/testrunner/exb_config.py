@@ -8,9 +8,15 @@ class ConfigBuilder:
         self.aio = False
         self.threadpool = False
         self.servers = []
-    def default_http_server(self, rules=None):
-        return self.with_server(port='8080', rules=rules)
-    def with_server(self, port=None, rules=None, domain=None, ssl=None):
+        self.address = '127.0.0.1'
+        self.port    = '8080'
+    def default_http_server(self, rules=None, port=None):
+        if port is None:
+            port = self.port
+        else:
+            port = str(int(port))
+        return self.server(port=port, rules=rules)
+    def server(self, port=None, rules=None, domain=None, ssl=None):
         server = {}
         if ssl is not None:
             assert isinstance(ssl, dict)
@@ -19,7 +25,7 @@ class ConfigBuilder:
         if domain:
             server['server_name'] = domain
         if rules:
-            assert isinstance(rules, list, tuple)
+            assert isinstance(rules, (list, tuple))
             server['rules'] = rules
         self.servers.append(server)
         return self

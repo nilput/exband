@@ -26,7 +26,10 @@ all: $(OPTIONAL) exb exb_static obj/libexb.so
 
 -include $(DEP)
 
-debug: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DTRACK_RQSTATE_EVENTS
+test:
+	./tests/run_all
+
+debug: CFLAGS += -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DTRACK_RQSTATE_EVENTS -DEXB_DEBUG
 debug: all
 
 trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 
@@ -72,4 +75,4 @@ clean:
 	@rm -f exb perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
 	@find examples/ -name '*.so' -exec 'rm' '{}' ';'
-.PHONY: clean all examples
+.PHONY: clean all examples test

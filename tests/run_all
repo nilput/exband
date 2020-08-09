@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import pytest
+import os.path
+import sys
+dirpath = os.path.dirname(__file__)
+pytest.main([*(sys.argv[1:]), os.path.join(dirpath, 'py', 'testrunner', 'tests')])
