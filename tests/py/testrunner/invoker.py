@@ -132,10 +132,11 @@ class ExbandInvoker:
             addr = self.get_address()
         except:
             pass
-        log('i', 'started exband, \ntmppath: {}\naddress: {}'.format(self.tmp_dir_path, addr))
+        log('i', 'started exband, \ntmppath: {}\naddress: {}\npid: {}'.format(self.tmp_dir_path, addr, self.process.pid))
         time.sleep(self.start_warmup_time)
         try:
-            self.process.wait(0.1)
+            self.print()
+            w = self.process.wait(0)
             self.print()
             raise subprocess.SubprocessError()
         except subprocess.TimeoutExpired as e:
@@ -155,10 +156,12 @@ class ExbandInvoker:
         stderr = None
         stdout = None
         try:
-            stderr, stdout = self.process.communicate(timeout=0)
+            stderr, stdout = self.process.communicate(timeout=0.1)
         except subprocess.TimeoutExpired as e:
             stderr = e.stderr
             stdout = e.stdout
+        except ValueError:
+            pass
         for b in [stderr, stdout]:
             if b:
                 print(b.decode('utf-8'), file=sys.stderr)

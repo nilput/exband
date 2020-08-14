@@ -8,6 +8,19 @@ import requests
 dir_path = os.path.dirname(os.path.realpath(__file__))
 EXBAND_PROJECT_DIR = os.path.join(dir_path, '../../../')
 EXBAND_EXECUTABLE_PATH = os.path.join(EXBAND_PROJECT_DIR, exe_name('exb'))
+EXBAND_SSL_CA_CERT_FILE = None
+EXBAND_HAS_SSL = True
+
+if os.path.exists(os.path.join(EXBAND_PROJECT_DIR, 'tests/ssl_certs/ssl_dir/ca.crt')):
+    EXBAND_SSL_CA_CERT_FILE = os.path.join(EXBAND_PROJECT_DIR, 'tests/ssl_certs/ssl_dir/ca.crt')
+
+
+build_config = {
+    'executable_path':  EXBAND_EXECUTABLE_PATH,
+    'has_ssl':          EXBAND_HAS_SSL,
+    'ssl_ca_file':      EXBAND_SSL_CA_CERT_FILE,
+    'project_dir':      EXBAND_PROJECT_DIR
+}
 
 def main():
     exb = invoker.ExbandInvoker(EXBAND_EXECUTABLE_PATH)

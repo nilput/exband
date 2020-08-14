@@ -18,8 +18,8 @@
                 ],
                 "ssl" : {
                     "listen" : "8443",
-                    "public_key" : "doc/testing_domains/ssl_dir/site_a.local.fullchain.pem",
-                    "private_key" : "doc/testing_domains/ssl_dir/site_a.local.privkey.pem"
+                    "public_key" : "tests/ssl_certs/ssl_dir/site_a.local.fullchain.pem",
+                    "private_key" : "tests/ssl_certs/ssl_dir/site_a.local.privkey.pem"
                 },
                 "server_name": "site_a.local"
             }

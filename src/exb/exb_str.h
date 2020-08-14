@@ -417,6 +417,10 @@ static int exb_vsprintf(struct exb *exb, struct exb_str *str, const char *fmt, v
     str->len = needed;
     return EXB_OK;
 }
+
+/*
+
+*/
 static int exb_sprintf(struct exb *exb, struct exb_str *str, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);

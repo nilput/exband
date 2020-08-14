@@ -1,6 +1,5 @@
 
-#cliteral
-def clit(s, as_array=True):
+def c_literal(s, as_array=True):
     output = ''
     assert(isinstance(s, bytes))
     first = True

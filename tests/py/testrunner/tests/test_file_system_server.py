@@ -8,21 +8,22 @@ from os.path import dirname, join, abspath
 def exband_fileserver(exband_factory_sm):
     rules = [
         {
+            "prefix" : "/documents/",
+            "destination": {
+                "type": "filesystem",
+                "path": join(abspath(dirname(__file__)), 'data/public_html/documents'),
+                "alias": True
+            }
+        },
+        {
             "prefix" : "/",
             "destination": {
                 "type": "filesystem",
                 "path": join(abspath(dirname(__file__)), 'data/public_html/'),
                 "alias": False
             }
-        },
-        {
-            "prefix" : "/things/",
-            "destination": {
-                "type": "filesystem",
-                "path": join(abspath(dirname(__file__)), 'data/public_html/documents'),
-                "alias": True
-            }
         }
+        
     ]
     yield exband_factory_sm(ConfigBuilder().default_http_server(rules=rules, port=8909).build())
     
@@ -61,11 +62,7 @@ def test_file_system_non_existent(exband_fileserver, req):
         assert(resp.status_code == 404)
     
 def test_file_system_pdf_aliased(exband_fileserver, req):
-    resp = req.get(exband_fileserver.get_address() + '/things/dummy.pdf/')
-    assert(resp.status_code == 404)
     resp = req.get(exband_fileserver.get_address() + '/documents/dummy.pdf')
-    assert(resp.status_code == 404)
-    resp = req.get(exband_fileserver.get_address() + '/things/dummy.pdf')
     assert(resp.status_code == 200)
     print(resp.raw)
     

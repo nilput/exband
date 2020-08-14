@@ -7,7 +7,7 @@
 
 #include "cmocka.h"
 #include "../../src/exb/exb.h"
-#include "../../src/exb/exb_buffer_recycle_list.h
+#include "../../src/exb/exb_buffer_recycle_list.h"
 
 struct test_state {
     struct exb exb;
@@ -25,7 +25,7 @@ void test_buffer_recycle_list(void **state)
     struct exb_buffer_recycle_list buff_cyc;
     int rv;
     rv = exb_buffer_recycle_list_init(exb_ref, &buff_cyc);
-    assert_true(rv == EXB_OK)
+    assert_true(rv == EXB_OK);
     void *buff;
     size_t buff_sz;
 

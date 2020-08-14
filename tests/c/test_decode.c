@@ -8,7 +8,8 @@
 #include "cmocka.h"
 #include "../../src/exb/exb.h"
 #include "../../src/exb/exb_str.h"
-#include "../../src/exb/http/http_decode.h
+#include "../../src/exb/http/http_decode.h"
+
 struct encdec {
         unsigned char *enc;
         int enclen;
@@ -28,7 +29,7 @@ struct encdec_keys_values {
         int nvalues;
 };
 
-#include "test_decode_data.h
+#include "test_decode_data.h"
 struct test_state {
     struct exb exb;
 };
@@ -63,9 +64,9 @@ void test_urlencode_decode(void **state)
     exb_str_init_empty(&dec);
     for (int i=0; i<sizeof ed / sizeof ed[0]; i++) {
         exb_str_ensure_cap(&tstate->exb, &dec, ed[i].declen);
-        exb_urlencode_decode(dec.str, dec.cap, &sz, ed[i].enc, ed[i].enclen);
+        exb_urlencode_decode(dec.str, dec.zcap, &sz, ed[i].enc, ed[i].enclen);
         assert_true(sz == ed[i].declen);
-        assert_true(sz < dec.cap);
+        assert_true(sz < dec.zcap);
         assert_true(vmemcmp(dec.str, ed[i].dec, ed[i].declen) == 0);
     }
     

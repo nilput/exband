@@ -25,3 +25,4 @@ doc/build_time.txt
 /exb_static
 obj/
 config/rc.md.json
+__py*

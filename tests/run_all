@@ -2,5 +2,23 @@
 import pytest
 import os.path
 import sys
+from glob import glob
+from fnmatch import fnmatch
+import sys
+import subprocess
 dirpath = os.path.dirname(__file__)
-pytest.main([*(sys.argv[1:]), os.path.join(dirpath, 'py', 'testrunner', 'tests')])
+
+return_code = 0
+
+result = subprocess.run(['cd c && make'], shell=True)
+if return_code == 0:
+    return_code = result.returncode 
+for file in glob(os.path.join(dirpath, 'c', '*.c')):
+    if os.path.basename(file).startswith('test_'):
+        executable_file = file[:-2]
+        result = subprocess.run([executable_file])
+        if return_code == 0:
+            return_code = result.returncode 
+result = pytest.main(['--tb=short', *(sys.argv[1:]), os.path.join(dirpath, 'py', 'testrunner', 'tests')])
+if return_code == 0:
+    return_code = result

@@ -139,9 +139,21 @@ static int exb_request_sink_fptr_fixup(struct exb *exb_ref,
 }
 
 
-/*Sink functions*/
-/*Filesystem sink functions*/
-//transfers ownership of path
+static int strlen_excluding_trailing_slash(char *str, int len) {
+    while (str[len - 1] == '/')
+        len--;
+    return len;
+}
+
+
+
+/**
+ * \internal
+ * Initialize a filesystem handler request sink.
+ * @param [in, owned] path - the path to a directory to serve requests from
+ * @param is_alias - a boolean specifying whether the sink has alias enabled
+ * @param sink_out - an uninitialized \struct exb_request_sink which the sink will be saved to
+**/
 static int exb_request_sink_filesystem_init(struct exb *exb_ref,
                                             char *path,
                                             int is_alias,
@@ -154,7 +166,9 @@ static int exb_request_sink_filesystem_init(struct exb *exb_ref,
     if ((rv = exb_str_init_transfer(exb_ref, path, &sink_fs->fs_path)) != EXB_OK) {
         return rv;
     }
-    sink_out->u.fs.fs_path.len = strlen_excluding_trailing_slash(sink_out->u.fs.fs_path.len);
+    
+    sink_out->u.fs.fs_path.len = strlen_excluding_trailing_slash(sink_out->u.fs.fs_path.str, sink_out->u.fs.fs_path.len);
+    sink_out->u.fs.fs_path.str[sink_out->u.fs.fs_path.len] = 0;
     
     //This is only temporary, this gets fixed in fixup function, currently only storing a boolean value
     sink_fs->alias_len = is_alias;
@@ -162,17 +176,15 @@ static int exb_request_sink_filesystem_init(struct exb *exb_ref,
 
     return EXB_OK;
 }
+/**
+ * \internal
+ * Destroy a request sink.
+**/
 static int exb_request_sink_filesystem_deinit(struct exb *exb_ref,
                                           struct exb_request_sink_filesystem *sink_fs)
 {
     exb_str_deinit(exb_ref, &sink_fs->fs_path);
     return EXB_OK;
-}
-
-static int strlen_excluding_trailing_slash(char *str, int len) {
-    while (str[len - 1] == '/')
-        len--;
-    return len;
 }
 
 static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
@@ -181,12 +193,21 @@ static int exb_request_sink_filesystem_fixup(struct exb *exb_ref,
 {
     struct exb_request_sink_filesystem *sink_fs = &sink->u.fs;
     if (sink->u.fs.alias_len) {
-        //at this stage alias_len is used as a boolean
+        struct exb_str *prefix = &rule->u.prefix_rule.prefix;
+        // at this stage alias_len is used as a boolean
         if (rule->type != EXB_REQ_RULE_PATH_PREFIX) {
             exb_on_config_error(exb_ref, "Alias can only be used with prefix rules");
             return EXB_CONFIG_ERROR;
         }
-        sink->u.fs.alias_len = strlen_excluding_trailing_slash(rule->u.prefix_rule.prefix.str, rule->u.prefix_rule.prefix.len);
+        if (prefix->len < 1                  ||
+            prefix->str[0] != '/'            || 
+            prefix->str[prefix->len - 1] != '/')
+        {
+            exb_on_config_error(exb_ref, "Prefix rule must have a trailing slash when alias is enabled");
+            return EXB_CONFIG_ERROR;
+        }
+        // prefix itself is assumed to contain a leading and trailing slash (done at rule initialization)
+        sink->u.fs.alias_len = strlen_excluding_trailing_slash(prefix->str, prefix->len);
     }
     return EXB_OK;
 }

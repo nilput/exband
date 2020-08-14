@@ -14,24 +14,33 @@ static inline char *to_previous_slash(char *start, char *p) {
     return p + 1;
 }
 static char *
-resolve_path_1(char *start, char *ende, char *write_at) {
+resolve_path_1(char *start, char *end) {
     unsigned short last = '/';
+	char *write_at = start;
     char *p = start;
-    while (p < ende) {
+	char *last_slash = start - 1;
+	if (write_at == '/') {
+		last_slash = write_at;
+		write_at++;
+		p++;
+	}
+    while (p < end) {
         if (*p == '/') {
-            if (last == (('.' << 8) | '.')) {
-                write_at = to_previous_slash(start, write_at - 4);
+            if (last == (('.' << 8) | '.') && last_slash == (write_at - 3)) {
+				last_slash = to_previous_slash(start, last_slash - 1) - 1;
+				write_at = last_slash + 1;
             }
             else if (last == (('/' << 8) | '.')) {
                 write_at--;
             }
-            else if ((last & 0xff) != '/'){
+            else if (last_slash != (write_at -1)){
+				last_slash = write_at;
                *(write_at++) = '/';
             }
             last = (last << 8) | '/';
             p++;
         }
-        while (p < ende && *p != '/') {
+        while (p < end && *p != '/') {
             last = (last << 8) | *p;
             *(write_at++) = *(p++);
         }
@@ -46,7 +55,7 @@ resolve_path_1(char *start, char *ende, char *write_at) {
 }
 
 char *resolve_path(char *str, int len) {
-    return resolve_path_1(str, str + len, str);
+    return resolve_path_1(str, str + len);
 }
 
 
@@ -90,7 +99,12 @@ static int fileserv_handler(void *unused, struct exb_request_state *rqstate, int
 	return EXB_OK;
 }
 
-//Doesn't own fs_path nor resource_path
+/**
+  * Respond to a request with a file's contents.
+  * @param rqstate [in, out] - the request to serve the file to
+  * @param fs_path [in] - a path to the directory, ending with no slash
+  * @param resource_path [in] - a path to the file, starting with a leading slash
+**/
 int exb_fileserv(struct exb_request_state *rqstate, 
 				char *fs_path,
 				size_t fs_path_len,

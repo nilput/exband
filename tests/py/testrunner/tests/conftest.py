@@ -1,5 +1,7 @@
+import os
 import pytest
-from .. import invoker, EXBAND_EXECUTABLE_PATH
+from .. import invoker
+from .. import build_config as exb_build_config
 from .. import ConfigBuilder
 from ..http_requests import RequestsSession
 
@@ -19,7 +21,7 @@ def spawn_exband(config):
     if pytest_config.getoption("--exband-no-invoke", None):
         return invoker.ExbandAttachInvoker()
     else:
-        return invoker.ExbandInvoker(EXBAND_EXECUTABLE_PATH, config)
+        return invoker.ExbandInvoker(exb_build_config['executable_path'], config)
 
 @pytest.fixture()
 def exband_invoker():
@@ -51,9 +53,14 @@ def exband_factory():
 def exband_factory_sm():
     yield from exband_factory_common()
 
+@pytest.fixture()
+def build_config():
+    return exb_build_config
 
 @pytest.fixture()
-def req():
+def req(build_config):
+    if build_config['ssl_ca_file']:
+        os.environ['REQUESTS_CA_BUNDLE'] = build_config['ssl_ca_file']
     session = RequestsSession(request_timeout=1.0)
     yield session
     session.close()
