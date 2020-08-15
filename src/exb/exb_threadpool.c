@@ -64,9 +64,6 @@ int exb_hw_thread_sched_background() {
         return EXB_THREAD_ERROR;
     
     int new_prio = prio + (19 - prio) / 2;
-    fprintf(stderr, "bg PRIO: %d -> %d\n", prio, new_prio);
-    //int new_prio = 19;
-    //int new_prio = prio + 1 > 19 ? 19 : prio + 1;
 
     setpriority(PRIO_PROCESS, 0, new_prio);
     return EXB_OK;

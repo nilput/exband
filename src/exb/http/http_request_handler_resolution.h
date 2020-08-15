@@ -105,6 +105,7 @@ static void exb_http_request_resolve(struct exb_request_state *rqstate) {
                 exb_logger_logf(rqstate->server->exb,
                                 EXB_LOG_DEBUG,
                                 "Request '%s' resolved to sink_id: %d by rule_id: %d domain_id: %d\n", s.str, sink_id, i, domain_id);
+                exb_str_deinit(rqstate->server->exb, &s);
             }
             exb_http_request_resolve_to_sink(rqstate, config, sink_id);
             return;

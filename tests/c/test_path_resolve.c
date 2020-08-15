@@ -7,7 +7,7 @@
 
 #include "cmocka.h"
 #include "../../src/exb/exb.h"
-#include "../../src/exb/exb_buffer_recycle_list.h"
+#include "../../src/exb/http/exb_fileserv.h"
 
 struct test_state {
     struct exb exb;
@@ -24,13 +24,19 @@ void test_path_resolve(void **state)
     struct before_after paths[] = {
         {"/foo/bar/a.text", "/foo/bar/a.text"},
         {"/foo/bar/a..txt", "/foo/bar/a..txt"},
-        {"/foo/bar//a.text", "/foo/bar//a..text"},
+        {"/foo/bar//a.text", "/foo/bar/a.text"},
         {"/foo/bar/", "/foo/bar/"},
-        {"foo/bar/", "foo/bar/"},
+        {"/foo/bar/", "/foo/bar/"},
         {"/../foo/bar/", "/foo/bar/"},
         {"/..../foo/bar/", "/..../foo/bar/"},
         {"/./foo/bar/", "/foo/bar/"},
         {"/", "/"},
+        {"/.", "/"},
+        {"/./", "/"},
+        {"/..", "/"},
+        {"/../", "/"},
+        {"/../a", "/a"},
+        {"/../a/", "/a/"},
         {"/a", "/a"},
         {"/a//", "/a/"},
         {"/a/b/", "/a/b/"},
@@ -39,18 +45,21 @@ void test_path_resolve(void **state)
         {"/a/../b/", "/b/"},
         {"/a/../b/c/./d/", "/b/c/d/"},
         {"/a/../b/c/./d", "/b/c/d"},
-        {"../b/c/./d", "/b/c/d"},
-        {"../.././../b/c/./d", "/b/c/d"},
-        {"a../.././../b/c/./d", "/b/c/d"},
+        {"/../b/c/./d", "/b/c/d"},
+        {"/../.././../b/c/./d", "/b/c/d"},
+        {"/a../.././../b/c/./d", "/b/c/d"},
+        {"/a/../b/c/./d/.", "/b/c/d/"},
+        {"/a/../b/c/./d/..", "/b/c/d/"},
+        {"/a/../b/c/./d/./", "/b/c/d/"},
+        {"/a/../b/c/./d/../", "/b/c/"},
     };
     int paths_len = sizeof paths / sizeof paths[0];
     
     for (int i = 0; i < paths_len; i++) {
+        exb_resolve_path(paths[i].before, strlen(paths[i].before));
         if (strcmp(paths[i].before, paths[i].after) != 0) {
             printf("%d: expected '%s': found '%s'\n", i, paths[i].after, paths[i].before);
         }
-    }
-    for (int i = 0; i < paths_len; i++) {
         assert_string_equal(paths[i].before, paths[i].after); 
     }
     

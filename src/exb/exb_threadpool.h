@@ -167,7 +167,6 @@ static void  *exb_threadpool_thread_run(void *arg) {
         }
         else if (ntasks == 0) {
             exb_threadpool_wait_for_work(t->tp);
-            
         }
         for (int i=0; i<ntasks; i++) {
             current_tasks[i].run(t, &current_tasks[i]);
@@ -189,7 +188,7 @@ static int exb_threadpool_set_nthreads(struct exb_threadpool *tp, int nthreads) 
         goto ret;
     }
     else if (nthreads < old_thread_count) {
-        err = EXB_UNSUPPORTED;;
+        err = EXB_UNSUPPORTED;
         goto ret;
     }
     exb_assert_s(nthreads > old_thread_count, "");

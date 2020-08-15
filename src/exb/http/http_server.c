@@ -68,9 +68,7 @@ static struct exb_error make_socket(char *bind_ip, uint16_t port, int *out)
 }
 
 static int default_handler(void *handler_state, struct exb_request_state *rqstate, int reason) {
-    exb_response_append_body(rqstate, "Not found\r\n", 11);
-    exb_response_end(rqstate);
-    return EXB_OK;
+    return exb_response_return_error(rqstate, 404, "Not found\r\n");
 }
 
 static void server_postfork(void *data) {

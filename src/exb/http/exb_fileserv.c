@@ -11,50 +11,58 @@ static inline char *to_previous_slash(char *start, char *p) {
     if (p < start)
         return start;
     for (; p >= start && (*p != '/'); p--); 
-    return p + 1;
+    return p;
 }
-static char *
+/*
+	In all cases the input should start with a leading '/' (Precondition)
+	In all cases the output should have a leading '/'
+	in case the input tries to path traverse outside of root, then the '..' are removed
+	in case the input tries to path traverse inside root, then the '..' are logically resolved
+	in case the input contains redundant /././ they are removed
+*/
+static int
 resolve_path_1(char *start, char *end) {
+	exb_assert_h(end > start && start[0] == '/', "invalid input to resolve_path(), expected leading slash");
     unsigned short last = '/';
-	char *write_at = start;
-    char *p = start;
-	char *last_slash = start - 1;
-	if (write_at == '/') {
-		last_slash = write_at;
-		write_at++;
-		p++;
-	}
-    while (p < end) {
-        if (*p == '/') {
+	char *last_slash = start; // last slash written in output
+	// skip leading slash
+	char *write_at = start + 1;
+    char *read_at  = start + 1;
+    while (read_at < end) {
+        if (*read_at == '/') {
             if (last == (('.' << 8) | '.') && last_slash == (write_at - 3)) {
-				last_slash = to_previous_slash(start, last_slash - 1) - 1;
+				// resolve path logically
+				last_slash = to_previous_slash(start, last_slash - 1);
 				write_at = last_slash + 1;
             }
             else if (last == (('/' << 8) | '.')) {
+				// redundant "/./"
                 write_at--;
             }
-            else if (last_slash != (write_at -1)){
+            else if (last_slash != (write_at - 1)){
+				// if it's not "//" then add the slash
 				last_slash = write_at;
                *(write_at++) = '/';
             }
             last = (last << 8) | '/';
-            p++;
+            read_at++;
         }
-        while (p < end && *p != '/') {
-            last = (last << 8) | *p;
-            *(write_at++) = *(p++);
+        while (read_at < end && *read_at != '/') {
+            last = (last << 8) | *read_at;
+            *(write_at++) = *(read_at++);
         }
     }
-    char *previous_slash = to_previous_slash(start, write_at - 1);
-    if (write_at - previous_slash == 2 && previous_slash[0] == '.' && previous_slash[1] == '.')
-        write_at = to_previous_slash(start, previous_slash - 2);
-    else if (write_at - previous_slash == 1 && *previous_slash == '.')
-        write_at -= 1;
+	// Check for trailing "/.." or "/."
+	if ((write_at - last_slash == 3 && last_slash[1] == '.' && last_slash[2] == '.') ||
+		(write_at - last_slash == 2 && last_slash[1] == '.')						   )
+	{
+		write_at = last_slash + 1;
+	}
     *write_at = 0;
-    return start;
+    return write_at - start;
 }
 
-char *resolve_path(char *str, int len) {
+int exb_resolve_path(char *str, int len) {
     return resolve_path_1(str, str + len);
 }
 
@@ -119,7 +127,7 @@ int exb_fileserv(struct exb_request_state *rqstate,
 	memcpy(buff, fs_path, fs_path_len);
 	memcpy(buff + fs_path_len, resource_path, resource_path_len);
 	buff[fs_path_len + resource_path_len] = 0;
-	resolve_path(buff + fs_path_len, resource_path_len);
+	exb_resolve_path(buff + fs_path_len, resource_path_len);
 	errno = 0;
 	int fd = open(buff, O_RDONLY);
 	if (fd == -1) {

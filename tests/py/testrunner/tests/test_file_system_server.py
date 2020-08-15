@@ -11,7 +11,7 @@ def exband_fileserver(exband_factory_sm):
             "prefix" : "/documents/",
             "destination": {
                 "type": "filesystem",
-                "path": join(abspath(dirname(__file__)), 'data/public_html/documents'),
+                "path": join(abspath(dirname(__file__)), 'data/documents'),
                 "alias": True
             }
         },
