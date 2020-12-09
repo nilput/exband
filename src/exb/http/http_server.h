@@ -39,6 +39,7 @@ struct exb_request_state *exb_server_current_writing_rqstate(struct exb_server *
 
 struct exb_eloop * exb_server_get_any_eloop(struct exb_server *s);
 struct exb_eloop * exb_server_get_eloop(struct exb_server *s, int eloop_id);
+int exb_server_eloop_id(struct exb_server *s, struct exb_eloop *eloop);
 
 struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, struct exb_eloop *eloop, int socket_fd);
 //the eloop it was associated with

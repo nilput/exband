@@ -72,7 +72,7 @@ exb_static: src/exb/exb_main.c $(EXB_OBJ)
 	$(CC)  -o $@ $(CFLAGS) $(LDFLAGS) src/exb/exb_main.c $(EXB_OBJ) -L ./obj -lexb $(EXB_LINK_ARCHIVES) $(LDLIBS)
 
 clean: 
-	@rm -f exb perf.data* 2>/dev/null || true
+	@rm -f exb exb_static perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
 	@find examples/ -name '*.so' -exec 'rm' '{}' ';'
 .PHONY: clean all examples test

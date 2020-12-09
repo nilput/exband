@@ -9,19 +9,19 @@
 #define EXB_CRV(code)
 
 enum EXB_STR_FLAGS {
-    EXB_STR_DYNAMIC = 1, //backed by malloc?
-    EXB_STR_CONST   = 2, //can overwrite?
+    EXB_STR_DYNAMIC = 1, //whether it i s backed by malloc
+    EXB_STR_CONST   = 2, //whether we can overwrite its contents without copying
 };
 /*
-string can:
-    be const if flags & EXB_STR_CONST, shouldn't be written to
-    be backed by local storage if !(flags & EXB_STR_DYNAMIC)
+A string can be:
+    const if flags & EXB_STR_CONST, (shouldn't be written to)
+    backed by auto storage if !(flags & EXB_STR_DYNAMIC), so we cannot call realloc on it
 */
 struct exb_str {
     char *str; //null terminated
     int len;
-    int zcap; //negative values mean memory is not owned by us (const char * passed to us)
-    unsigned char flags; //backed by malloc?
+    int zcap;
+    unsigned char flags; //backed by malloc
 };
 struct exb_str_slice {
     int index;

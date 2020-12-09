@@ -46,6 +46,9 @@ int exb_pcontrol_worker_id(struct exb_pcontrol *st) {
     return st->short_id;
 }
 
+/*
+    Runs periodically, spawns child processes and attempts to restart them if they die.
+*/
 int exb_pcontrol_maintain(struct exb_pcontrol *st) {
     exb_assert_h(exb_pcontrol_is_master(st), "");
     if (st->stop)

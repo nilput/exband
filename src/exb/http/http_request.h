@@ -5,6 +5,7 @@
 #include "http_request_handler.h"
 #include "http_request_def.h"
 #include "http_server_def.h"
+#include "http_server.h"
 #include <stdbool.h>
 
 
@@ -21,6 +22,10 @@ static int exb_request_input_buffer_size(struct exb_request_state *rqstate) {
 
 static struct exb_msg *exb_request_get_userdata(struct exb_request_state *rqstate) {
     return &rqstate->userdata;
+}
+
+static int exb_request_get_eloop_index(struct exb_request_state *rqstate) {
+    return exb_server_eloop_id(rqstate->server, rqstate->eloop);
 }
 
 static int exb_request_input_buffer_ensure_cap(struct exb_request_state *rqstate, size_t capacity) {

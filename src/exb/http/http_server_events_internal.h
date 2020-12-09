@@ -69,14 +69,25 @@ static void exb_request_handle_http_error(struct exb_request_state *rqstate) {
     exb_server_cancel_requests(rqstate->server, rqstate->socket_fd);
 }
 
+/*TODO: Make sure this does the right thing if the handler already ended the request with an error*/
+static void exb_http_request_on_handler_error(struct exb_request_state *rqstate) {
+    exb_response_return_error(rqstate, 404, "not found");
+}
+
 static void exb_request_call_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {
-    rqstate->request_handler(rqstate->rqh_state, rqstate, reason);
+    int rv = rqstate->request_handler(rqstate->rqh_state, rqstate, reason);
+    if (rv != EXB_OK)  {
+        exb_http_request_on_handler_error(rqstate);
+    }
 }
 
 
 static void exb_request_resolve_and_call_handler(struct exb_request_state *rqstate) {
     exb_http_request_resolve(rqstate);
-    rqstate->request_handler(rqstate->rqh_state, rqstate, EXB_HTTP_HANDLER_HEADERS);
+    int rv = rqstate->request_handler(rqstate->rqh_state, rqstate, EXB_HTTP_HANDLER_HEADERS);
+    if (rv != EXB_OK)  {
+        exb_http_request_on_handler_error(rqstate);
+    }
 }
 
 static void exb_request_lifetime_checks(struct exb_http_multiplexer *mp, struct exb_request_state *rqstate) {
@@ -216,7 +227,7 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
         exb_assert_h(rqstate->pstate == EXB_HTTP_P_ST_DONE || rqstate->pstate == EXB_HTTP_P_ST_IN_CHUNKED_BODY, "");
         if (!exb_request_has_body(rqstate)) {
             rqstate->istate = EXB_HTTP_I_ST_DONE;
-            RQSTATE_EVENT(stderr, "marked request %p as done, because it has nobody\n", rqstate);
+            RQSTATE_EVENT(stderr, "marked request %p as done, because it has no body\n", rqstate);
         }
         else if (rqstate->is_chunked && (exb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len))) {
             int rv = exb_request_http_parse_chunked_encoding(rqstate);

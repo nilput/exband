@@ -61,7 +61,7 @@ struct exb_http_header_map {
 
 struct exb_request_state {
     exb_request_handler_func request_handler;
-    void *rqh_state;
+    void *rqh_state; //Userdata associated with the request handler, this is usually a pointer to the module
     struct exb_msg userdata;
 
     struct exb_server *server; //not owned, must outlive

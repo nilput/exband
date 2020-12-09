@@ -26,3 +26,7 @@ doc/build_time.txt
 obj/
 config/rc.md.json
 __py*
+.clang-tidy
+compile_commands.json
+config/exb_lua.json
+reports/

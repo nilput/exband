@@ -13,7 +13,7 @@ struct exb_ts_event_queue {
 
     struct exb_event *events;
     int head;
-    int tail; //tail == head means full, tail == head - 1 means full
+    int tail; //tail == head means empty, tail == head - 1 means full
     int cap;
 };
 static int exb_ts_event_queue_len_u(struct exb_ts_event_queue *tq) {

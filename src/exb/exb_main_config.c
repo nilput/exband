@@ -122,6 +122,9 @@ int json_get_as_string_copy_1(struct exb *exb_ref, char *json_str, jsmntok_t *t,
 }
 //return value like strcmp
 int json_token_strcmp(char *json_str, jsmntok_t *t, const char *str) {
+    if (strlen(str) != (t->end - t->start)) {
+        return json_str[strlen(str)];
+    }
     return strncmp(json_str + t->start, str, strlen(str));
 }
 int json_get_as_boolean(char *json_str, jsmntok_t *t, int *out) {

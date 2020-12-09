@@ -264,7 +264,7 @@ struct exb_eloop * exb_server_get_eloop(struct exb_server *s, int eloop_id) {
 }
 
 //this is bad
-static int exb_server_eloop_id(struct exb_server *s, struct exb_eloop *eloop) {
+int exb_server_eloop_id(struct exb_server *s, struct exb_eloop *eloop) {
     exb_assert_h(eloop->eloop_id >= 0 && eloop->eloop_id < s->elist->nloops, "");
     return eloop->eloop_id;
 }
