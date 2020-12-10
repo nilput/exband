@@ -71,7 +71,7 @@ static void exb_request_handle_http_error(struct exb_request_state *rqstate) {
 
 /*TODO: Make sure this does the right thing if the handler already ended the request with an error*/
 static void exb_http_request_on_handler_error(struct exb_request_state *rqstate) {
-    exb_response_return_error(rqstate, 404, "not found");
+    exb_response_return_error(rqstate, 500, "internal error");
 }
 
 static void exb_request_call_handler(struct exb_request_state *rqstate, enum exb_request_handler_reason reason) {

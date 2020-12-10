@@ -1,10 +1,11 @@
-#include "exb/exb.h"
-#include "exb/http/http_server_module.h"
-#include "exb/http/http_request.h"
+#include <exb/exb.h>
+#include <exb/http/http_server_module.h>
+#include <exb/http/http_request.h>
 
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
+#include "lua_request.h"
 
 //TODO: have them dynamically allocated
 #define MAX_CPU_COUNT 8
@@ -26,7 +27,8 @@ static int lua_instance_init(struct exb *exb_ref, struct lua_instance *li) {
         return EXB_INIT_ERROR;
     luaL_openlibs(L);
     li->L = L;
-    if (luaL_loadfile(li->L, "script.lua") != 0) {
+    int rv = exb_lua_request_functions_init(L);
+    if (rv != EXB_OK || (luaL_loadfile(li->L, "script.lua") != 0)) {
         exb_log_error(exb_ref, "Failed to load lua script");
         lua_close(li->L);
         li->L = NULL;
@@ -58,18 +60,15 @@ int exb_lua_handle_request(void *rqh_state, struct exb_request_state *rqstate, i
             return rv;
         }
     }
-
-    struct exb_str path;
-
-    exb_str_init_empty(&path);
-    exb_str_slice_to_copied_str(mod->exb_ref, rqstate->path_s, rqstate->input_buffer, &path);
-    struct exb_str key,value;
-    exb_str_init_const_str(&key, "Content-Type");
-    exb_str_init_const_str(&value, "text/plain");
-    exb_response_set_header(rqstate, &key, &value);
-    exb_response_append_body(rqstate, "Hello World!\r\n", 14);
-    exb_response_end(rqstate);
-    exb_str_deinit(mod->exb_ref, &path);   
+    lua_State *L = mod->lua_instances[eloop_idx].L;
+    int lua_index = lua_gettop(L);
+    lua_getglobal(L, "exb_handle_request");
+    lua_pushlightuserdata(L, rqstate);
+    if (!lua_isfunction(L, 1) || lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        exb_log_error(mod->exb_ref, "Failed to call exb_handle_request lua function\n");
+        lua_settop(L, lua_index);
+        return EXB_INIT_ERROR;
+    }
     return 0;
 }
 static void destroy_module(struct exb_http_server_module *module, struct exb *exb_ref) {

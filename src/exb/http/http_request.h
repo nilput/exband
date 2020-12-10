@@ -28,6 +28,8 @@ static int exb_request_get_eloop_index(struct exb_request_state *rqstate) {
     return exb_server_eloop_id(rqstate->server, rqstate->eloop);
 }
 
+
+
 static int exb_request_input_buffer_ensure_cap(struct exb_request_state *rqstate, size_t capacity) {
     if (capacity > rqstate->input_buffer_cap) {
         struct exb_error err = exb_eloop_realloc_buffer(rqstate->eloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
@@ -84,6 +86,10 @@ static int exb_request_state_change_handler(struct exb_request_state *rqstate, e
 
 static int exb_request_body_bytes_read(struct exb_request_state *rqstate) {
     return rqstate->bytes_read - rqstate->body_s.index;
+}
+
+static struct exb *exb_request_get_exb_ref(struct exb_request_state *rqstate) {
+    return rqstate->server->exb;
 }
 
 static int exb_request_get_path_slice(struct exb_request_state *rqstate, char **out, struct exb_str_slice *slice_out) {
