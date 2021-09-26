@@ -21,8 +21,8 @@ EXB_LINK_ARCHIVES += -Wl,--whole-archive obj/libexb_mod_ssl.a -Wl,--no-whole-arc
 LDLIBS += -lcrypto -lssl
 endif
 
-debug:
-all: $(OPTIONAL) exb exb_static obj/libexb.so
+all: fast-release
+main_targets: $(OPTIONAL) exb exb_static obj/libexb.so
 
 -include $(DEP)
 
@@ -30,22 +30,22 @@ test:
 	./tests/run_all
 
 debug: CFLAGS += -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DTRACK_RQSTATE_EVENTS -DEXB_DEBUG
-debug: all
+debug: main_targets
 
 trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 
-trace: all
+trace: main_targets
 debug-no-assert: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DEXB_NO_ASSERTS -fno-inline-small-functions
-debug-no-assert: all
+debug-no-assert: main_targets
 release: CFLAGS += -g -O2 -Wall -Wno-unused-function
-release: all
+release: main_targets
 fast-release: CFLAGS += -flto -mtune=native -march=native -O2 -Wall -Wno-unused-function -DEXB_NO_ASSERTS -DEXB_NO_LOGGIN
-fast-release: all
+fast-release: main_targets
 no-release: CFLAGS += -g -O1 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
-no-release: all
+no-release: main_targets
 san: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=address
-san: all
+san: main_targets
 san-thread: CFLAGS += -DEXB_DEBUG -g3 -O0 -Wall -Wno-unused-function -fsanitize=thread
-san-thread: al
+san-thread: main_targets
 profile: CFLAGS += -DENABLE_DBGPERF -g3 -O3 -Wall -Wno-unused-function -DEXB_NO_ASSERTS
 profile: EXB_SRC += othersrc/dbgperf/dbgperf.c
 profile: obj/libexb.so
@@ -75,4 +75,4 @@ clean:
 	@rm -f exb exb_static perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
 	@find examples/ -name '*.so' -exec 'rm' '{}' ';'
-.PHONY: clean all examples test
+.PHONY: clean all main_targets examples test
