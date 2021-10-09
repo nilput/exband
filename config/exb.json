@@ -5,7 +5,7 @@
             {
                 
                 "type": "prefix",
-                "prefix": "/ww",
+                "prefix": "/",
                 "destination": {
                     "type": "handler",
                     "name": "basic_handle_request"

@@ -30,3 +30,4 @@ __py*
 compile_commands.json
 config/exb_lua.json
 reports/
+dist/

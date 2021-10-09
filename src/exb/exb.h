@@ -59,8 +59,8 @@ struct exb {
 static int exb_init(struct exb *exb) {
     return 0;
 }
-static int exb_deinit(struct exb *exb) {
-    return 0;
+static void exb_deinit(struct exb *exb) {
+    return;
 }
 static void *exb_malloc(struct exb *exb, size_t sz){
     void *m = malloc(sz);
