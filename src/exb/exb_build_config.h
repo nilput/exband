@@ -1,6 +1,8 @@
 #ifndef EXB_BUILD_CONFIG_H
 #define EXB_BUILD_CONFIG_H
 
+#define EXBAND_VERSION_STR "v0.1.1"
+
 /*Eloop env config*/
 #define EXB_MAX_ELOOPS 128
 /*End Eloop env config*/

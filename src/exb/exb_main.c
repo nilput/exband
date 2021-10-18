@@ -75,23 +75,25 @@ int main(int argc, char *argv[]) {
     ordie(rv);
     rv = exb_pcontrol_init(&pcontrol, exb_config.nproc);
     ordie(rv);
-    fprintf(stderr, "spawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
+    fprintf(stderr, "Starting Exband %s\n", EXBAND_VERSION_STR);
+    fprintf(stderr, "\tSpawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
     
     rv = exb_threadpool_set_nthreads(&elist.tp, exb_config.tp_threads);
-    fprintf(stderr, "spawning %d thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
+    fprintf(stderr, "\tSpawning %d IO thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
     ordie(rv);
     
 
     erv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
     ordie(erv.error_code);
 
-    for (int i=0; i<server.n_listen_sockets; i++)
-        exb_logger_logf(&exb_state, EXB_LOG_INFO, "Listening on port %d%s\n",
-                                                 server.listen_sockets[i].port,
-                                                 server.listen_sockets[i].is_ssl ? " ssl" : "");
+    for (int i=0; i<server.n_listen_sockets; i++) {
+        fprintf(stderr, "\tListening on port %d%s\n",
+                                            server.listen_sockets[i].port,
+                                            server.listen_sockets[i].is_ssl ? " [ssl]" : "");
+    }
 
     if (exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "epoll", 5)) {
-        fprintf(stderr, "using epoll\n");
+        fprintf(stderr, "\tUsing epoll\n");
         erv.error_code = exb_server_listener_switch(&server, "epoll");
         ordie(erv.error_code);
     }
@@ -119,7 +121,5 @@ int main(int argc, char *argv[]) {
         }
     }
     
-
     stop();
-
 }

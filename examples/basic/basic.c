@@ -7,6 +7,11 @@ struct basic_module {
     struct exb *exb_ref;
     int count;
 };
+
+int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *str) {
+    return exb_response_append_body(rqstate, str, strlen(str));
+}
+
 int basic_handle_request(void *rqh_state, struct exb_request_state *rqstate, int reason) {
     struct basic_module *mod = (struct basic_module *) rqh_state;
 
@@ -15,11 +20,18 @@ int basic_handle_request(void *rqh_state, struct exb_request_state *rqstate, int
 
     exb_str_init_empty(&path);
     exb_str_slice_to_copied_str(mod->exb_ref, rqstate->path_s, rqstate->input_buffer, &path);
-    struct exb_str key,value;
+    struct exb_str key, value;
     exb_str_init_const_str(&key, "Content-Type");
-    exb_str_init_const_str(&value, "text/plain");
+    exb_str_init_const_str(&value, "text/html");
     exb_response_set_header(rqstate, &key, &value);
-    exb_response_append_body(rqstate, "Hello World!\r\n", 14);
+    exb_response_append_body_cstr(rqstate, "<!DOCTYPE html>");
+    exb_response_append_body_cstr(rqstate, "<html>");
+    exb_response_append_body_cstr(rqstate, "<body>");
+    exb_response_append_body_cstr(rqstate, "<div style=\"margin: auto; display: inline-block\">");
+    exb_response_append_body_cstr(rqstate, "<p style=\"font-size: 20pt\">Hello World!</p>");
+    exb_response_append_body_cstr(rqstate, "</div>");
+    exb_response_append_body_cstr(rqstate, "</body>");
+    exb_response_append_body_cstr(rqstate, "</html>");
     exb_response_end(rqstate);
     exb_str_deinit(mod->exb_ref, &path);   
     return 0;
