@@ -34,6 +34,7 @@ struct exb_py_module {
     bool gil_unlocked;
     PyGILState_STATE gstate;
 };
+
 static void save_signal_handlers(struct exb_py_module *mod) {
     struct sigaction tmp_handler;
     struct sigaction old_handler;
@@ -44,6 +45,7 @@ static void save_signal_handlers(struct exb_py_module *mod) {
     sigaction(SIGINT, &old_handler, NULL);
     mod->defaultsigs.int_handler = old_handler;
 }
+
 static void restore_signal_handlers(struct exb_py_module *mod) {
     sigaction(SIGINT, &mod->defaultsigs.int_handler, NULL);
 }
@@ -77,7 +79,6 @@ int split(char *buff, int buffsz, char **tok) {
     return 1;
 }
 
-
 static void handle_args(struct exb_py_module *mod, char *module_args) {
     char *tok = module_args;
     char buff[256];
@@ -104,6 +105,7 @@ static void request_handler(struct exb_http_server_module *module, struct exb_re
     exb_py_handle_request(rqstate);
 
 }
+
 static void release_gil(struct exb_py_module *mod) {
     if (!mod->gil_unlocked) {
         PyGILState_Release(mod->gstate);
@@ -223,13 +225,11 @@ int exb_py_init(struct exb *exb, struct exb_server *server, char *module_args, s
     mod->server = server;
 
     handle_args(mod, module_args);
-
-    if (initialize_python(mod) != 0) {
-        
+    int rv = 0;
+    if ((rv = initialize_python(mod)) != 0) {
+        return rv;
     }
 
-
-    
     *module_out = (struct exb_http_server_module*)mod;
     return EXB_OK;
 }

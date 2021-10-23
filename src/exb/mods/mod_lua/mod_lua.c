@@ -71,6 +71,7 @@ int exb_lua_handle_request(void *rqh_state, struct exb_request_state *rqstate, i
     }
     return 0;
 }
+
 static void destroy_module(struct exb_http_server_module *module, struct exb *exb_ref) {
     struct lua_module *mod = (struct lua_module *) module;
     for (int i=0; i < MAX_CPU_COUNT; i++) {
@@ -81,6 +82,7 @@ static void destroy_module(struct exb_http_server_module *module, struct exb *ex
     }
     exb_free(exb_ref, module);
 }
+
 int exb_lua_init(struct exb *exb_ref, struct exb_server *server, char *module_args, struct exb_http_server_module **module_out) {
     (void) module_args;
     struct lua_module *mod = exb_malloc(exb_ref, sizeof(struct lua_module));
