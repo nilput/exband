@@ -14,8 +14,8 @@
 #include "../exb_build_config.h"
 #include "http_parse.h"
 
-static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqstate, int index, int nbytes);
-static struct exb_error exb_response_on_bytes_written(struct exb_request_state *rqstate, int index, int nbytes);
+static int exb_request_on_bytes_read(struct exb_request_state *rqstate, int index, int nbytes);
+static int exb_response_on_bytes_written(struct exb_request_state *rqstate, int index, int nbytes);
 enum exb_event_http_cmd {
     EXB_HTTP_READ, /*ask it to read, .argp : rqstate*/
     EXB_HTTP_SEND, /*ask it to write, .argp : rqstate*/
@@ -28,9 +28,12 @@ enum exb_event_http_cmd {
     EXB_HTTP_CANCEL, /*.argp: http server, .arg1: socket*/
 };
 
-static int exb_event_http_init(struct exb_server *s, struct exb_http_multiplexer *mp, struct exb_event *ev, int cmd, void *object, int arg);
+static int exb_event_http_init(struct exb_server *s, struct exb_http_multiplexer *mp,
+                               struct exb_event *ev, int cmd, void *object, int arg);
 
 static void exb_request_on_request_done(struct exb_request_state *rqstate);
+
+static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
 
 static void mark_read_scheduled(struct exb_request_state *rqstate, int mark) {
     if (mark)
@@ -127,34 +130,32 @@ static void exb_request_on_response_done(struct exb_request_state *rqstate) {
     exb_request_lifetime_checks(mp, rqstate);
 }
 
-
-static struct exb_error exb_request_on_headers_read(struct exb_request_state *rqstate) {
-    struct exb_error err  = exb_request_http_parse(rqstate);
-    if (err.error_code != EXB_OK) {
-        exb_request_handle_http_error(rqstate);
-        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
-        return err;
-        
-    }
-    int rv = exb_request_http_check_validity(rqstate);
+static int exb_request_on_headers_read(struct exb_request_state *rqstate) {
+    int rv = exb_request_http_parse(rqstate);
     if (rv != EXB_OK) {
         exb_request_handle_http_error(rqstate);
         /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
-        return exb_make_error(rv);
+        return rv;
+    }
+    rv = exb_request_http_check_validity(rqstate);
+    if (rv != EXB_OK) {
+        exb_request_handle_http_error(rqstate);
+        /*TODO: IS IT ALWAYS A GOOD IDEA TO END THE CONNECTION HERE?*/
+        return rv;
     }
     if (rqstate->is_chunked) {
         rqstate->parse_chunk_cursor = rqstate->body_s.index; //first chunk
     }
 
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
-static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
 
-    struct exb_error err;
+static int exb_request_fork(struct exb_request_state *rqstate) {
+    int rv = EXB_OK;
     struct exb_server *s = rqstate->server;
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(s, rqstate->socket_fd);
     if (mp->state != EXB_MP_ACTIVE)
-        return exb_make_error(EXB_SOCKET_ERR);
+        return EXB_SOCKET_ERR;
     exb_assert_h(mp && mp->state == EXB_MP_ACTIVE, "");
     
     struct exb_request_state *forked_rqstate = exb_server_new_rqstate(s, mp->evloop, rqstate->socket_fd);
@@ -166,15 +167,15 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
 
     RQSTATE_EVENT(stderr, "Forking %p to %p with %d leftover bytes\n", rqstate, forked_rqstate, bytes_copied);
 
-    int rv;
-    if ((rv = exb_request_input_buffer_ensure_cap(forked_rqstate, bytes_copied + 1)) != EXB_OK) {
-        return exb_make_error(rv);
+    rv = exb_request_input_buffer_ensure_cap(forked_rqstate, bytes_copied + 1);
+    if (rv != EXB_OK) {
+        return rv;
     }
     
     exb_assert_h(bytes_copied < exb_request_input_buffer_size(forked_rqstate), "");
     memcpy(forked_rqstate->input_buffer, rqstate->input_buffer + rqstate->next_request_cursor, bytes_copied);
-    err = exb_request_on_bytes_read(forked_rqstate, 0, bytes_copied);
-    if (err.error_code != EXB_OK) {
+    rv = exb_request_on_bytes_read(forked_rqstate, 0, bytes_copied);
+    if (rv != EXB_OK) {
         exb_server_destroy_rqstate(s, mp->evloop, forked_rqstate);
         exb_server_cancel_requests(s, rqstate->socket_fd);
         goto ret;
@@ -186,14 +187,14 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
     mp->currently_reading = forked_rqstate;
     exb_http_multiplexer_queue_response(mp, forked_rqstate);
     //RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read socket %d, because we just forked it\n",  forked_rqstate, forked_rqstate->socket_fd)
-    err = exb_make_error(EXB_OK);
+    rv = EXB_OK;
 ret:
 
-    return err;
+    return rv;
 }
-static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqstate, int index, int nbytes) {
-    struct exb_error err = {0};
 
+static int exb_request_on_bytes_read(struct exb_request_state *rqstate, int index, int nbytes) {
+    int rv = EXB_OK;
     exb_assert_h(index == rqstate->input_buffer_len, "");
     rqstate->input_buffer_len += nbytes;
     rqstate->bytes_read += nbytes;
@@ -204,7 +205,7 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
     //fprintf(stderr, "READ %d BYTES, TOTAL %d BYTES\n", nbytes, rqstate->input_buffer_len);
 
     if (rqstate->istate == EXB_HTTP_I_ST_DONE || rqstate->istate == EXB_HTTP_I_ST_DEAD) {
-        err = exb_make_error(EXB_INVALID_STATE_ERR);
+        rv = EXB_INVALID_STATE_ERR;
         goto ret;
     }
 
@@ -214,8 +215,8 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
     if (rqstate->istate == EXB_HTTP_I_ST_WAITING_FOR_HEADERS )
     {
         if (exb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len)) {
-            err = exb_request_on_headers_read(rqstate);
-            if (err.error_code != EXB_OK) {
+            rv = exb_request_on_headers_read(rqstate);
+            if (rv != EXB_OK) {
                 goto ret;
             }
             rqstate->istate = EXB_HTTP_I_ST_WAITING_FOR_BODY;
@@ -230,9 +231,8 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
             RQSTATE_EVENT(stderr, "marked request %p as done, because it has no body\n", rqstate);
         }
         else if (rqstate->is_chunked && (exb_str_has_crlfcrlf(rqstate->input_buffer, scan_idx, scan_len))) {
-            int rv = exb_request_http_parse_chunked_encoding(rqstate);
+            rv = exb_request_http_parse_chunked_encoding(rqstate);
             if (rv != EXB_OK) {
-                err = exb_make_error(rv);
                 goto ret;
             }
             if (exb_request_is_chunked_body_complete(rqstate)) {
@@ -284,8 +284,8 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
         }
 
         if (rqstate->is_persistent) {
-            err = exb_request_fork(rqstate);
-            if (err.error_code != EXB_OK) {
+            rv = exb_request_fork(rqstate);
+            if (rv != EXB_OK) {
                 exb_request_handle_socket_error(rqstate);
                 goto ret;
             }
@@ -300,14 +300,13 @@ static struct exb_error exb_request_on_bytes_read(struct exb_request_state *rqst
     }
    
 ret:
-
-    return err;
+    return rv;
 }
 //assumes rqstate->input_buffer_len WAS NOT adjusted for new bytes
 
 /*assumes rsp->written_bytes WAS NOT adjusted for new bytes*/
 
-static struct exb_error exb_response_on_bytes_written(struct exb_request_state *rqstate, int index, int nbytes) {
+static int exb_response_on_bytes_written(struct exb_request_state *rqstate, int index, int nbytes) {
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
 
     exb_assert_h(index == rsp->written_bytes, "");
@@ -318,7 +317,7 @@ static struct exb_error exb_response_on_bytes_written(struct exb_request_state *
         rsp->state = EXB_HTTP_R_ST_DONE;
     }
 
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
 static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
@@ -382,9 +381,8 @@ ret:
 
     return;
 }
-static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
-static struct exb_error exb_request_async_read_from_client(struct exb_request_state *rqstate) {
 
+static int exb_request_async_read_from_client(struct exb_request_state *rqstate) {
     struct exb_threadpool *tp = rqstate->evloop->threadpool;
     struct exb_task task;
     task.err = exb_make_error(EXB_OK);
@@ -394,7 +392,7 @@ static struct exb_error exb_request_async_read_from_client(struct exb_request_st
     task.msg.u.iip.argp = rqstate;
     int rv = exb_threadpool_push_task(tp, task);
 
-    return exb_make_error(rv);
+    return rv;
 }
 
 
@@ -511,7 +509,7 @@ static void on_http_ssl_send_async(struct exb_event ev);
 static void on_http_ssl_read_async(struct exb_event ev);
 
 /*This is not the only source of bytes the request has, see also exb_request_fork*/
-static struct exb_error exb_request_read_from_client(struct exb_request_state *rqstate) {
+static int exb_request_read_from_client(struct exb_request_state *rqstate) {
     int socket = rqstate->socket_fd;
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
     int avbytes = exb_request_input_buffer_size(rqstate) - rqstate->input_buffer_len - 1;
@@ -549,13 +547,12 @@ static struct exb_error exb_request_read_from_client(struct exb_request_state *r
     else {
         avbytes -= nbytes;
         int idx = rqstate->input_buffer_len;
-        err = exb_request_on_bytes_read(rqstate, idx, nbytes);
-        if (err.error_code != EXB_OK)
-            goto ret;
+        int rv = exb_request_on_bytes_read(rqstate, idx, nbytes);
+        if (rv != EXB_OK)
+            return rv;
     }
-    ret:
-
-    return err;
+ret:
+    return EXB_OK;
 }
 
 static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task) {
@@ -649,14 +646,12 @@ ret:
     return;
 }
 
-
 static void on_http_read_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     mark_read_scheduled(rqstate, 0);
     RQSTATE_EVENT(stderr, "Handling EXB_HTTP_READ for rqstate %p\n", rqstate);
-    err = exb_request_read_from_client(rqstate);
-    if (err.error_code != EXB_OK) {
+    int rv = exb_request_read_from_client(rqstate);
+    if (rv != EXB_OK) {
         exb_request_handle_http_error(rqstate);
     }
     
@@ -664,18 +659,15 @@ static void on_http_read_sync(struct exb_event ev) {
 
 static void on_http_read_async(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     exb_assert_h(rqstate->is_read_scheduled, "");
     RQSTATE_EVENT(stderr, "Handling EXB_HTTP_READ for rqstate %p\n", rqstate);
     exb_request_async_read_from_client(rqstate);
     
 }
 
-
 static void on_http_send_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     struct exb_response_state *rsp = &rqstate->resp;
-    struct exb_error err = exb_make_error(EXB_OK);
     exb_assert_h(rqstate->is_send_scheduled, "");
     exb_assert_h(rqstate->resp.state == EXB_HTTP_R_ST_SENDING, "HTTP_SEND scheduled on an unready response");
     RQSTATE_EVENT(stderr, "Handling EXB_HTTP_SEND for rqstate %p\n", rqstate);    
@@ -697,7 +689,7 @@ static void on_http_send_sync(struct exb_event ev) {
 #endif
         if (written == -1) {
             if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                err =  exb_make_error(EXB_WRITE_ERR);
+                //FIXME: Handle error
                 return;
             }
         }
@@ -706,25 +698,24 @@ static void on_http_send_sync(struct exb_event ev) {
             current_written_bytes += written;
         }
     }
-    err = exb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
-    
-    struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
-    exb_assert_h(mp->next_response == rqstate, "");
-    exb_assert_h(!mp->wants_write, "");
-    if (err.error_code != EXB_OK) {
+    int rv = exb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
+    if (rv != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
         return;
     }
+
+    struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
+    exb_assert_h(mp->next_response == rqstate, "");
+    exb_assert_h(!mp->wants_write, "");
+    
     mark_send_scheduled(rqstate, 0);
     if (rqstate->resp.state == EXB_HTTP_R_ST_DONE) {
         exb_request_on_response_done(rqstate);
     }
 }
 
-
 static void on_http_send_async(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     exb_assert_h(rqstate->is_send_scheduled, "");
     exb_assert_h(rqstate->resp.state == EXB_HTTP_R_ST_DONE, "HTTP_SEND scheduled on an unready response");
     RQSTATE_EVENT(stderr, "Handling EXB_HTTP_SEND for rqstate %p\n", rqstate);
@@ -749,8 +740,6 @@ static void on_http_send_async(struct exb_event ev) {
 
     return;
 }
-
-
 
 static void on_http_ssl_send_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
@@ -790,10 +779,11 @@ static void on_http_ssl_send_sync(struct exb_event ev) {
     }
     exb_assert_h(mp->next_response == rqstate, "");
     mark_send_scheduled(rqstate, 0);
-    struct exb_error err = exb_response_on_bytes_written(rqstate, rsp->written_bytes, current_written_bytes - rsp->written_bytes);
+    int rv = exb_response_on_bytes_written(rqstate,
+                                           rsp->written_bytes,
+                                           current_written_bytes - rsp->written_bytes);
     
-    
-    if (err.error_code != EXB_OK) {
+    if (rv != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
         return;
     }
@@ -801,6 +791,7 @@ static void on_http_ssl_send_sync(struct exb_event ev) {
         exb_request_on_response_done(rqstate);
     }
 }
+
 static void on_http_ssl_read_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
@@ -838,17 +829,19 @@ static void on_http_ssl_read_sync(struct exb_event ev) {
     
     avbytes -= rres.nbytes;
     int idx = rqstate->input_buffer_len;
-    struct exb_error err = exb_request_on_bytes_read(rqstate, idx, rres.nbytes);
-    if (err.error_code != EXB_OK) {
+    int rv = exb_request_on_bytes_read(rqstate, idx, rres.nbytes);
+    if (rv != EXB_OK) {
         exb_request_handle_http_error(rqstate);
     }
 }
+
 static void on_http_ssl_send_async(struct exb_event ev) {
     //TODO:
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     exb_log_error(rqstate->server->exb, "on_http_ssl_send_async not supported");
     abort();
 }
+
 static void on_http_ssl_read_async(struct exb_event ev) {
     //TODO:
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
@@ -856,16 +849,12 @@ static void on_http_ssl_read_async(struct exb_event ev) {
     abort();
 }
 
-
-
 static void on_http_input_buffer_full(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     RQSTATE_EVENT(stderr, "INPUT BUFFER FULL For rqstate %p, sz: %d\n", rqstate, rqstate->input_buffer_cap);
-    int rv;
+    int rv = EXB_OK;
     if ((rv = exb_request_input_buffer_ensure_cap(rqstate, rqstate->input_buffer_cap * 2)) != EXB_OK) {
         exb_request_handle_socket_error(rqstate);
-        err = exb_make_error(rv);
     }
     mark_read_scheduled(rqstate, 0);
     /*TODO: else reschedule?*/
@@ -873,24 +862,22 @@ static void on_http_input_buffer_full(struct exb_event ev) {
 
 static void on_http_did_read(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     RQSTATE_EVENT(stderr, "Handling async read notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
     mark_read_scheduled(rqstate, 0);
-    
-    
     exb_assert_h(rqstate->istate != EXB_HTTP_I_ST_DEAD, ""); 
     int len  = ev.msg.u.iip.arg1;
-    err = exb_request_on_bytes_read(rqstate, rqstate->input_buffer_len, len);
+    int rv = exb_request_on_bytes_read(rqstate, rqstate->input_buffer_len, len);
+    //TODO: handle error
 }
 
 static void on_http_did_write(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    struct exb_error err = exb_make_error(EXB_OK);
     RQSTATE_EVENT(stderr, "Handling async write notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
     mark_send_scheduled(rqstate, 0);
     exb_assert_h(rqstate->resp.state != EXB_HTTP_R_ST_DEAD, "");
     int len  = ev.msg.u.iip.arg1;
-    err = exb_response_on_bytes_written(rqstate, rqstate->resp.written_bytes, len);
+    //FIXME: unchecked error
+    int rv = exb_response_on_bytes_written(rqstate, rqstate->resp.written_bytes, len);
     if (rqstate->resp.state == EXB_HTTP_R_ST_DONE) {
         exb_request_on_response_done(rqstate);
     }
@@ -939,14 +926,12 @@ static void on_http_read_io_error(struct exb_event ev) {
     exb_request_handle_socket_error(rqstate);
 }
 
-
 static void on_http_write_io_error(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     struct exb_http_multiplexer *mp = exb_server_get_multiplexer_i(rqstate->server, rqstate->socket_fd);
     mark_send_scheduled(rqstate, 0);
     exb_request_handle_socket_error(rqstate);
 }
-
 
 static inline int exb_event_http_init(struct exb_server *s, struct exb_http_multiplexer *mp, struct exb_event *ev, int cmd, void *object, int arg) {
     switch (cmd) {
@@ -979,6 +964,7 @@ static inline void exb_server_on_read_available_i(struct exb_server *s, struct e
                     "read is available for socket %d\n", mp->currently_reading, mp->socket_fd);
     
 }
+
 static inline void exb_server_on_write_available_i(struct exb_server *s, struct exb_http_multiplexer *mp) {
     struct exb_event ev;
     exb_event_http_init(s, mp, &ev, EXB_HTTP_SEND, mp->next_response, 0);

@@ -35,7 +35,6 @@ static int exb_ts_event_queue_len(struct exb_ts_event_queue *tq) {
         return 0;
     }
     int len = exb_ts_event_queue_len_u(tq);
-ret:
     pthread_mutex_unlock(&tq->mtx);
     return len;
 }
@@ -99,7 +98,6 @@ static int exb_ts_event_queue_resize(struct exb_ts_event_queue *tq, int sz) {
         return EXB_MUTEX_LOCK_ERROR;
     }
     int err = exb_ts_event_queue_resize_u(tq, sz);
-ret:
     pthread_mutex_unlock(&tq->mtx);
     return err;
 }

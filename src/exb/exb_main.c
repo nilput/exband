@@ -58,9 +58,8 @@ int main(int argc, char *argv[]) {
     struct exb_config exb_config;
     struct exb_http_server_config exb_http_server_config;
 
-    int rv;
+    int rv = EXB_OK;
 
-    struct exb_error erv = {0};
     dp_clear();
     rv = exb_init(&exb_state);
     check_or_die(rv);
@@ -80,8 +79,8 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Spawning %d IO thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
     check_or_die(rv);
 
-    erv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
-    check_or_die(erv.error_code);
+    rv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
+    check_or_die(rv);
 
     for (int i=0; i<server.n_listen_sockets; i++) {
         fprintf(stderr, "Listening on port %d%s\n",
@@ -90,8 +89,8 @@ int main(int argc, char *argv[]) {
     }
     if (exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "epoll", 5)) {
         fprintf(stderr, "Using epoll\n");
-        erv.error_code = exb_server_listener_switch(&server, "epoll");
-        check_or_die(erv.error_code);
+        rv = exb_server_listener_switch(&server, "epoll");
+        check_or_die(rv);
     }
     else if (!exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "select", 6)) {
         fprintf(stderr, "Unknown polling backend: '%s', exiting\n", exb_http_server_config.polling_backend.str);
@@ -108,12 +107,12 @@ int main(int argc, char *argv[]) {
                 rv = exb_pcontrol_child_setup(&pcontrol, &elist);
                 check_or_die(rv);
             }
-            erv = exb_server_listen(&server);
-            check_or_die(erv.error_code);
-            erv = exb_evloop_pool_run(&elist, exb_pcontrol_worker_id(&pcontrol) % cpu_count);
-            check_or_die(erv.error_code);
-            erv = exb_evloop_pool_join(&elist);
-            check_or_die(erv.error_code);
+            rv = exb_server_listen(&server);
+            check_or_die(rv);
+            rv = exb_evloop_pool_run(&elist, exb_pcontrol_worker_id(&pcontrol) % cpu_count);
+            check_or_die(rv);
+            rv = exb_evloop_pool_join(&elist);
+            check_or_die(rv);
         }
         else if (exb_pcontrol_is_master(&pcontrol)) {
             exb_pcontrol_maintain(&pcontrol);

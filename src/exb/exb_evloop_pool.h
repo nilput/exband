@@ -88,24 +88,25 @@ static void *exb_evloop_pool_thread_runner(void *p) {
 }
 
 //cpu offset is used for cpu affinity, it's not important (can be -1)
-static struct exb_error exb_evloop_pool_run(struct exb_evloop_pool *elist, int cpu_offset) {
+static int exb_evloop_pool_run(struct exb_evloop_pool *elist, int cpu_offset) {
     for (int i=0; i<elist->nloops; i++) {
         exb_thread_new(elist->exb_ref, i, &elist->tp, exb_evloop_pool_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
         elist->loops[i].thread->bind_cpu = cpu_offset + i;
     }
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
-static struct exb_error  exb_evloop_pool_join(struct exb_evloop_pool *elist) {
+static int  exb_evloop_pool_join(struct exb_evloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         if (elist->loops[i].thread) {
+            //FIXME: why is this ignored.
             int rv = exb_thread_join(elist->loops[i].thread);
             exb_thread_destroy(elist->loops[i].thread, elist->exb_ref);
             elist->loops[i].thread = NULL;
         }
     }
     
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
 static int exb_evloop_pool_deinit(struct exb_evloop_pool *elist) {

@@ -32,8 +32,12 @@ static int exb_request_get_evloop_index(struct exb_request_state *rqstate) {
 
 static int exb_request_input_buffer_ensure_cap(struct exb_request_state *rqstate, size_t capacity) {
     if (capacity > rqstate->input_buffer_cap) {
-        struct exb_error err = exb_evloop_realloc_buffer(rqstate->evloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
-        return err.error_code;
+        int rv = exb_evloop_realloc_buffer(rqstate->evloop,
+                                           rqstate->input_buffer,
+                                           capacity,
+                                           &rqstate->input_buffer,
+                                           &rqstate->input_buffer_cap);
+        return rv;
     }
     return EXB_OK;
 }
@@ -68,10 +72,13 @@ static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
     size_t buff_cap = 0;
-    struct exb_error err = exb_evloop_alloc_buffer(evloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &buff_cap);
+    int rv = exb_evloop_alloc_buffer(evloop,
+                                     HTTP_INPUT_BUFFER_INITIAL_SIZE,
+                                     &rqstate->input_buffer,
+                                     &buff_cap);
     rqstate->input_buffer_cap = buff_cap;
-    if (err.error_code) {
-        return err.error_code;
+    if (rv != EXB_OK) {
+        return rv;
     }
 
     exb_str_init_empty(&rqstate->body_decoded);

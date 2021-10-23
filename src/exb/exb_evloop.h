@@ -38,6 +38,8 @@ enum exb_evloop_event_cmd {
 
 struct exb_evloop;
 static int exb_evloop_flush_tasks(struct exb_evloop *evloop);
+static int exb_evloop_resize(struct exb_evloop *evloop, int sz);
+static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event ev, int ms, int tolerate_preexec);
 
 static void exb_evloop_handle_evloop_event(struct exb_event ev) {
     struct exb_evloop *evloop = ev.msg.u.iip.argp;
@@ -149,6 +151,7 @@ static int exb_evloop_q_pop_next(struct exb_evloop *evloop, struct exb_event *ev
     *ev_out = ev;
     return EXB_OK;
 }
+
 static int exb_evloop_d_pop_next(struct exb_evloop *evloop, struct exb_event *ev_out) {
     if (evloop->devents_len < 1)
         return EXB_OUT_OF_RANGE_ERR;
@@ -173,11 +176,13 @@ static int exb_evloop_d_pop_next(struct exb_evloop *evloop, struct exb_event *ev
 static int exb_evloop_d_len(struct exb_evloop *evloop) {
     return evloop->devents_len;
 }
+
 static struct exb_delayed_event *exb_evloop_d_peek_next(struct exb_evloop *evloop) {
     if (exb_evloop_d_len(evloop) == 0)
         return NULL;
     return &evloop->devents->cur;
 }
+
 static int exb_evloop_pop_next(struct exb_evloop *evloop, struct exb_event *ev_out) {
     struct exb_delayed_event *dev = exb_evloop_d_peek_next(evloop);
     if (dev != NULL && exb_timestamp_cmp(dev->due, evloop->current_timestamp) <= 0) {
@@ -190,7 +195,6 @@ static int exb_evloop_len(struct exb_evloop *evloop) {
     return exb_evloop_q_len(evloop) + exb_evloop_d_len(evloop);
 }
 
-static int exb_evloop_resize(struct exb_evloop *evloop, int sz);
 static int exb_evloop_init(struct exb_evloop *evloop, int evloop_id, struct exb* exb_ref, struct exb_threadpool *tp, int sz) {
     memset(evloop, 0, sizeof *evloop);
     evloop->threadpool = tp;
@@ -224,6 +228,7 @@ static int exb_evloop_init(struct exb_evloop *evloop, int evloop_id, struct exb*
         evloop->devents_buffer[i].storage = EXB_EVLOOP_DEVENT_BUFFER_COUNT;
     return EXB_OK;
 }
+
 static int exb_evloop_deinit(struct exb_evloop *evloop) {
     //TODO destroy pending events
     fprintf(stderr, "freeing evloop %p\n", evloop);
@@ -265,6 +270,7 @@ static int exb_evloop_resize(struct exb_evloop *evloop, int sz) {
     
     return EXB_OK;
 }
+
 //copies event, [eventually calls ev->destroy()]
 static int exb_evloop_append(struct exb_evloop *evloop, struct exb_event ev) {
     evloop->ev_id++;
@@ -348,8 +354,6 @@ static int exb_evloop_append_many(struct exb_evloop *evloop, struct exb_event *e
     return EXB_OK;
 }
 
-static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event ev, int ms, int tolerate_preexec);
-
 static int exb_evloop_flush_tasks(struct exb_evloop *evloop) {
     int err = EXB_OK;
     if (evloop->ntasks > 0)
@@ -382,17 +386,18 @@ static int exb_evloop_push_task(struct exb_evloop *evloop, struct exb_task task,
     return EXB_OK;
 }
 
-
 /*Threadsafe append event*/
 static int exb_evloop_ts_append(struct exb_evloop *evloop, struct exb_event event) {
     int rv = exb_ts_event_queue_append(&evloop->tsq, event);
     return rv;
 }
+
 /*Threadsafe pop event*/
 static int exb_evloop_ts_pop(struct exb_evloop *evloop, struct exb_event *event_out) {
     int rv = exb_ts_event_queue_pop_next(&evloop->tsq, event_out);
     return rv;
 }
+
 static int exb_evloop_ts_pop_many(struct exb_evloop *evloop, struct exb_event *events_out, int *nevents, int max_events) {
     int rv = exb_ts_event_queue_pop_many(&evloop->tsq, events_out, nevents, max_events);
     return rv;
@@ -406,6 +411,7 @@ static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event
 static int exb_evloop_fatal(struct exb_evloop *evloop, struct exb_error err) {
     abort();
 }
+
 //thread safe
 static int exb_evloop_stop(struct exb_evloop *evloop) {
     struct exb_event ev;
@@ -419,11 +425,12 @@ static int exb_evloop_receive(struct exb_evloop *evloop) {
     int nevents = 0;
     #define MAX_BATCHES 3
     int rv = EXB_OK;
+    //FIXME: make sure this loop is safe in case of errors
     for (int i=0;
          (i == 0 || nevents == EXB_EVLOOP_TMP_EVENTS_SZ) && i<MAX_BATCHES;
           i++) 
     {
-        int rv = exb_evloop_ts_pop_many(evloop, events, &nevents, EXB_EVLOOP_TMP_EVENTS_SZ);
+        rv = exb_evloop_ts_pop_many(evloop, events, &nevents, EXB_EVLOOP_TMP_EVENTS_SZ);
         if (rv != EXB_OK) {
             if (rv == EXB_OUT_OF_RANGE_ERR) {
                 return EXB_OK;
@@ -435,9 +442,9 @@ static int exb_evloop_receive(struct exb_evloop *evloop) {
             exb_assert_h(0, ""); //this 'll ruin order
             for (int i=0; i<nevents; i++) {
                 struct exb_event *ev = events + i;
-                int err = exb_evloop_ts_append(evloop, *ev);
-                if (err != EXB_OK) {
-                    exb_evloop_fatal(evloop, exb_make_error(err));
+                rv = exb_evloop_ts_append(evloop, *ev);
+                if (rv != EXB_OK) {
+                    exb_evloop_fatal(evloop, exb_make_error(rv));
                 }
             }
             return rv;
@@ -447,7 +454,7 @@ static int exb_evloop_receive(struct exb_evloop *evloop) {
     return EXB_OK;
 }
 
-static struct exb_error exb_evloop_run(struct exb_evloop *evloop) {
+static int exb_evloop_run(struct exb_evloop *evloop) {
     #define EXB_EVLOOP_NPROCESS_OFFLOAD 64
     int nprocessed = 0;
 
@@ -467,8 +474,7 @@ static struct exb_error exb_evloop_run(struct exb_evloop *evloop) {
         }
         if (rv != EXB_OK && rv != EXB_OUT_OF_RANGE_ERR) {
             //serious error
-            struct exb_error err = exb_make_error(rv);
-            return err;
+            return rv;
         }
         
         int dlen = exb_evloop_d_len(evloop);
@@ -482,8 +488,7 @@ static struct exb_error exb_evloop_run(struct exb_evloop *evloop) {
         
         if (rv != EXB_OK && rv != EXB_OUT_OF_RANGE_ERR) {
             //serious error
-            struct exb_error err = exb_make_error(rv);
-            return err;
+            return rv;
         }
         exb_evloop_receive(evloop);
         if (exb_evloop_q_len(evloop) == 0) {
@@ -492,34 +497,36 @@ static struct exb_error exb_evloop_run(struct exb_evloop *evloop) {
         evloop->current_timestamp = exb_timestamp_now();
     }
     
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
 //TODO: optimize to recycle or use custom allocator
-static struct exb_error exb_evloop_alloc_buffer(struct exb_evloop *evloop, size_t size, char **buff_out, size_t *cap_out) {
+static int exb_evloop_alloc_buffer(struct exb_evloop *evloop, size_t size, char **buff_out, size_t *cap_out) {
     void *p;
     size_t cap;
     if (exb_buffer_recycle_list_pop(evloop->exb, &evloop->buff_cyc, size, &p, &cap) == EXB_OK) {
         *buff_out = p;
         *cap_out = cap;
-        return exb_make_error(EXB_OK);
+        return EXB_OK;
     }
     *buff_out = exb_malloc(evloop->exb, size);
     if (!*buff_out) {
-        return exb_make_error(EXB_NOMEM_ERR);
+        return EXB_NOMEM_ERR;
     }
     *cap_out = size;
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
-static struct exb_error exb_evloop_realloc_buffer(struct exb_evloop *evloop, char *buff, size_t new_size, char **buff_out, int *cap_out) {
+
+static int exb_evloop_realloc_buffer(struct exb_evloop *evloop, char *buff, size_t new_size, char **buff_out, int *cap_out) {
     char *new_buff = exb_realloc(evloop->exb, buff, new_size);
     if (!new_buff) {
-        return exb_make_error(EXB_NOMEM_ERR);
+        return EXB_NOMEM_ERR;
     }
     *buff_out = new_buff;
     *cap_out = new_size;
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
+
 static void exb_evloop_release_buffer(struct exb_evloop *evloop, char *buff, size_t capacity) {
     if (exb_buffer_recycle_list_push(evloop->exb, &evloop->buff_cyc, buff, capacity) == EXB_OK)
         return;

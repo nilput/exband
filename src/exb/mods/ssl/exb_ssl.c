@@ -388,8 +388,8 @@ static struct exb_io_result send_from_wbio_or_keep(struct exb_ssl_module *ssl_mo
         if (!mp->ssl_state.keep_buff) {
             size_t keep_buff_sz = 0;
             exb_assert_h(!!mp->evloop, "");
-            struct exb_error error = exb_evloop_alloc_buffer(mp->evloop, EXB_SSL_RW_BUFFER_SIZE, &mp->ssl_state.keep_buff, &keep_buff_sz);
-            if (error.error_code) {
+            int rv = exb_evloop_alloc_buffer(mp->evloop, EXB_SSL_RW_BUFFER_SIZE, &mp->ssl_state.keep_buff, &keep_buff_sz);
+            if (rv != EXB_OK) {
                 return exb_make_io_result(0, EXB_IO_FLAG_CONN_FATAL);
             }
             mp->ssl_state.keep_buff_size = keep_buff_sz;

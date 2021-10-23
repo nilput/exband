@@ -45,16 +45,16 @@ struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, stru
 //the evloop it was associated with
 void exb_server_destroy_rqstate(struct exb_server *server, struct exb_evloop *evloop, struct exb_request_state *rqstate);
 
-struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, int port);
+int exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, int port);
 /*config is owned (moved) if initialization is successful, shouldn't be deinitialized*/
 
-struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, struct exb_http_server_config config);
+int exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, struct exb_http_server_config config);
 
 
 //interface is copied, this should be called by the SSL module
 int exb_server_set_ssl_interface(struct exb_server *s, struct exb_ssl_interface *ssl_if);
 
-struct exb_error exb_server_listen(struct exb_server *s);
+int exb_server_listen(struct exb_server *s);
 
 void exb_server_cancel_requests(struct exb_server *s, int socket_fd);
 void exb_server_close_connection(struct exb_server *s, int socket_fd);

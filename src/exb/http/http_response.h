@@ -37,14 +37,14 @@ static int exb_response_state_init(struct exb_response_state *resp_state, struct
     resp_state->body_len = 0;
 
     size_t buff_sz = 0;
-    struct exb_error err = exb_evloop_alloc_buffer(evloop,
-                                HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
-                                &resp_state->output_buffer,
-                                &buff_sz);
+    int rv = exb_evloop_alloc_buffer(evloop,
+                                     HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
+                                     &resp_state->output_buffer,
+                                     &buff_sz);
     resp_state->output_buffer_cap = buff_sz;
     exb_assert_h(resp_state->body_begin_index < resp_state->output_buffer_cap, "");
-    if (err.error_code) {
-        return err.error_code;
+    if (rv != EXB_OK) {
+        return rv;
     }
 
     return EXB_OK;
@@ -154,9 +154,9 @@ static int exb_response_prepare_headers(struct exb_request_state *rqstate, struc
         //this is unlikely to happen
         char *new_buff;
         size_t new_buff_cap;
-        struct exb_error err = exb_evloop_alloc_buffer(evloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
-        if (err.error_code) {
-            return err.error_code;
+        int rv = exb_evloop_alloc_buffer(evloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
+        if (rv != EXB_OK) {
+            return rv;
         }
         int new_body_index = rsp->headers_bytes + HTTP_STATUS_MAX_SZ;
         memcpy(new_buff + new_body_index, rsp->output_buffer + rsp->body_begin_index, rsp->body_len);

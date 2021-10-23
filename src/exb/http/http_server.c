@@ -31,11 +31,11 @@
 //https://www.gnu.org/software/libc/manual/html_node/Server-Example.html
 //http://www.cs.tau.ac.il/~eddiea/samples/Non-Blocking/tcp-nonblocking-server.c.html
 
-static struct exb_error make_socket(char *bind_ip, uint16_t port, int *out)
+static int make_socket(char *bind_ip, uint16_t port, int *out)
 {
     int sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        return exb_make_error(EXB_SOCKET_ERR);
+        return EXB_SOCKET_ERR;
     }
 
     struct sockaddr_in name;
@@ -46,7 +46,7 @@ static struct exb_error make_socket(char *bind_ip, uint16_t port, int *out)
     //ipv4 only
     if (bind_ip != NULL) {
         if (inet_pton(AF_INET, bind_ip, &name.sin_addr.s_addr) != 1) {
-            return exb_make_error(EXB_INVALID_FORMAT);
+            return EXB_INVALID_FORMAT;
         }
     }
 
@@ -57,14 +57,14 @@ static struct exb_error make_socket(char *bind_ip, uint16_t port, int *out)
         ;//No op (it's okay if this fails)
 
     if (bind(sock, (struct sockaddr *) &name, sizeof (name)) < 0) {
-        return exb_make_error(EXB_BIND_ERR);
+        return EXB_BIND_ERR;
     }
 
     //Make socket non-blocking
     fcntl(sock, F_SETFL, O_NONBLOCK); 
 
     *out = sock;
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
 static int default_handler(void *handler_state, struct exb_request_state *rqstate, int reason) {
@@ -77,8 +77,9 @@ static void server_postfork(void *data) {
     fprintf(stderr, "server_postfork %d\n", getpid());
     exb_server_listener_switch(s, s->config.polling_backend.str);
 }
-struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, struct exb_http_server_config config) {
-    struct exb_error err = {0};
+
+int exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, struct exb_http_server_config config) {
+    int rv = EXB_OK;
     memset(&s->ssl_interface, 0, sizeof s->ssl_interface);
     s->exb                    = exb_ref;
     s->elist                  = elist;
@@ -119,7 +120,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
                         exb_log_error(exb_ref,
                                     "Error: attempting to use port %d for both HTTPS and HTTP\n",
                                     port);
-                        err = exb_make_error(EXB_CONFIG_ERROR);
+                        rv = EXB_CONFIG_ERROR;
                         goto err1;
                     }
                     //Multiple domains using same port, already initialized
@@ -129,13 +130,12 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
             if (already_defined)
                 continue;
             int socket_fd = -1;
-            err = make_socket(bind_ip, port, &socket_fd);
-            if (err.error_code) {
-                err = exb_prop_error(err);
+            rv = make_socket(bind_ip, port, &socket_fd);
+            if (rv != EXB_OK) {
                 goto err0;
             }
             else if (socket_fd >= EXB_SOCKET_MAX) {
-                err = exb_make_error(EXB_OUT_OF_RANGE_ERR);
+                rv = EXB_OUT_OF_RANGE_ERR;
                 goto err1;
             }
             s->listen_sockets[s->n_listen_sockets].socket_fd = socket_fd;
@@ -144,7 +144,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
             if (listen(socket_fd, LISTEN_BACKLOG) < 0) { 
                 exb_log_error(exb_ref, "Listen(%d backlog) failed, trying with 128", LISTEN_BACKLOG);
                 if (listen(socket_fd, 128) < 0) {
-                    err = exb_make_error(EXB_LISTEN_ERR);
+                    rv = EXB_LISTEN_ERR;
                     goto err1;
                 }
             }
@@ -152,11 +152,9 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         }    
     }
     
-    int rv = EXB_OK;
     for (int i=0; i<s->elist->nloops; i++) {
         s->loop_data[i].listener = NULL;
         if ((rv = exb_request_state_recycle_array_init(exb_ref, &s->loop_data[i].rq_cyc)) != EXB_OK) {
-            err = exb_make_error(rv);
             for (int j = i-1; j >= 0; j--) {
                 exb_request_state_recycle_array_deinit(exb_ref,  &s->loop_data[j].rq_cyc);
             }
@@ -166,7 +164,6 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
     //initialize s->loop_data[*].listener
     rv = exb_server_listener_switch(s, "select");
     if (rv != EXB_OK) {
-        err = exb_make_error(rv);
         goto err2;
     }
     
@@ -181,7 +178,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
                                                 &s->loaded_modules[s->n_loaded_modules].module,
                                                 &s->loaded_modules[s->n_loaded_modules].dll_module_handle);
         if (error != EXB_OK || s->loaded_modules[s->n_loaded_modules].missing_symbols > 0) {
-            err = exb_make_error(EXB_MODULE_LOAD_ERROR);
+            rv = EXB_MODULE_LOAD_ERROR;
             goto err4;
         }
         s->n_loaded_modules++;
@@ -202,7 +199,7 @@ struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *e
         goto err4;
     }
     
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 err4:
     for (int i=0; i<s->n_loaded_modules; i++) {
         exb_http_server_module_unload(s->exb, s->loaded_modules[i].module, s->loaded_modules[i].dll_module_handle);
@@ -224,35 +221,30 @@ err0:
     for (int i=0; i<EXB_SOCKET_MAX; i++) {
         exb_http_multiplexer_deinit(s, &s->mp[i]);
     }
-    return err;
+    return rv;
 }
 
 /*Sets request handler for all http requests, the handler must terminate the request by sending a response*/
-
 int exb_server_set_request_handler(struct exb_server *s, void *handler_state, exb_request_handler_func func) {
     s->request_handler = func;
     s->request_handler_state = handler_state;
     return EXB_OK;
 }
 
-
-
-struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, int port) {
+int exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, int port) {
     struct exb_http_server_config config = exb_http_server_config_default(exb_ref);
     exb_http_server_config_add_domain(exb_ref, &config, port, 1);
-    struct exb_error err = exb_server_init_with_config(s, exb_ref, pcontrol, elist, config);
-    if (err.error_code != EXB_OK) {
+    int rv = exb_server_init_with_config(s, exb_ref, pcontrol, elist, config);
+    if (rv != EXB_OK) {
         exb_http_server_config_deinit(exb_ref, &config);
     }
-    return err;
+    return rv;
 }
-
 
 struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, int socket_fd) 
 {
     return exb_server_get_multiplexer_i(s, socket_fd);
 }
-
 
 struct exb_evloop * exb_server_get_any_evloop(struct exb_server *s) {
     return exb_evloop_pool_get_any(s->elist);
@@ -304,7 +296,6 @@ void exb_server_destroy_rqstate(struct exb_server *server, struct exb_evloop *ev
     }
 
 }
-
 
 int exb_server_init_multiplexer(struct exb_server *s, struct exb_evloop *evloop, int socket_fd, bool is_ssl, struct sockaddr_in clientname) {
     int flags = fcntl(socket_fd, F_GETFL, 0);
@@ -381,6 +372,7 @@ void exb_server_cancel_requests(struct exb_server *s, int socket_fd) {
         abort();
     }
 }
+
 void exb_server_close_connection(struct exb_server *s, int socket_fd) {
     int evloop_idx = s->mp[socket_fd].evloop_idx;
     struct exb_server_listener *listener = s->loop_data[evloop_idx].listener;
@@ -419,12 +411,12 @@ void exb_server_event_listen_loop(struct exb_event ev) {
     exb_evloop_append_delayed(evloop, ev, EXB_HTTP_MIN_DELAY, 1);
 }
 
-struct exb_error exb_server_listen(struct exb_server *s) {
+int exb_server_listen(struct exb_server *s) {
     //TODO: error handling
     if (!exb_pcontrol_is_single_process(s->pcontrol) &&
         !exb_pcontrol_is_worker(s->pcontrol) ) 
     {
-        return exb_make_error(EXB_OK);
+        return EXB_OK;
     }
     for (int evloop_idx=0; evloop_idx<s->elist->nloops; evloop_idx++) {
         struct exb_event new_ev = {.handle = exb_server_event_listen_loop,
@@ -438,8 +430,9 @@ struct exb_error exb_server_listen(struct exb_server *s) {
                             }};
         exb_server_event_listen_loop(new_ev);
     }
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
+
 void exb_server_deinit(struct exb_server *s) {
 
     for (int i=0; i<EXB_SOCKET_MAX; i++) {
@@ -493,7 +486,6 @@ void exb_http_server_module_on_load_resolve_handler(struct exb *exb_ref,
         exb_log_error(exb_ref, "Resolving \"%s\" in module_id: %d, failed, symbol not found\n", handler_name, module_id);
     }
 }
-
 
 //Switch implementation of the listener, for example from select() -> epoll()
 int exb_server_listener_switch(struct exb_server *s, const char *listener_name) {

@@ -138,7 +138,7 @@ static int exb_request_http_parse_chunked_encoding(struct exb_request_state *rqs
 static inline int exb_isdigit(int c) {
     return c >= '0' && c <= '9';
 }
-static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate) {
+static int exb_request_http_parse(struct exb_request_state *rqstate) {
     char *ibuff   =  rqstate->input_buffer;
     int ibuff_len =  rqstate->input_buffer_len;
     
@@ -148,7 +148,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
 
     int first_space = exb_str_next_lws(ibuff, 0, line_len);
     if (first_space == -1)
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     rqstate->method_s.index = 0;
     rqstate->method_s.len = first_space;
 
@@ -176,14 +176,14 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
     
     rqstate->path_s.index = exb_str_next_nonws(ibuff, first_space, ibuff_len, 1);
     if (rqstate->path_s.index == -1)
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     int second_space = exb_str_next_lws(ibuff, rqstate->path_s.index, line_len - rqstate->path_s.index);
     if (second_space == -1)
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     rqstate->path_s.len = second_space - rqstate->path_s.index;
     rqstate->version_s.index = exb_str_next_nonws(ibuff, second_space, line_len - second_space, 1);
     if (rqstate->version_s.index == -1)
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     rqstate->version_s.len = line_len - rqstate->version_s.index;
     if ( rqstate->version_s.len < 8                                       ||
         !exb_strcasel_eq(ibuff + rqstate->version_s.index, 5, "HTTP/", 5) ||
@@ -191,14 +191,14 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
          ibuff[rqstate->version_s.index + 6] != '.'                       ||
         !exb_isdigit(ibuff[rqstate->version_s.index + 7])                       )
     {
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     }
     //http/x.x
     rqstate->http_major = ibuff[rqstate->version_s.index+5] - '0';
     rqstate->http_minor = ibuff[rqstate->version_s.index+7] - '0';
 
     if (rqstate->http_major > 1 || rqstate->http_minor > 1)
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
 
     int headers_begin = rqstate->status_s.index+rqstate->status_s.len + 2;
     exb_assert_s(exb_str_is_just_preceeded_by_crlf(ibuff, headers_begin, ibuff_len), "");
@@ -209,7 +209,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
         int line_end_idx = exb_memmem(ibuff, idx, ibuff_len, "\r\n", 2);
         if (line_end_idx == -1) {
             //error
-            return exb_make_error(EXB_HTTP_ERROR);
+            return EXB_HTTP_ERROR;
         }
         int colon_idx = exb_memmem(ibuff, idx, line_end_idx, ":", 1);
         if (colon_idx == -1) {
@@ -227,7 +227,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
 
         idx = line_end_idx + 2; //skip crlf
         if (n_headers > EXB_HTTP_HEADER_MAX) {
-            return exb_make_error(EXB_HTTP_ERROR);
+            return EXB_HTTP_ERROR;
         }
         rqstate->headers.headers[n_headers].key = key; 
         rqstate->headers.headers[n_headers].value = value;
@@ -238,7 +238,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
     rqstate->headers.len = n_headers;
     exb_assert_s(exb_str_is_just_preceeded_by_crlf(ibuff, idx, ibuff_len), "");
     if (exb_memmem(ibuff, idx, ibuff_len, "\r\n", 2) != idx) //crlfcrlf
-        return exb_make_error(EXB_HTTP_ERROR);
+        return EXB_HTTP_ERROR;
     rqstate->headers_s.index = headers_begin;
     rqstate->headers_s.len = idx - rqstate->headers_s.index - 2;
     rqstate->body_s.index = idx + 2; //after the crlf
@@ -265,7 +265,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
         int len;
         int err = exb_atoi(ibuff + value.index, value.len, &len);
         if (err != EXB_OK || len < 0) {
-            return exb_make_error(EXB_HTTP_ERROR);
+            return EXB_HTTP_ERROR;
         }
         rqstate->content_length = len;
         rqstate->body_s.len = len;
@@ -290,8 +290,7 @@ static struct exb_error exb_request_http_parse(struct exb_request_state *rqstate
         rqstate->pstate = EXB_HTTP_P_ST_DONE;
     }
     
-    
-    return exb_make_error(EXB_OK);
+    return EXB_OK;
 }
 
-#endif // EXB_HTTT_PARSE_H 
+#endif // EXB_HTTT_PARSE_H

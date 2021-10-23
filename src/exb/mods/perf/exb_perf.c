@@ -83,7 +83,7 @@ static void parse_test(struct perf_module *mod) {
         rqstate->input_buffer_len = samples[idx].len;
         struct exb_error err = exb_make_error(1);
         if (exb_str_has_crlfcrlf(rqstate->input_buffer, 0, rqstate->input_buffer_len)) {
-            err = exb_request_http_parse(rqstate);
+            err.error_code = exb_request_http_parse(rqstate);
         }
         
         if (err.error_code != 0) {

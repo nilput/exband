@@ -10,12 +10,11 @@ int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t ca
     
     cap = cap + rsp->body_begin_index;
     if (cap > rsp->output_buffer_cap) {
-        struct exb_error err;
         char *new_buff;
         int new_sz;
-        err = exb_evloop_realloc_buffer(rqstate->evloop, rsp->output_buffer, cap, &new_buff, &new_sz);
-        if (err.error_code)
-            return err.error_code;
+        int rv = exb_evloop_realloc_buffer(rqstate->evloop, rsp->output_buffer, cap, &new_buff, &new_sz);
+        if (rv != EXB_OK)
+            return rv;
         rsp->output_buffer = new_buff;
         rsp->output_buffer_cap = new_sz;
     }
