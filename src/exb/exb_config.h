@@ -6,6 +6,7 @@ struct exb_config {
     int nloops; //number of event loops
     int nproc;  //number of processes
 };
+
 static struct exb_config exb_config_default(struct exb *exb_ref) {
     (void) exb_ref;
     struct exb_config conf = {0};
@@ -16,5 +17,8 @@ static struct exb_config exb_config_default(struct exb *exb_ref) {
 }
 
 static void exb_config_deinit(struct exb *exb_ref, struct exb_config *config) {
+    (void) exb_ref;
+    (void) config;
 }
+
 #endif

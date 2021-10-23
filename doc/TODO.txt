@@ -92,3 +92,10 @@ SSL SNI                                        [ ]
 Seperate "HTTP Listeners" from the http server \
 tree, and restructure accordingly because      \
 they're actually socket listeners.             [ ]
+Refactor exb errors so that:                   \
+   - only int rvs are returned from functions  \
+   - we return an error like:                  \
+        return exb_on_error(EXB_UNSUPPORTED,   \
+                            "my error message")\
+   - the stack trace is preserved and the error\
+      is preserved for each thread

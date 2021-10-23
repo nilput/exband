@@ -6,12 +6,14 @@
 #ifdef EXB_WITH_SSL
     #include "http_socket_multiplexer_ssl_def.h"
 #endif
+
 enum exb_http_multiplexer_state {
     EXB_MP_EMPTY,
     EXB_MP_ACTIVE,
     EXB_MP_CANCELLING,
     EXB_MP_DEAD, //should never be seen
 };
+
 struct exb_http_multiplexer {
     enum exb_http_multiplexer_state state EXB_ALIGN(64); 
     int evloop_idx;
