@@ -71,30 +71,38 @@ int main(int argc, char *argv[]) {
     }
     rv = exb_evloop_pool_init(&elist, &exb_state, exb_config.nloops);
     check_or_die(rv);
-    rv = exb_pcontrol_init(&pcontrol, exb_config.nproc);
+    rv = exb_pcontrol_init(&pcontrol, exb_config.nprocess, exb_config.op_mode);
     check_or_die(rv);
     fprintf(stderr, "Starting Exband %s\n", EXBAND_VERSION_STR);
-    fprintf(stderr, "\tSpawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
+    fprintf(stderr, "Spawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
     
     rv = exb_threadpool_set_nthreads(&elist.tp, exb_config.tp_threads);
-    fprintf(stderr, "\tSpawning %d IO thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
+    fprintf(stderr, "Spawning %d IO thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
     check_or_die(rv);
 
     erv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
     check_or_die(erv.error_code);
 
     for (int i=0; i<server.n_listen_sockets; i++) {
-        fprintf(stderr, "\tListening on port %d%s\n",
+        fprintf(stderr, "Listening on port %d%s\n",
                                             server.listen_sockets[i].port,
                                             server.listen_sockets[i].is_ssl ? " [ssl]" : "");
     }
     if (exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "epoll", 5)) {
-        fprintf(stderr, "\tUsing epoll\n");
+        fprintf(stderr, "Using epoll\n");
         erv.error_code = exb_server_listener_switch(&server, "epoll");
         check_or_die(erv.error_code);
     }
+    else if (!exb_strcasel_eq(exb_http_server_config.polling_backend.str, exb_http_server_config.polling_backend.len, "select", 6)) {
+        fprintf(stderr, "Unknown polling backend: '%s', exiting\n", exb_http_server_config.polling_backend.str);
+        exit(1);
+    }
     int cpu_count = exb_hw_cpu_count();
-    while (exb_pcontrol_running(&pcontrol)) {
+    /*
+    TODO: stop using nprocceses as the way of determining the mode of operation
+    add a "mode" option in the config json
+    */
+    while (exb_pcontrol_is_running(&pcontrol)) {
         if (exb_pcontrol_is_single_process(&pcontrol) || exb_pcontrol_is_worker(&pcontrol)) {
             if (!exb_pcontrol_is_single_process(&pcontrol)) {
                 rv = exb_pcontrol_child_setup(&pcontrol, &elist);

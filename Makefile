@@ -7,13 +7,13 @@ EXB_SRC = src/exb/exb_utils.c \
 			src/exb/http/http_server_events.c \
 			src/exb/http/http_request.c \
 			src/exb/http/http_response.c \
-			src/exb/http/listener/http_server_listener_select.c \
-			src/exb/http/listener/http_server_listener_epoll.c \
-			src/exb/http/http_server_module.c \
-			src/exb/http/handlers/exb_fileserv.c \
 			src/exb/exb_threadpool.c \
 			src/exb/exb_pcontrol.c \
-			src/exb/exb_main_config.c
+			src/exb/exb_main_config.c \
+			src/exb/http/http_server_module.c \
+			src/exb/http/handlers/exb_fileserv.c \
+			src/exb/http/listener/http_server_listener_select.c \
+			src/exb/http/listener/http_server_listener_epoll.c
 
 LDFLAGS := -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/
 EXB_OBJ = $(patsubst %.c,%.o, $(patsubst src/%,obj/%, $(EXB_SRC)))
@@ -29,7 +29,7 @@ EXB_LINK_ARCHIVES += -Wl,--whole-archive obj/libexb_mod_ssl.a -Wl,--no-whole-arc
 LDLIBS += -lcrypto -lssl
 endif
 
-all: fast-release
+all: fast-release example-basic-module
 main_targets: $(OPTIONAL) exb exb_static obj/libexb.so
 
 -include $(DEP)
@@ -61,12 +61,10 @@ profile: obj/libexb.so
 include src/exb/mods/ssl/module.mk
 mod_ssl: obj/libexb_mod_ssl.a
 
-examples:
-	for d in basic hello_world pastebin; do \
+example-basic-module:
+	for d in basic; do \
 		(cd "examples/$$d" && $(MAKE) -B) || exit 1; \
 	done
-
-
 
 obj/%.o: src/%.c
 	@mkdir -p '$(@D)'
@@ -83,4 +81,4 @@ clean:
 	@rm -f exb exb_static perf.data* 2>/dev/null || true
 	@rm -rf obj oprofile_data
 	@find examples/ -name '*.so' -exec 'rm' '{}' ';'
-.PHONY: clean all main_targets examples test
+.PHONY: clean all main_targets example-basic-module test

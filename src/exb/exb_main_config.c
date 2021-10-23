@@ -413,12 +413,27 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         config_out->nloops = integer;
     }
+    obj = json_get(ep.full_file, ep.tokens, "event.mode");
+    if (obj && json_get_as_string_copy(exb_ref, ep.full_file, obj, 0, &string) == 0) {
+        if (exb_strcase_eq(string, "multithreading")) {
+            config_out->op_mode = EXB_MODE_MULTITHREADING;
+        }
+        else if (exb_strcase_eq(string, "multiprocessing")) {
+            config_out->op_mode = EXB_MODE_MULTIPROCESSING;
+        }
+        else {
+            exb_free(exb_ref, string);
+            return EXB_CONFIG_ERROR;
+        }
+        exb_free(exb_ref, string);
+        string = NULL;
+    }
     obj = json_get(ep.full_file, ep.tokens, "event.processes");
     if (obj && json_get_as_integer(ep.full_file, obj, &integer) == 0) {
         if (integer < 1) {
             integer = 1;
         }
-        config_out->nproc = integer;
+        config_out->nprocess = integer;
     }
     obj = json_get(ep.full_file, ep.tokens, "event.polling");
     if (obj && json_get_as_string_copy(exb_ref, ep.full_file, obj, 0, &string) == 0) {
@@ -855,10 +870,9 @@ static int load_json_rules(struct exb *exb_ref,
 
 //assumes config_out parameters were not initialized
 int exb_load_configuration(struct vargstate *vg, struct exb *exb_ref, struct exb_config *config_out, struct exb_http_server_config *http_server_config_out) {
-    int err;
     *config_out = exb_config_default(exb_ref);
     *http_server_config_out = exb_http_server_config_default(exb_ref);
-    const char *config_file;
+    const char *config_file = NULL;
 
     int explicit = varg_get_str(vg, "-c", &config_file) == VARG_OK;
     if (!explicit) {
@@ -867,8 +881,8 @@ int exb_load_configuration(struct vargstate *vg, struct exb *exb_ref, struct exb
     
     int rv = load_json_config(config_file, exb_ref, config_out, http_server_config_out);
     if (rv != EXB_OK) {
+        exb_config_deinit(exb_ref, config_out);
         exb_http_server_config_deinit(exb_ref, http_server_config_out);
-        *http_server_config_out = exb_http_server_config_default(exb_ref);
     }
     return rv;
 }

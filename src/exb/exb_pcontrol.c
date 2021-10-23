@@ -6,7 +6,8 @@
 #include "exb.h"
 #include "exb_evloop_pool.h"
 
-int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses) {
+int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses, enum exb_processing_mode omode) {
+    st->omode = omode;
     st->npostfork_hooks = 0;
     st->nchildren = 0;
     st->config_nprocesses = nprocesses;
@@ -24,7 +25,7 @@ int exb_pcontrol_is_worker(struct exb_pcontrol *st) {
 int exb_pcontrol_is_single_process(struct exb_pcontrol *st) {
     return st->config_nprocesses == 1;
 }
-int exb_pcontrol_running(struct exb_pcontrol *st) {
+int exb_pcontrol_is_running(struct exb_pcontrol *st) {
     return !st->stop;
 }
 

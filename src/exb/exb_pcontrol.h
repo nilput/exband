@@ -1,6 +1,7 @@
 #ifndef EXB_PCONTROL_H
 #define EXB_PCONTROL_H
 #include "exb_build_config.h"
+#include "exb_config.h"
 /*
 Manage processes
 */
@@ -8,6 +9,7 @@ Manage processes
 #include <sys/wait.h>
 
 struct exb_pcontrol {
+    enum exb_processing_mode omode;
     struct {
         pid_t pid;
     } children[EXB_MAX_PROCESSES];
@@ -24,7 +26,7 @@ struct exb_pcontrol {
     int stop;
 };
 
-int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses);
+int exb_pcontrol_init(struct exb_pcontrol *st, int nprocesses, enum exb_processing_mode omode);
 int exb_pcontrol_is_single_process(struct exb_pcontrol *st);
 int exb_pcontrol_is_worker(struct exb_pcontrol *st);
 int exb_pcontrol_is_master(struct exb_pcontrol *st);
@@ -37,7 +39,7 @@ int exb_pcontrol_stop(struct exb_pcontrol *st);
 struct exb_evloop_pool;
 int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_evloop_pool *elist);
 //boolean
-int exb_pcontrol_running(struct exb_pcontrol *st);
+int exb_pcontrol_is_running(struct exb_pcontrol *st);
 
 int exb_pcontrol_deinit(struct exb_pcontrol *st);
 #endif

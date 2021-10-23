@@ -354,6 +354,14 @@ static int exb_strl_eq(const char *a, size_t alen, const char *b, size_t blen) {
 static int exb_strcasel_eq(const char *a, size_t alen, const char *b, size_t blen) {
     return alen == blen && (strncasecmp(a, b, alen) == 0);
 }
+
+static int exb_strcase_eq(const char *a, const char *b) {
+    size_t alen = strlen(a);
+    size_t blen = strlen(a);
+    size_t maxlen = alen > blen ? alen : blen;
+    return strncasecmp(a, b, maxlen) == 0;
+}
+
 //boolean
 static int exb_str_streqc(struct exb *exb, struct exb_str *str, const char *src0) {
     if (!str->len && !src0[0])
