@@ -23,8 +23,8 @@
 #include "http_request.h"
 #include "http_socket_multiplexer_internal.h"
 
-#include "http_server_listener_select.h"
-#include "http_server_listener_epoll.h"
+#include "listener/http_server_listener_select.h"
+#include "listener/http_server_listener_epoll.h"
 
 #include "http_server_module_internal.h"
 

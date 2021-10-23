@@ -3,10 +3,10 @@
 #include <errno.h>
 #include "http_server_listener_select.h"
 
-#include "../exb.h"
-#include "../exb_errors.h"
+#include "../../exb.h"
+#include "../../exb_errors.h"
 
-#include "http_server_internal.h"
+#include "../http_server_internal.h"
 
 struct exb_server_listener_select {
     struct exb_server_listener head;

@@ -7,7 +7,7 @@
 
 #include "cmocka.h"
 #include "../../src/exb/exb.h"
-#include "../../src/exb/http/exb_fileserv.h"
+#include "../../src/exb/http/handlers/exb_fileserv.h"
 
 struct test_state {
     struct exb exb;

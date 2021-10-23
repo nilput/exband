@@ -5,7 +5,7 @@
 #include "http_server_config.h"
 #include "http_server.h"
 #include "../exb_errors.h"
-#include "exb_fileserv.h"
+#include "handlers/exb_fileserv.h"
 
 static int exb_http_request_matches_rule(struct exb_request_state *rqstate,
                                          struct exb_request_rule *rule)

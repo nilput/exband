@@ -4,7 +4,7 @@ EXB_SRC = src/exb/exb_utils.c src/exb/http/http_server.c \
                      src/exb/http/http_server_events.c src/exb/http/http_request.c \
                      src/exb/http/http_response.c src/exb/http/listener/http_server_listener_select.c \
                      src/exb/http/listener/http_server_listener_epoll.c src/exb/http/http_server_module.c \
-                     src/exb/http/exb_fileserv.c \
+                     src/exb/http/handlers/exb_fileserv.c \
                      src/exb/exb_threadpool.c src/exb/exb_pcontrol.c \
                      src/exb/exb_main_config.c
 LDFLAGS := -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/

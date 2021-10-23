@@ -1,11 +1,10 @@
-#include "http_request.h"
-#include "http_response.h"
+#include "../http_request.h"
+#include "../http_response.h"
 #include "exb_fileserv.h"
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-
 
 static inline char *to_previous_slash(char *start, char *p) {
     if (p < start)
@@ -13,6 +12,7 @@ static inline char *to_previous_slash(char *start, char *p) {
     for (; p >= start && (*p != '/'); p--); 
     return p;
 }
+
 /*
 	In all cases the input should start with a leading '/' (Precondition)
 	In all cases the output should have a leading '/'
@@ -65,7 +65,6 @@ resolve_path_1(char *start, char *end) {
 int exb_resolve_path(char *str, int len) {
     return resolve_path_1(str, str + len);
 }
-
 
 static int fileserv_handler(void *unused, struct exb_request_state *rqstate, int reason) {
 	EXB_UNUSED(unused);
@@ -165,6 +164,5 @@ int exb_fileserv(struct exb_request_state *rqstate,
 			exb_request_state_change_handler(rqstate, fileserv_handler, NULL);
 		}
 	}
-
 	return EXB_OK;
 }
