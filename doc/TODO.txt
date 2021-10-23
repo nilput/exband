@@ -27,8 +27,8 @@ Stacktraces in places they're relevant         [ ]
 HTTP Error reasons                             [ ]      
 Serving files handler                          [ ]
 Serving files handler default mimetypes        [ ]
-Fast threadsafe queue for threads->evloop       [ ]
-Fast threadsafe queue for evloops->threadpool   [ ]
+Fast threadsafe queue for threads->evloop      [ ]
+Fast threadsafe queue for evloops->threadpool  [ ]
 Buffering of multiple responses before write() [ ]
 
 Support json config                            [x]
@@ -88,3 +88,7 @@ listeners on multiple ports                    [ ]
 rules on specific domains                      [ ]
 SSL                                            [ ]
 SSL SNI                                        [ ]
+
+Seperate "HTTP Listeners" from the http server \
+tree, and restructure accordingly because      \
+they're actually socket listeners.             [ ]

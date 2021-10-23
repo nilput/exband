@@ -28,6 +28,7 @@ static int exb_http_request_matches_rule(struct exb_request_state *rqstate,
     }
     return 0;
 }
+
 static int exb_http_request_resolve_to_sink(struct exb_request_state *rqstate,
                                             struct exb_http_server_config *config,
                                             int sink_id)
@@ -90,7 +91,6 @@ static int exb_http_request_resolve_domain(struct exb_request_state *rqstate) {
     //TODO: set default to default server index (or just move the default server to be id 0)
     return 0;
 }
-
 
 static void exb_http_request_resolve(struct exb_request_state *rqstate) {
     struct exb_server *server = rqstate->server;

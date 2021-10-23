@@ -4,13 +4,14 @@
 #include "../exb_assert.h"
 #include "../exb_errors.h"
 #include <string.h>
-//doesnt add a null terminator
+
+//doesn't add a null terminator
 static int exb_write_status_code(char *dest,
-        int dest_size,
-        int *written_bytes,
-        int status_code,
-        int http_major,
-        int http_minor) 
+                                int dest_size,
+                                int *written_bytes,
+                                int status_code,
+                                int http_major,
+                                int http_minor)
 {
     #define STATUS_BUFF_LEN 64
     char buff[STATUS_BUFF_LEN] = "HTTP/x.x ";

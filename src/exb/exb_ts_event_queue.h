@@ -6,7 +6,10 @@
 #include "exb_event.h"
 #include "exb.h"
 
-struct exb;
+/*
+    Thread safe event queue.
+*/
+
 struct exb_ts_event_queue {
     struct exb *exb; //not owned, must outlive
     pthread_mutex_t mtx;
@@ -16,6 +19,10 @@ struct exb_ts_event_queue {
     int tail; //tail == head means empty, tail == head - 1 means full
     int cap;
 };
+
+static int exb_ts_event_queue_resize(struct exb_ts_event_queue *tq, int sz);
+static int exb_ts_event_queue_resize_u(struct exb_ts_event_queue *tq, int sz);
+
 static int exb_ts_event_queue_len_u(struct exb_ts_event_queue *tq) {
     if (tq->tail >= tq->head) {
         return tq->tail - tq->head;
@@ -32,8 +39,7 @@ ret:
     pthread_mutex_unlock(&tq->mtx);
     return len;
 }
-static int exb_ts_event_queue_resize(struct exb_ts_event_queue *tq, int sz);
-static int exb_ts_event_queue_resize_u(struct exb_ts_event_queue *tq, int sz);
+
 static int exb_ts_event_queue_append(struct exb_ts_event_queue *tq, struct exb_event event) {
     if (pthread_mutex_lock(&tq->mtx) != 0) {
         return EXB_MUTEX_LOCK_ERROR;
@@ -53,6 +59,7 @@ ret:
     pthread_mutex_unlock(&tq->mtx);
     return err;
 }
+
 static int exb_ts_event_queue_resize_u(struct exb_ts_event_queue *tq, int sz) {
     int err = EXB_OK;
     exb_assert_h(!!tq->exb, "");
@@ -86,6 +93,7 @@ static int exb_ts_event_queue_resize_u(struct exb_ts_event_queue *tq, int sz) {
 
     return EXB_OK;
 }
+
 static int exb_ts_event_queue_resize(struct exb_ts_event_queue *tq, int sz) {
     if (pthread_mutex_lock(&tq->mtx) != 0) {
         return EXB_MUTEX_LOCK_ERROR;
@@ -95,7 +103,6 @@ ret:
     pthread_mutex_unlock(&tq->mtx);
     return err;
 }
-
 
 static int exb_ts_event_queue_pop_next(struct exb_ts_event_queue *tq, struct exb_event *event_out) {
     if (pthread_mutex_lock(&tq->mtx) != 0) {
@@ -150,7 +157,6 @@ bnret:
     return err;
 }
 
-
 static int exb_ts_event_queue_init(struct exb_ts_event_queue *tq, struct exb* exb_ref, int sz) {
     memset(tq, 0, sizeof *tq);
     tq->exb = exb_ref;
@@ -160,6 +166,7 @@ static int exb_ts_event_queue_init(struct exb_ts_event_queue *tq, struct exb* ex
     }
     return EXB_OK;
 }
+
 static int exb_ts_event_queue_deinit(struct exb_ts_event_queue *tq) {
     //TODO destroy pending events
     exb_free(tq->exb, tq->events);

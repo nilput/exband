@@ -2,21 +2,22 @@
 #define EXB_REQUEST_RULES_H
 #include "../exb_errors.h"
 #include "http_request_handler.h"
-/*
-abstractions used:
-    rule: something to match requests on, for example a prefix path like "/files"
-    sink: a destination for one or possibly more than one rule (for example a filesystem path like "/var/www/mysite/html/")
 
-sink_id: the handler destination
+/*
+    Abstractions used:
+        Rule: Something to match requests on, for example a prefix path like "/files"
+        Sink: A destination for one or possibly more than one rule 
+              (for example a filesystem path like "/var/www/mysite/html/")
 */
+
 enum exb_request_rule_type {
     EXB_REQ_RULE_NONE,  //Represents a removed rule, DO NOT USE THIS AS A CATCH ALL
     EXB_REQ_RULE_PATH_PREFIX,
 };
+
 struct exb_request_path_prefix_rule {
     struct exb_str prefix;
 };
-
 
 struct exb_request_rule {
     enum exb_request_rule_type type;
@@ -54,10 +55,7 @@ struct exb_request_sink {
     } u;
 };
 
-/*Rule functions*/
-/*Prefix rule functions*/
-
-//transfers ownership of prefix
+//transfers ownership of prefix.
 static int exb_request_prefix_rule_init(struct exb *exb_ref,
                                         char *prefix,
                                         int sink_id,
@@ -81,8 +79,6 @@ static int exb_request_prefix_rule_deinit(struct exb *exb_ref,
     exb_str_deinit(exb_ref, &prule->prefix);
     return EXB_OK;
 }
-
-
 
 static int exb_request_sink_intermediate_ref_to_sink_fixup(struct exb *exb_ref,
                                                                 struct exb_request_rule *rule,

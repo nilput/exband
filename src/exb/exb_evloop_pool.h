@@ -18,6 +18,7 @@ struct exb_evloop_pool {
     struct exb_threadpool tp;
     struct exb *exb_ref;
 };
+
 static int exb_evloop_pool_init(struct exb_evloop_pool *elist, struct exb *exb_ref, int nloops) {
     int err = EXB_OK;
     if (nloops > EXB_MAX_EVLOOPS)
@@ -53,12 +54,14 @@ err1:
 err0:
     return err;
 }
+
 static struct exb_evloop * exb_evloop_pool_get_any(struct exb_evloop_pool *elist) {
     struct exb_evloop *evloop = elist->loops[elist->rr].loop;
     if (++elist->rr >= elist->nloops)
         elist->rr = 0; // %= elist->nloops
     return evloop;
 }
+
 static int exb_evloop_pool_stop(struct exb_evloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         exb_evloop_stop(elist->loops[i].loop);
@@ -92,6 +95,7 @@ static struct exb_error exb_evloop_pool_run(struct exb_evloop_pool *elist, int c
     }
     return exb_make_error(EXB_OK);
 }
+
 static struct exb_error  exb_evloop_pool_join(struct exb_evloop_pool *elist) {
     for (int i=0; i<elist->nloops; i++) {
         if (elist->loops[i].thread) {

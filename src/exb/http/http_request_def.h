@@ -8,6 +8,7 @@
 
 #define EXB_HTTP_HEADER_MAX 32
 #define HTTP_INPUT_BUFFER_INITIAL_SIZE 2048
+
 enum EXB_HTTP_METHOD {
     EXB_HTTP_M_HEAD,
     EXB_HTTP_M_GET,
@@ -19,6 +20,7 @@ enum EXB_HTTP_METHOD {
     EXB_HTTP_M_OPTIONS,
     EXB_HTTP_M_OTHER,
 };
+
 enum exb_http_input_state {
     EXB_HTTP_I_ST_INIT,
 
@@ -28,6 +30,7 @@ enum exb_http_input_state {
     EXB_HTTP_I_ST_DONE,
     EXB_HTTP_I_ST_DEAD,
 };
+
 enum exb_http_parse_state {
     EXB_HTTP_P_ST_INIT,
     EXB_HTTP_P_ST_IN_CHUNKED_BODY, //Already Parsed headers
@@ -38,6 +41,7 @@ enum exb_http_request_body_handling {
     EXB_HTTP_B_DISCARD,
     EXB_HTTP_B_BUFFER,
 };
+
 enum exb_request_handler_reason {
     EXB_HTTP_HANDLER_HEADERS,
     EXB_HTTP_HANDLER_BODY,

@@ -42,6 +42,7 @@ static void exb_ssl_config_entry_init(struct exb *exb_ref, struct exb_ssl_config
     entry->is_default = 0;
     entry->listen_port = 0;
 }
+
 static void exb_ssl_config_entry_deinit(struct exb *exb_ref, struct exb_ssl_config_entry *entry) {
     exb_str_deinit(exb_ref, &entry->ca_path);
     exb_str_deinit(exb_ref, &entry->public_key_path);
