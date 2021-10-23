@@ -4,15 +4,15 @@
 #include <unistd.h> //close()
 #include "http_server_listener_epoll.h"
 
-#include "../exb.h"
+#include "../../exb.h"
 
-#include "http_server.h"
-#include "http_server_internal.h"
-#include "http_server_events_internal.h"
+#include "../http_server.h"
+#include "../http_server_internal.h"
+#include "../http_server_events_internal.h"
 
 
-#define MAX_EVENTS 2048
-#define EPOLL_TIMEOUT 20
+#define EXB_EPOLL_MAX_EVENTS 2048
+#define EXB_EPOLL_TIMEOUT 20
 
 /*
 TODO: Optimization: Switch to edge triggered
@@ -25,7 +25,7 @@ struct exb_server_listener_epoll {
     struct exb_evloop *evloop;   //not owned, must outlive
 
     int efd;
-    struct epoll_event events[MAX_EVENTS];
+    struct epoll_event events[EXB_EPOLL_MAX_EVENTS];
     int highest_fd;
 };
 
@@ -86,7 +86,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
     struct exb_server *s = lis->server;
 
     /*int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);*/
-    int n = epoll_wait(lis->efd, lis->events, MAX_EVENTS, EPOLL_TIMEOUT);
+    int n = epoll_wait(lis->efd, lis->events, EXB_EPOLL_MAX_EVENTS, EXB_EPOLL_TIMEOUT);
     if (n < 0) {
         return EXB_EPOLL_WAIT_ERROR;
     }
@@ -129,6 +129,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
 
     return EXB_OK;
 }
+
 static int exb_server_listener_epoll_destroy(struct exb_server_listener *listener) {
     struct exb_server_listener_epoll *lis = (struct exb_server_listener_epoll *) listener;
     struct exb_server *s = lis->server;
@@ -142,6 +143,7 @@ static int exb_server_listener_epoll_destroy(struct exb_server_listener *listene
     
     return EXB_OK;
 }
+
 static int exb_server_listener_epoll_close_connection(struct exb_server_listener *listener, int socket_fd) {
     struct exb_server_listener_epoll *lis = (struct exb_server_listener_epoll *) listener;
     struct exb_server *s = lis->server;
@@ -153,6 +155,7 @@ static int exb_server_listener_epoll_close_connection(struct exb_server_listener
 
     return EXB_OK;
 }
+
 #if 1
     #define EPOLL_EVENTS (EPOLLIN | EPOLLOUT | EPOLLET)
                           //read()   write()    ^edge triggered
@@ -173,6 +176,7 @@ static int exb_server_listener_epoll_new_connection(struct exb_server_listener *
     lis->highest_fd = lis->highest_fd < socket_fd ? socket_fd : lis->highest_fd;
     return rv >= 0 ? EXB_OK : EXB_EPOLL_ADD_ERROR;
 }
+
 static int exb_server_listener_epoll_get_fds(struct exb_server_listener *listener, struct exb_server_listener_fdlist **fdlist_out) {
     struct exb_server_listener_epoll *lis = (struct exb_server_listener_epoll *) listener;
     struct exb_server *s = lis->server;

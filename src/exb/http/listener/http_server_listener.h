@@ -1,12 +1,14 @@
 #ifndef EXB_HTTP_SERVER_LISTENER_H
 #define EXB_HTTP_SERVER_LISTENER_H
-#include "../exb.h"
+#include "../../exb.h"
 
 struct exb_server;
 struct exb_evloop;
 struct exb_server_listener_fdlist;
-/* an interface for a concrete implementation, be for example: select or epoll */
+
 /*
+  exb_server_listener: an interface for a concrete implementation, 
+  for example: select or epoll 
     This has the following responsibilities:
         * when connections are available on the main listening socket
           calls exb_server_accept_new_connections()
@@ -24,7 +26,6 @@ struct exb_server_listener_fdlist;
         * implements close_connection(socket_fd) which is called before the server
           closes the socket
         * implements new_connection(socket_fd) which starts tracking the socket passed to it
-
 */
 struct exb_server_listener {
     int (*listen)(struct exb_server_listener *lis);
@@ -38,9 +39,11 @@ struct exb_server_listener_fdlist {
     int *fds;
     int len;
 };
+
 static void exb_server_listener_fdlist_destroy(struct exb *exb, struct exb_server_listener_fdlist *fdlist) {
     if (fdlist)
         exb_free(exb, fdlist->fds);
     exb_free(exb, fdlist);
 }
+
 #endif // EXB_HTTP_SERVER_LISTENER_H

@@ -7,10 +7,11 @@
 #include "../exb_errors.h"
 
 #include "http_server_internal.h"
+
 struct exb_server_listener_select {
     struct exb_server_listener head;
     struct exb_server *server; //not owned, must outlive
-    struct exb_evloop *evloop;   //not owned, must outlive
+    struct exb_evloop *evloop; //not owned, must outlive
 
     fd_set active_fd_set;
     fd_set read_fd_set;
@@ -88,24 +89,28 @@ static int exb_server_listener_select_listen(struct exb_server_listener *listene
     ret:
     return err.error_code;
 }
+
 static int exb_server_listener_select_destroy(struct exb_server_listener *listener) {
     struct exb_server_listener_select *lis = (struct exb_server_listener_select *) listener;
     struct exb_server *s = lis->server;
     exb_free(s->exb, lis);
     return EXB_OK;
 }
+
 static int exb_server_listener_select_close_connection(struct exb_server_listener *listener, int socket_fd) {
     struct exb_server_listener_select *lis = (struct exb_server_listener_select *) listener;
     struct exb_server *s = lis->server;
     FD_CLR(socket_fd, &lis->active_fd_set);
     return EXB_OK;
 }
+
 static int exb_server_listener_select_new_connection(struct exb_server_listener *listener, int socket_fd) {
     struct exb_server_listener_select *lis = (struct exb_server_listener_select *) listener;
     struct exb_server *s = lis->server;
     FD_SET(socket_fd, &lis->active_fd_set);
     return EXB_OK;
 }
+
 static int exb_server_listener_select_get_fds(struct exb_server_listener *listener, struct exb_server_listener_fdlist **fdlist_out) {
     struct exb_server_listener_select *lis = (struct exb_server_listener_select *) listener;
     struct exb_server *s = lis->server;
