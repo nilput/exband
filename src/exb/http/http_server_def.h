@@ -9,7 +9,7 @@
 #include "http_server_config.h"
 #include "io_result.h"
 struct exb_pcontrol;
-struct exb_eloop_pool;
+struct exb_evloop_pool;
 
 struct exb_http_ssl_state;
 struct exb_http_multiplexer;
@@ -24,7 +24,7 @@ struct exb_ssl_interface {
 
 struct exb_server {
     struct exb *exb;                 //not owned, must outlive
-    struct exb_eloop_pool *elist;    //not owned, must outlive
+    struct exb_evloop_pool *elist;    //not owned, must outlive
     struct exb_pcontrol *pcontrol;   //not owned, must outlive
 
     struct {
@@ -37,7 +37,7 @@ struct exb_server {
     struct {
         struct exb_server_listener *listener;
         struct exb_request_state_recycle_array rq_cyc;
-    } loop_data[EXB_MAX_ELOOPS];
+    } loop_data[EXB_MAX_EVLOOPS];
 
     void *request_handler_state; 
     exb_request_handler_func request_handler;

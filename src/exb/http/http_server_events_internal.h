@@ -96,7 +96,7 @@ static void exb_request_lifetime_checks(struct exb_http_multiplexer *mp, struct 
         if ((rqstate->istate == EXB_HTTP_I_ST_DONE && rqstate->resp.state == EXB_HTTP_R_ST_DONE) || rqstate->is_cancelled) {
             if (!rqstate->is_cancelled)
                 exb_assert_h(mp->currently_reading != rqstate && mp->next_response != rqstate, "");
-            exb_server_destroy_rqstate(rqstate->server, mp->eloop, rqstate);
+            exb_server_destroy_rqstate(rqstate->server, mp->evloop, rqstate);
             RQSTATE_EVENT(stderr, "lifetime check for rqstate %p destroyed it\n", rqstate);
         }
     }
@@ -157,7 +157,7 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
         return exb_make_error(EXB_SOCKET_ERR);
     exb_assert_h(mp && mp->state == EXB_MP_ACTIVE, "");
     
-    struct exb_request_state *forked_rqstate = exb_server_new_rqstate(s, mp->eloop, rqstate->socket_fd);
+    struct exb_request_state *forked_rqstate = exb_server_new_rqstate(s, mp->evloop, rqstate->socket_fd);
     //exb_assert_h(mp->currently_reading == rqstate, "Tried to fork a request that is not the current one reading on socket");
 
     //Copy mistakenly read bytes from older request to the new one
@@ -175,7 +175,7 @@ static struct exb_error exb_request_fork(struct exb_request_state *rqstate) {
     memcpy(forked_rqstate->input_buffer, rqstate->input_buffer + rqstate->next_request_cursor, bytes_copied);
     err = exb_request_on_bytes_read(forked_rqstate, 0, bytes_copied);
     if (err.error_code != EXB_OK) {
-        exb_server_destroy_rqstate(s, mp->eloop, forked_rqstate);
+        exb_server_destroy_rqstate(s, mp->evloop, forked_rqstate);
         exb_server_cancel_requests(s, rqstate->socket_fd);
         goto ret;
     }
@@ -373,7 +373,7 @@ ret:
         else {
             exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_DID_WRITE, rqstate, current_written_bytes - rsp->written_bytes);
         }
-        int err = exb_eloop_ts_append(rqstate->eloop, ev);
+        int err = exb_evloop_ts_append(rqstate->evloop, ev);
         if (err != EXB_OK) {
             /*we cannot afford to have this fail*/
             exb_request_handle_fatal_error(rqstate);
@@ -385,7 +385,7 @@ ret:
 static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
 static struct exb_error exb_request_async_read_from_client(struct exb_request_state *rqstate) {
 
-    struct exb_threadpool *tp = rqstate->eloop->threadpool;
+    struct exb_threadpool *tp = rqstate->evloop->threadpool;
     struct exb_task task;
     task.err = exb_make_error(EXB_OK);
     task.run = exb_request_async_read_from_client_runner;
@@ -460,7 +460,7 @@ static int exb_response_end_i(struct exb_request_state *rqstate) {
         rv = exb_response_add_header(rqstate, &name, &value);
     }
         
-    rv = exb_response_prepare_headers(rqstate, rqstate->eloop);
+    rv = exb_response_prepare_headers(rqstate, rqstate->evloop);
     if (rv != EXB_OK){
 
         return rv;
@@ -544,7 +544,7 @@ static struct exb_error exb_request_read_from_client(struct exb_request_state *r
             exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_CLIENT_CLOSED, rqstate, 0);
         }
         //TODO error handling, also why not directly deal with the event
-        exb_eloop_append(rqstate->eloop, ev); 
+        exb_evloop_append(rqstate->evloop, ev); 
     }
     else {
         avbytes -= nbytes;
@@ -608,7 +608,7 @@ static void exb_request_async_read_from_client_runner(struct exb_thread *thread,
 
     if (err != EXB_OK) {
         if (err == EXB_BUFFER_FULL_ERR) {
-            //we cannot do reallocation here, eloop_* functions are not thread safe
+            //we cannot do reallocation here, evloop_* functions are not thread safe
             exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_INPUT_BUFFER_FULL, rqstate, read_bytes);
             RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes, added buffer full event\n", rqstate, rqstate->socket_fd, read_bytes);
         }
@@ -617,7 +617,7 @@ static void exb_request_async_read_from_client_runner(struct exb_thread *thread,
             RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes, added io error event\n", rqstate, rqstate->socket_fd, read_bytes);
         }
         
-        int perr = exb_eloop_ts_append(rqstate->eloop, ev);
+        int perr = exb_evloop_ts_append(rqstate->evloop, ev);
         if (perr != EXB_OK) {
             /*we cannot afford to have this fail*/
             exb_request_handle_fatal_error(rqstate);
@@ -626,7 +626,7 @@ static void exb_request_async_read_from_client_runner(struct exb_thread *thread,
     else {
         //even if it's zero we need to send this to mark it as not scheduled
         exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_DID_READ, rqstate, read_bytes);
-        int perr = exb_eloop_ts_append(rqstate->eloop, ev);
+        int perr = exb_evloop_ts_append(rqstate->evloop, ev);
         if (perr != EXB_OK) {
             /*we cannot afford to have this fail*/
             exb_request_handle_fatal_error(rqstate);
@@ -635,7 +635,7 @@ static void exb_request_async_read_from_client_runner(struct exb_thread *thread,
         
         if (client_closed) {
             exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_CLIENT_CLOSED, rqstate, read_bytes);
-            perr = exb_eloop_ts_append(rqstate->eloop, ev);
+            perr = exb_evloop_ts_append(rqstate->evloop, ev);
             if (err != EXB_OK) {
                 /*we cannot afford to have this fail*/
                 exb_request_handle_fatal_error(rqstate);
@@ -737,7 +737,7 @@ static void on_http_send_async(struct exb_event ev) {
         rv = EXB_INVALID_STATE_ERR;
         goto ret;
     }
-    struct exb_threadpool *tp = rqstate->eloop->threadpool;
+    struct exb_threadpool *tp = rqstate->evloop->threadpool;
     struct exb_task task;
     task.err = exb_make_error(EXB_OK);
     task.run = exb_request_async_write_runner;
@@ -778,7 +778,7 @@ static void on_http_ssl_send_sync(struct exb_event ev) {
             struct exb_event nev;
             exb_event_http_init(rqstate->server, mp, &nev, EXB_HTTP_CLIENT_CLOSED, rqstate, 0);
             //TODO error handling, also why not directly deal with the event
-            exb_eloop_append(rqstate->eloop, nev);
+            exb_evloop_append(rqstate->evloop, nev);
             return;
         }
         else if (sres.flags) {
@@ -812,7 +812,7 @@ static void on_http_ssl_read_sync(struct exb_event ev) {
     if (avbytes == 0) {
         struct exb_event nev;
         exb_event_http_init(rqstate->server, mp, &nev, EXB_HTTP_INPUT_BUFFER_FULL, rqstate, 0);
-        exb_eloop_append(rqstate->eloop, nev);
+        exb_evloop_append(rqstate->evloop, nev);
         return;
     }
 
@@ -828,7 +828,7 @@ static void on_http_ssl_read_sync(struct exb_event ev) {
         struct exb_event nev;
         exb_event_http_init(rqstate->server, mp, &nev, EXB_HTTP_CLIENT_CLOSED, rqstate, 0);
         //TODO error handling, also why not directly deal with the event
-        exb_eloop_append(rqstate->eloop, nev);
+        exb_evloop_append(rqstate->evloop, nev);
         return;
     }
     else if (rres.flags) {
@@ -974,7 +974,7 @@ static inline void exb_server_on_read_available_i(struct exb_server *s, struct e
     
     exb_event_http_init(s, mp, &ev, EXB_HTTP_READ, mp->currently_reading, 0);
     mark_read_scheduled(mp->currently_reading, 1);
-    exb_eloop_append(mp->eloop, ev);
+    exb_evloop_append(mp->evloop, ev);
     RQSTATE_EVENT(stderr, "Scheduled rqstate %p to be read, because we found out "
                     "read is available for socket %d\n", mp->currently_reading, mp->socket_fd);
     
@@ -984,7 +984,7 @@ static inline void exb_server_on_write_available_i(struct exb_server *s, struct 
     exb_event_http_init(s, mp, &ev, EXB_HTTP_SEND, mp->next_response, 0);
     exb_assert_h(!!mp->next_response, "");
     mark_send_scheduled(mp->next_response, 1);
-    exb_eloop_append(mp->eloop, ev);
+    exb_evloop_append(mp->evloop, ev);
     
 }
 

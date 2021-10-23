@@ -27,8 +27,8 @@ Stacktraces in places they're relevant         [ ]
 HTTP Error reasons                             [ ]      
 Serving files handler                          [ ]
 Serving files handler default mimetypes        [ ]
-Fast threadsafe queue for threads->eloop       [ ]
-Fast threadsafe queue for eloops->threadpool   [ ]
+Fast threadsafe queue for threads->evloop       [ ]
+Fast threadsafe queue for evloops->threadpool   [ ]
 Buffering of multiple responses before write() [ ]
 
 Support json config                            [x]
@@ -48,7 +48,7 @@ Increase buffer size integers to a larger      \
 type such as size_t, and check for             \
 overflow conditions                            [ ]
 
- have an option of running multiple eloops,    \  
+ have an option of running multiple evloops,    \  
  each having its own epoll listener and doing  \
  io directly instead of having to communicate  \
  with other threads                            [x]

@@ -15,7 +15,7 @@
 #endif
 
 #include "../exb_errors.h"
-#include "../exb_eloop_pool.h"
+#include "../exb_evloop_pool.h"
 #include "../exb_pcontrol.h"
 #include "http_server_internal.h"
 #include "http_server_events_internal.h"
@@ -77,7 +77,7 @@ static void server_postfork(void *data) {
     fprintf(stderr, "server_postfork %d\n", getpid());
     exb_server_listener_switch(s, s->config.polling_backend.str);
 }
-struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, struct exb_http_server_config config) {
+struct exb_error exb_server_init_with_config(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, struct exb_http_server_config config) {
     struct exb_error err = {0};
     memset(&s->ssl_interface, 0, sizeof s->ssl_interface);
     s->exb                    = exb_ref;
@@ -237,7 +237,7 @@ int exb_server_set_request_handler(struct exb_server *s, void *handler_state, ex
 
 
 
-struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_eloop_pool *elist, int port) {
+struct exb_error exb_server_init(struct exb_server *s, struct exb *exb_ref, struct exb_pcontrol *pcontrol, struct exb_evloop_pool *elist, int port) {
     struct exb_http_server_config config = exb_http_server_config_default(exb_ref);
     exb_http_server_config_add_domain(exb_ref, &config, port, 1);
     struct exb_error err = exb_server_init_with_config(s, exb_ref, pcontrol, elist, config);
@@ -254,29 +254,29 @@ struct exb_http_multiplexer *exb_server_get_multiplexer(struct exb_server *s, in
 }
 
 
-struct exb_eloop * exb_server_get_any_eloop(struct exb_server *s) {
-    return exb_eloop_pool_get_any(s->elist);
+struct exb_evloop * exb_server_get_any_evloop(struct exb_server *s) {
+    return exb_evloop_pool_get_any(s->elist);
 }
 
-struct exb_eloop * exb_server_get_eloop(struct exb_server *s, int eloop_id) {
-    exb_assert_h(eloop_id >= 0 && eloop_id < s->elist->nloops, "invalid eloop_id");
-    return s->elist->loops[eloop_id].loop;
+struct exb_evloop * exb_server_get_evloop(struct exb_server *s, int evloop_id) {
+    exb_assert_h(evloop_id >= 0 && evloop_id < s->elist->nloops, "invalid evloop_id");
+    return s->elist->loops[evloop_id].loop;
 }
 
 //this is bad
-int exb_server_eloop_id(struct exb_server *s, struct exb_eloop *eloop) {
-    exb_assert_h(eloop->eloop_id >= 0 && eloop->eloop_id < s->elist->nloops, "");
-    return eloop->eloop_id;
+int exb_server_evloop_id(struct exb_server *s, struct exb_evloop *evloop) {
+    exb_assert_h(evloop->evloop_id >= 0 && evloop->evloop_id < s->elist->nloops, "");
+    return evloop->evloop_id;
 }
 
-struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, struct exb_eloop *eloop, int socket_fd) {
+struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, struct exb_evloop *evloop, int socket_fd) {
 
     struct exb_request_state *st = NULL;
-    int eloop_idx = exb_server_eloop_id(server, eloop);
-    if (eloop_idx == -1) {
+    int evloop_idx = exb_server_evloop_id(server, evloop);
+    if (evloop_idx == -1) {
         return NULL;
     }
-    if (exb_request_state_recycle_array_pop(server->exb, &server->loop_data[eloop_idx].rq_cyc, &st) != EXB_OK) {
+    if (exb_request_state_recycle_array_pop(server->exb, &server->loop_data[evloop_idx].rq_cyc, &st) != EXB_OK) {
         st = exb_malloc(server->exb, sizeof(struct exb_request_state));
     }
     if (!st) {
@@ -284,7 +284,7 @@ struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, stru
         return NULL;
     }
     int rv;
-    if ((rv = exb_request_state_init(st, eloop, server->exb, server, socket_fd)) != EXB_OK) {
+    if ((rv = exb_request_state_init(st, evloop, server->exb, server, socket_fd)) != EXB_OK) {
         exb_free(server->exb, st);
         return NULL;
     }
@@ -292,21 +292,21 @@ struct exb_request_state *exb_server_new_rqstate(struct exb_server *server, stru
     return st;
 }
 
-void exb_server_destroy_rqstate(struct exb_server *server, struct exb_eloop *eloop, struct exb_request_state *rqstate) {
+void exb_server_destroy_rqstate(struct exb_server *server, struct exb_evloop *evloop, struct exb_request_state *rqstate) {
 
     exb_request_state_deinit(rqstate, server->exb);
-    int eloop_idx = exb_server_eloop_id(server, eloop);
-    if (eloop_idx == -1) {
+    int evloop_idx = exb_server_evloop_id(server, evloop);
+    if (evloop_idx == -1) {
         exb_free(server->exb, rqstate);
     }    
-    if (exb_request_state_recycle_array_push(server->exb, &server->loop_data[eloop_idx].rq_cyc, rqstate) != EXB_OK) {
+    if (exb_request_state_recycle_array_push(server->exb, &server->loop_data[evloop_idx].rq_cyc, rqstate) != EXB_OK) {
         exb_free(server->exb, rqstate);
     }
 
 }
 
 
-int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, int socket_fd, bool is_ssl, struct sockaddr_in clientname) {
+int exb_server_init_multiplexer(struct exb_server *s, struct exb_evloop *evloop, int socket_fd, bool is_ssl, struct sockaddr_in clientname) {
     int flags = fcntl(socket_fd, F_GETFL, 0);
     exb_assert_h(flags != -1, "");
     if ((flags = fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK)) == -1) {
@@ -322,15 +322,15 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
     if (mp == NULL)
         return EXB_SOCKET_ERR;
 
-    int eloop_idx = exb_server_eloop_id(s, eloop);
-    if (eloop_idx < 0) {
+    int evloop_idx = exb_server_evloop_id(s, evloop);
+    if (evloop_idx < 0) {
         return EXB_INVALID_ARG_ERR;
     }
-    struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
-    exb_assert_h(eloop_idx < s->elist->nloops, "");
-    exb_eloop_pool_get_any(s->elist);
-    exb_assert_h(!!eloop, "");
-    int rv = exb_http_multiplexer_init(mp, s, eloop, eloop_idx, socket_fd, is_ssl, s->config.http_use_aio);
+    struct exb_server_listener *listener = s->loop_data[evloop_idx].listener;
+    exb_assert_h(evloop_idx < s->elist->nloops, "");
+    exb_evloop_pool_get_any(s->elist);
+    exb_assert_h(!!evloop, "");
+    int rv = exb_http_multiplexer_init(mp, s, evloop, evloop_idx, socket_fd, is_ssl, s->config.http_use_aio);
     if (rv != EXB_OK) {
         return rv;
     }
@@ -340,11 +340,11 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
     mp->clientname = clientname;
 
 //TODO: error handling
-    struct exb_request_state *rqstate = exb_server_new_rqstate(s, mp->eloop, socket_fd);
+    struct exb_request_state *rqstate = exb_server_new_rqstate(s, mp->evloop, socket_fd);
     exb_logger_logf(s->exb, EXB_LOG_INFO,
-            "Server: connection from host %s, port %hu. assigned to eloop: %d/%d, process: %d\n",
+            "Server: connection from host %s, port %hu. assigned to evloop: %d/%d, process: %d\n",
             inet_ntoa(clientname.sin_addr),
-            ntohs(clientname.sin_port), eloop_idx, s->elist->nloops, getpid());
+            ntohs(clientname.sin_port), evloop_idx, s->elist->nloops, getpid());
     listener->new_connection(listener, socket_fd);
     
     mp->currently_reading = rqstate;
@@ -355,7 +355,7 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_eloop *eloop, i
     return EXB_OK;
 }
 
-//this must be called from the eloop thread
+//this must be called from the evloop thread
 void exb_server_cancel_requests(struct exb_server *s, int socket_fd) {
     /*
         deschedule all requests and defer destroying them, so that in case they're scheduled for read/write it's okay
@@ -376,14 +376,14 @@ void exb_server_cancel_requests(struct exb_server *s, int socket_fd) {
     int rv;
     RQSTATE_EVENT(stderr, "Server marked requests as cancelled for socket %d, and scheduled HTTP_CANCEL event\n", mp->socket_fd);
     exb_event_http_init(s, mp, &ev, EXB_HTTP_CANCEL, s, socket_fd);
-    if ((rv = exb_eloop_append(mp->eloop, ev)) != EXB_OK) {
+    if ((rv = exb_evloop_append(mp->evloop, ev)) != EXB_OK) {
         //TODO: error handling
         abort();
     }
 }
 void exb_server_close_connection(struct exb_server *s, int socket_fd) {
-    int eloop_idx = s->mp[socket_fd].eloop_idx;
-    struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    int evloop_idx = s->mp[socket_fd].evloop_idx;
+    struct exb_server_listener *listener = s->loop_data[evloop_idx].listener;
     exb_http_multiplexer_deinit(s, s->mp + socket_fd);
     listener->close_connection(listener, socket_fd);
     close(socket_fd);
@@ -397,10 +397,10 @@ void exb_server_on_write_available(struct exb_server *s, struct exb_http_multipl
     exb_server_on_write_available_i(s, m);
 }
 
-static struct exb_error exb_server_listen_once(struct exb_server *s, int eloop_idx) {
+static struct exb_error exb_server_listen_once(struct exb_server *s, int evloop_idx) {
     struct exb_error err = {0};
 
-    struct exb_server_listener *listener = s->loop_data[eloop_idx].listener;
+    struct exb_server_listener *listener = s->loop_data[evloop_idx].listener;
     exb_assert_h(!!listener, "");
     listener->listen(listener);
     
@@ -411,12 +411,12 @@ static struct exb_error exb_server_listen_once(struct exb_server *s, int eloop_i
 repeatedly to the event loop*/
 void exb_server_event_listen_loop(struct exb_event ev) {
     struct exb_server *s = ev.msg.u.iip.argp;
-    int eloop_idx = ev.msg.u.iip.arg1;
-    struct exb_eloop *eloop = s->elist->loops[eloop_idx].loop;
-    exb_assert_h(!!eloop, "");
+    int evloop_idx = ev.msg.u.iip.arg1;
+    struct exb_evloop *evloop = s->elist->loops[evloop_idx].loop;
+    exb_assert_h(!!evloop, "");
     
-    exb_server_listen_once(s, eloop_idx);
-    exb_eloop_append_delayed(eloop, ev, EXB_HTTP_MIN_DELAY, 1);
+    exb_server_listen_once(s, evloop_idx);
+    exb_evloop_append_delayed(evloop, ev, EXB_HTTP_MIN_DELAY, 1);
 }
 
 struct exb_error exb_server_listen(struct exb_server *s) {
@@ -426,13 +426,13 @@ struct exb_error exb_server_listen(struct exb_server *s) {
     {
         return exb_make_error(EXB_OK);
     }
-    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
+    for (int evloop_idx=0; evloop_idx<s->elist->nloops; evloop_idx++) {
         struct exb_event new_ev = {.handle = exb_server_event_listen_loop,
                             .msg = {
                                 .u = {
                                     .iip = {
                                         .argp = s,
-                                        .arg1 = eloop_idx,
+                                        .arg1 = evloop_idx,
                                     }
                                 }
                             }};
@@ -500,12 +500,12 @@ int exb_server_listener_switch(struct exb_server *s, const char *listener_name) 
     struct exb_server_listener_fdlist *fdlist = NULL;
     int rv = EXB_OK;
 
-    struct exb_server_listener *new_listeners[EXB_MAX_ELOOPS];
+    struct exb_server_listener *new_listeners[EXB_MAX_EVLOOPS];
     int succeeded = 0;
 
-    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
-        struct exb_eloop *eloop = s->elist->loops[eloop_idx].loop;
-        struct exb_server_listener *old_listener = s->loop_data[eloop_idx].listener;
+    for (int evloop_idx=0; evloop_idx<s->elist->nloops; evloop_idx++) {
+        struct exb_evloop *evloop = s->elist->loops[evloop_idx].loop;
+        struct exb_server_listener *old_listener = s->loop_data[evloop_idx].listener;
         if (old_listener != NULL) {
             rv = old_listener->get_fds(old_listener, &fdlist);
             if (rv != EXB_OK) {
@@ -516,7 +516,7 @@ int exb_server_listener_switch(struct exb_server *s, const char *listener_name) 
         struct exb_server_listener *new_listener = NULL;
         if (strcasecmp(listener_name, "epoll") == 0) {        
             struct exb_server_listener *epoll_listener = NULL;
-            rv = exb_server_listener_epoll_new(s, eloop, &epoll_listener);
+            rv = exb_server_listener_epoll_new(s, evloop, &epoll_listener);
             if (rv != EXB_OK) {
                 exb_server_listener_fdlist_destroy(s->exb, fdlist);
                 goto rollback;
@@ -525,7 +525,7 @@ int exb_server_listener_switch(struct exb_server *s, const char *listener_name) 
         }
         else if (strcasecmp(listener_name, "select") == 0) {
             struct exb_server_listener *select_listener = NULL;
-            rv = exb_server_listener_select_new(s, eloop, &select_listener);
+            rv = exb_server_listener_select_new(s, evloop, &select_listener);
             if (rv != EXB_OK) {
                 exb_server_listener_fdlist_destroy(s->exb, fdlist);
                 goto rollback;
@@ -551,10 +551,10 @@ int exb_server_listener_switch(struct exb_server *s, const char *listener_name) 
         succeeded++;
     }
     exb_assert_h(succeeded == s->elist->nloops, "");
-    for (int eloop_idx=0; eloop_idx<s->elist->nloops; eloop_idx++) {
-        if (s->loop_data[eloop_idx].listener)
-            s->loop_data[eloop_idx].listener->destroy(s->loop_data[eloop_idx].listener);
-        s->loop_data[eloop_idx].listener = new_listeners[eloop_idx];
+    for (int evloop_idx=0; evloop_idx<s->elist->nloops; evloop_idx++) {
+        if (s->loop_data[evloop_idx].listener)
+            s->loop_data[evloop_idx].listener->destroy(s->loop_data[evloop_idx].listener);
+        s->loop_data[evloop_idx].listener = new_listeners[evloop_idx];
     }    
     return EXB_OK;
 rollback:

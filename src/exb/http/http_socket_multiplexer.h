@@ -14,9 +14,9 @@ enum exb_http_multiplexer_state {
 };
 struct exb_http_multiplexer {
     enum exb_http_multiplexer_state state EXB_ALIGN(64); 
-    int eloop_idx;
+    int evloop_idx;
     int socket_fd;
-    struct exb_eloop *eloop; //TODO: refactor, either store eloop_idx or eloop
+    struct exb_evloop *evloop; //TODO: refactor, either store evloop_idx or evloop
     
     struct exb_request_state *currently_reading; //the current request reading from client
     struct exb_request_state *next_response; //queue of responses (linkedlist)

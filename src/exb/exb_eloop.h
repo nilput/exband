@@ -1,5 +1,5 @@
-#ifndef ELOOP_H
-#define ELOOP_H
+#ifndef EVLOOP_H
+#define EVLOOP_H
 /*
 Event loop
 */
@@ -12,11 +12,11 @@ Event loop
 #include "exb_threadpool.h"
 #include "exb_time.h"
 #include "exb_buffer_recycle_list.h"
-#define ELOOP_SLEEP_TIME_MS 1
-#define EXB_ELOOP_TMP_EVENTS_SZ 512
-#define EXB_ELOOP_TASK_BUFFER_COUNT 256
+#define EVLOOP_SLEEP_TIME_MS 1
+#define EXB_EVLOOP_TMP_EVENTS_SZ 512
+#define EXB_EVLOOP_TASK_BUFFER_COUNT 256
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
-#define EXB_ELOOP_DEVENT_BUFFER_COUNT 32
+#define EXB_EVLOOP_DEVENT_BUFFER_COUNT 32
 struct exb_event; //fwd
 struct exb_threadpool;
 
@@ -28,43 +28,43 @@ struct exb_delayed_event {
 
 struct exb_delayed_event_node {
     struct exb_delayed_event cur;
-    unsigned char storage; //>=EXB_ELOOP_DEVENT_BUFFER_COUNT means malloc'd
+    unsigned char storage; //>=EXB_EVLOOP_DEVENT_BUFFER_COUNT means malloc'd
     struct exb_delayed_event_node *next;
 };
 
-enum exb_eloop_event_cmd {
-    EXB_ELOOP_FLUSH,
+enum exb_evloop_event_cmd {
+    EXB_EVLOOP_FLUSH,
 };
 
-struct exb_eloop;
-static int exb_eloop_flush_tasks(struct exb_eloop *eloop);
+struct exb_evloop;
+static int exb_evloop_flush_tasks(struct exb_evloop *evloop);
 
-static void exb_eloop_handle_eloop_event(struct exb_event ev) {
-    struct exb_eloop *eloop = ev.msg.u.iip.argp;
+static void exb_evloop_handle_evloop_event(struct exb_event ev) {
+    struct exb_evloop *evloop = ev.msg.u.iip.argp;
     int cmd = ev.msg.u.iip.arg1;
-    if (cmd == EXB_ELOOP_FLUSH) {
-        exb_eloop_flush_tasks(eloop);
+    if (cmd == EXB_EVLOOP_FLUSH) {
+        exb_evloop_flush_tasks(evloop);
     }
     else {
         exb_assert_h(0, "unknown cmd");
     }
 }
 
-static struct exb_event exb_eloop_make_eloop_event(struct exb_eloop *eloop, enum exb_eloop_event_cmd cmd) {
+static struct exb_event exb_evloop_make_evloop_event(struct exb_evloop *evloop, enum exb_evloop_event_cmd cmd) {
     struct exb_event ev;
-    ev.handle = exb_eloop_handle_eloop_event;
+    ev.handle = exb_evloop_handle_evloop_event;
     ev.msg.u.iip.arg1 = cmd;
-    ev.msg.u.iip.argp = eloop;
+    ev.msg.u.iip.argp = evloop;
     ev.msg.u.iip.arg2 = 0;
     return ev;
 }
 
-struct exb_eloop {
+struct exb_evloop {
     struct exb *exb; //not owned, must outlive
     struct exb_threadpool *threadpool; //not owned, must outlive
     struct exb_ts_event_queue tsq;
     
-    int eloop_id;
+    int evloop_id;
 
     unsigned ev_id; //counter
     int do_stop;
@@ -82,26 +82,26 @@ struct exb_eloop {
     struct exb_buffer_recycle_list buff_cyc;
 
     //this is done to collect a number of tasks before sending them to the threadpool
-    struct exb_task task_buffer[EXB_ELOOP_TASK_BUFFER_COUNT];
+    struct exb_task task_buffer[EXB_EVLOOP_TASK_BUFFER_COUNT];
 
-    struct exb_delayed_event_node devents_buffer[EXB_ELOOP_DEVENT_BUFFER_COUNT];
+    struct exb_delayed_event_node devents_buffer[EXB_EVLOOP_DEVENT_BUFFER_COUNT];
 };
 
 //_d_ functions are for delayed events which are kept in a linked list
 //_q_ functions are for regular events which are kept in an array as a queue
 
-static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, struct exb_timestamp due, int tolerate_prexec) {
+static int exb_evloop_d_push(struct exb_evloop *evloop, struct exb_event event, struct exb_timestamp due, int tolerate_prexec) {
     void *p = NULL;
-    int storage = EXB_ELOOP_DEVENT_BUFFER_COUNT;
-    for (int i=0; i<EXB_ELOOP_DEVENT_BUFFER_COUNT; i++) {
-        if (eloop->devents_buffer[i].storage != i) {
-            p = &eloop->devents_buffer[i];
+    int storage = EXB_EVLOOP_DEVENT_BUFFER_COUNT;
+    for (int i=0; i<EXB_EVLOOP_DEVENT_BUFFER_COUNT; i++) {
+        if (evloop->devents_buffer[i].storage != i) {
+            p = &evloop->devents_buffer[i];
             storage = i;
             break;
         }
     }
     if (!p)
-        p = exb_malloc(eloop->exb, sizeof(struct exb_delayed_event_node));
+        p = exb_malloc(evloop->exb, sizeof(struct exb_delayed_event_node));
     if (!p)
         return EXB_NOMEM_ERR;
     struct exb_delayed_event_node *node = p;
@@ -109,133 +109,133 @@ static int exb_eloop_d_push(struct exb_eloop *eloop, struct exb_event event, str
     node->cur.event = event;
     node->cur.due = due;
     node->cur.tolerate_preexec = tolerate_prexec;
-    if (eloop->devents == NULL || (exb_timestamp_cmp(eloop->devents->cur.due, node->cur.due) > 0)) {
-        node->next = eloop->devents;
-        eloop->devents = node;
+    if (evloop->devents == NULL || (exb_timestamp_cmp(evloop->devents->cur.due, node->cur.due) > 0)) {
+        node->next = evloop->devents;
+        evloop->devents = node;
     }
     else {
-        struct exb_delayed_event_node *at = eloop->devents;
+        struct exb_delayed_event_node *at = evloop->devents;
         while (at->next && (exb_timestamp_cmp(at->next->cur.due, node->cur.due) < 0))
             at = at->next;
         node->next = at->next;
         at->next = node;
     }
-    eloop->devents_len++;
+    evloop->devents_len++;
     return EXB_OK;
 }
 
-static struct exb_timestamp exb_eloop_next_delayed_event_timestamp(struct exb_eloop *eloop) {
-    struct exb_delayed_event_node *at = eloop->devents;
+static struct exb_timestamp exb_evloop_next_delayed_event_timestamp(struct exb_evloop *evloop) {
+    struct exb_delayed_event_node *at = evloop->devents;
     if (!at) {
-        return eloop->current_timestamp;
+        return evloop->current_timestamp;
     }
     return at->cur.due;
 }
 
-static int exb_eloop_q_len(struct exb_eloop *eloop) {
-    if (eloop->tail >= eloop->head) {
-        return eloop->tail - eloop->head;
+static int exb_evloop_q_len(struct exb_evloop *evloop) {
+    if (evloop->tail >= evloop->head) {
+        return evloop->tail - evloop->head;
     }
-    return eloop->cap - eloop->head + eloop->tail;
+    return evloop->cap - evloop->head + evloop->tail;
 }
 
-static int exb_eloop_q_pop_next(struct exb_eloop *eloop, struct exb_event *ev_out) {
-    if (exb_eloop_q_len(eloop) == 0)
+static int exb_evloop_q_pop_next(struct exb_evloop *evloop, struct exb_event *ev_out) {
+    if (exb_evloop_q_len(evloop) == 0)
         return EXB_OUT_OF_RANGE_ERR;
-    struct exb_event ev = eloop->events[eloop->head];
-    eloop->head++;
-    if (eloop->head >= eloop->cap) //eloop->head %= eloop->cap;
-        eloop->head = 0;
+    struct exb_event ev = evloop->events[evloop->head];
+    evloop->head++;
+    if (evloop->head >= evloop->cap) //evloop->head %= evloop->cap;
+        evloop->head = 0;
     *ev_out = ev;
     return EXB_OK;
 }
-static int exb_eloop_d_pop_next(struct exb_eloop *eloop, struct exb_event *ev_out) {
-    if (eloop->devents_len < 1)
+static int exb_evloop_d_pop_next(struct exb_evloop *evloop, struct exb_event *ev_out) {
+    if (evloop->devents_len < 1)
         return EXB_OUT_OF_RANGE_ERR;
     
-    struct exb_delayed_event_node *next = eloop->devents->next;
-    struct exb_delayed_event_node *head = eloop->devents;
+    struct exb_delayed_event_node *next = evloop->devents->next;
+    struct exb_delayed_event_node *head = evloop->devents;
     *ev_out = head->cur.event;
-    if (head->storage < EXB_ELOOP_DEVENT_BUFFER_COUNT) {
+    if (head->storage < EXB_EVLOOP_DEVENT_BUFFER_COUNT) {
         //internally allocated
-        exb_assert_h(eloop->devents_buffer[head->storage].storage == head->storage, "");
-        eloop->devents_buffer[head->storage].storage = EXB_ELOOP_DEVENT_BUFFER_COUNT;
+        exb_assert_h(evloop->devents_buffer[head->storage].storage == head->storage, "");
+        evloop->devents_buffer[head->storage].storage = EXB_EVLOOP_DEVENT_BUFFER_COUNT;
     }
     else {
-        exb_free(eloop->exb, head);
+        exb_free(evloop->exb, head);
     }
     
-    eloop->devents = next;
-    eloop->devents_len--;
+    evloop->devents = next;
+    evloop->devents_len--;
     return EXB_OK;
 }
 
-static int exb_eloop_d_len(struct exb_eloop *eloop) {
-    return eloop->devents_len;
+static int exb_evloop_d_len(struct exb_evloop *evloop) {
+    return evloop->devents_len;
 }
-static struct exb_delayed_event *exb_eloop_d_peek_next(struct exb_eloop *eloop) {
-    if (exb_eloop_d_len(eloop) == 0)
+static struct exb_delayed_event *exb_evloop_d_peek_next(struct exb_evloop *evloop) {
+    if (exb_evloop_d_len(evloop) == 0)
         return NULL;
-    return &eloop->devents->cur;
+    return &evloop->devents->cur;
 }
-static int exb_eloop_pop_next(struct exb_eloop *eloop, struct exb_event *ev_out) {
-    struct exb_delayed_event *dev = exb_eloop_d_peek_next(eloop);
-    if (dev != NULL && exb_timestamp_cmp(dev->due, eloop->current_timestamp) <= 0) {
-        return exb_eloop_d_pop_next(eloop, ev_out);
+static int exb_evloop_pop_next(struct exb_evloop *evloop, struct exb_event *ev_out) {
+    struct exb_delayed_event *dev = exb_evloop_d_peek_next(evloop);
+    if (dev != NULL && exb_timestamp_cmp(dev->due, evloop->current_timestamp) <= 0) {
+        return exb_evloop_d_pop_next(evloop, ev_out);
     }
-    return exb_eloop_q_pop_next(eloop, ev_out);
+    return exb_evloop_q_pop_next(evloop, ev_out);
 }
 
-static int exb_eloop_len(struct exb_eloop *eloop) {
-    return exb_eloop_q_len(eloop) + exb_eloop_d_len(eloop);
+static int exb_evloop_len(struct exb_evloop *evloop) {
+    return exb_evloop_q_len(evloop) + exb_evloop_d_len(evloop);
 }
 
-static int exb_eloop_resize(struct exb_eloop *eloop, int sz);
-static int exb_eloop_init(struct exb_eloop *eloop, int eloop_id, struct exb* exb_ref, struct exb_threadpool *tp, int sz) {
-    memset(eloop, 0, sizeof *eloop);
-    eloop->threadpool = tp;
-    eloop->devents_len = 0;
-    eloop->exb = exb_ref;
-    eloop->eloop_id = eloop_id;
-    eloop->do_stop = 0;
+static int exb_evloop_resize(struct exb_evloop *evloop, int sz);
+static int exb_evloop_init(struct exb_evloop *evloop, int evloop_id, struct exb* exb_ref, struct exb_threadpool *tp, int sz) {
+    memset(evloop, 0, sizeof *evloop);
+    evloop->threadpool = tp;
+    evloop->devents_len = 0;
+    evloop->exb = exb_ref;
+    evloop->evloop_id = evloop_id;
+    evloop->do_stop = 0;
 
-    eloop->ntasks = 0;
-    eloop->current_timestamp = exb_timestamp(0);
-    eloop->tasks_flush_min_delay_ms = 0;
+    evloop->ntasks = 0;
+    evloop->current_timestamp = exb_timestamp(0);
+    evloop->tasks_flush_min_delay_ms = 0;
 
     int rv;
-    if ((rv = exb_buffer_recycle_list_init(exb_ref, &eloop->buff_cyc)) != EXB_OK) {
+    if ((rv = exb_buffer_recycle_list_init(exb_ref, &evloop->buff_cyc)) != EXB_OK) {
         return rv;
     }
-    rv = exb_ts_event_queue_init(&eloop->tsq, exb_ref, 16);
+    rv = exb_ts_event_queue_init(&evloop->tsq, exb_ref, 16);
     if (rv != EXB_OK) {
-        exb_buffer_recycle_list_deinit(exb_ref, &eloop->buff_cyc);
+        exb_buffer_recycle_list_deinit(exb_ref, &evloop->buff_cyc);
         return rv;
     }
     if (sz != 0) {
-        rv = exb_eloop_resize(eloop, sz);
+        rv = exb_evloop_resize(evloop, sz);
         if (rv != EXB_OK) {
-            exb_buffer_recycle_list_deinit(exb_ref, &eloop->buff_cyc);
-            exb_ts_event_queue_deinit(&eloop->tsq);
+            exb_buffer_recycle_list_deinit(exb_ref, &evloop->buff_cyc);
+            exb_ts_event_queue_deinit(&evloop->tsq);
             return rv;
         }
     }
-    for (int i=0; i<EXB_ELOOP_DEVENT_BUFFER_COUNT; i++)
-        eloop->devents_buffer[i].storage = EXB_ELOOP_DEVENT_BUFFER_COUNT;
+    for (int i=0; i<EXB_EVLOOP_DEVENT_BUFFER_COUNT; i++)
+        evloop->devents_buffer[i].storage = EXB_EVLOOP_DEVENT_BUFFER_COUNT;
     return EXB_OK;
 }
-static int exb_eloop_deinit(struct exb_eloop *eloop) {
+static int exb_evloop_deinit(struct exb_evloop *evloop) {
     //TODO destroy pending events
-    fprintf(stderr, "freeing eloop %p\n", eloop);
-    exb_buffer_recycle_list_deinit(eloop->exb, &eloop->buff_cyc);
-    exb_ts_event_queue_deinit(&eloop->tsq);
-    exb_free(eloop->exb, eloop->events);
+    fprintf(stderr, "freeing evloop %p\n", evloop);
+    exb_buffer_recycle_list_deinit(evloop->exb, &evloop->buff_cyc);
+    exb_ts_event_queue_deinit(&evloop->tsq);
+    exb_free(evloop->exb, evloop->events);
     return EXB_OK;
 }
 
-static int exb_eloop_resize(struct exb_eloop *eloop, int sz) {
-    exb_assert_h(!!eloop->exb, "");
-    void *p = exb_malloc(eloop->exb, sizeof(struct exb_event) * sz);
+static int exb_evloop_resize(struct exb_evloop *evloop, int sz) {
+    exb_assert_h(!!evloop->exb, "");
+    void *p = exb_malloc(evloop->exb, sizeof(struct exb_event) * sz);
 
     if (!p) {
         return EXB_NOMEM_ERR;
@@ -243,59 +243,59 @@ static int exb_eloop_resize(struct exb_eloop *eloop, int sz) {
     //this can be optimized, see also taskqueue
     struct exb_event *events = p;
     int idx = 0;
-    for (int i=eloop->head; ; i++) {
-        if (i >= eloop->cap) 
+    for (int i=evloop->head; ; i++) {
+        if (i >= evloop->cap) 
             i = 0;
-        if (i == eloop->tail)
+        if (i == evloop->tail)
             break;
         if (idx >= (sz - 1)) {
             break; //some events were lost because size is less than needed!
         }
-        events[idx] = eloop->events[i];
+        events[idx] = evloop->events[i];
         idx++;
     }
-    exb_free(eloop->exb, eloop->events);
-    int prev_len = exb_eloop_len(eloop);
-    eloop->events = p;
-    eloop->head = 0;
-    eloop->tail = idx;
-    eloop->cap = sz;
-    int new_len = exb_eloop_len(eloop);
+    exb_free(evloop->exb, evloop->events);
+    int prev_len = exb_evloop_len(evloop);
+    evloop->events = p;
+    evloop->head = 0;
+    evloop->tail = idx;
+    evloop->cap = sz;
+    int new_len = exb_evloop_len(evloop);
     exb_assert_h(prev_len == new_len, "");
     
     return EXB_OK;
 }
 //copies event, [eventually calls ev->destroy()]
-static int exb_eloop_append(struct exb_eloop *eloop, struct exb_event ev) {
-    eloop->ev_id++;
-    if (exb_eloop_q_len(eloop) >= eloop->cap - 1) {
-        int nsz = eloop->cap * 2;
-        int rv = exb_eloop_resize(eloop, nsz > 0 ? nsz : 4);
+static int exb_evloop_append(struct exb_evloop *evloop, struct exb_event ev) {
+    evloop->ev_id++;
+    if (exb_evloop_q_len(evloop) >= evloop->cap - 1) {
+        int nsz = evloop->cap * 2;
+        int rv = exb_evloop_resize(evloop, nsz > 0 ? nsz : 4);
         if (rv != EXB_OK)
             return rv;
     }
-    eloop->events[eloop->tail] = ev;
-    eloop->tail++;
-    if (eloop->tail >= eloop->cap) //eloop->tail %= eloop->cap;
-        eloop->tail = 0;
+    evloop->events[evloop->tail] = ev;
+    evloop->tail++;
+    if (evloop->tail >= evloop->cap) //evloop->tail %= evloop->cap;
+        evloop->tail = 0;
     return EXB_OK;
 }
 
 //see also thread_pool_append_many
-static int exb_eloop_append_many(struct exb_eloop *eloop, struct exb_event *events, int nevents) {
+static int exb_evloop_append_many(struct exb_evloop *evloop, struct exb_event *events, int nevents) {
     
-    if ((exb_eloop_q_len(eloop) + nevents) >= eloop->cap - 1) {
-        int nsz = eloop->cap ? eloop->cap * 2 : 4;
-        while ((exb_eloop_q_len(eloop) + nevents) >= nsz - 1)
+    if ((exb_evloop_q_len(evloop) + nevents) >= evloop->cap - 1) {
+        int nsz = evloop->cap ? evloop->cap * 2 : 4;
+        while ((exb_evloop_q_len(evloop) + nevents) >= nsz - 1)
             nsz *= 2;
-        int rv = exb_eloop_resize(eloop, nsz);
+        int rv = exb_evloop_resize(evloop, nsz);
         if (rv != EXB_OK)
             return rv;
     }
-    exb_assert_h((exb_eloop_q_len(eloop) + nevents) < eloop->cap - 1, "");
-    eloop->ev_id += nevents;
+    exb_assert_h((exb_evloop_q_len(evloop) + nevents) < evloop->cap - 1, "");
+    evloop->ev_id += nevents;
 
-    if (eloop->head > eloop->tail) {
+    if (evloop->head > evloop->tail) {
         //example: cap=8
         //         []
         //indices: 0  1  2  3  4  5  6  7
@@ -303,9 +303,9 @@ static int exb_eloop_append_many(struct exb_eloop *eloop, struct exb_event *even
         //               ^^^^^^^^^^
         //               at tail
         // no at head
-        exb_assert_h(eloop->tail + nevents < eloop->head, "");
-        memcpy(eloop->events + eloop->tail, events, nevents * sizeof(struct exb_event));
-        eloop->tail += nevents;
+        exb_assert_h(evloop->tail + nevents < evloop->head, "");
+        memcpy(evloop->events + evloop->tail, events, nevents * sizeof(struct exb_event));
+        evloop->tail += nevents;
     }
     else {
         //example: cap=8
@@ -316,128 +316,128 @@ static int exb_eloop_append_many(struct exb_eloop *eloop, struct exb_event *even
         //         ^           ^^at tail^
         //         ^
         //         at head
-        int at_tail = eloop->cap - eloop->tail;
+        int at_tail = evloop->cap - evloop->tail;
         if (at_tail > nevents) {
             at_tail = nevents;
         }
-        memcpy(eloop->events + eloop->tail, events, at_tail * sizeof(struct exb_event));
+        memcpy(evloop->events + evloop->tail, events, at_tail * sizeof(struct exb_event));
         int remainder = nevents - at_tail;
         if (remainder > 0) {
-            exb_assert_h(eloop->head > remainder, "");
+            exb_assert_h(evloop->head > remainder, "");
             //A STUPID BUG WAS FIXED HERE!
-            memcpy(eloop->events, events + at_tail, remainder * sizeof(struct exb_event));
-            eloop->tail = remainder;
+            memcpy(evloop->events, events + at_tail, remainder * sizeof(struct exb_event));
+            evloop->tail = remainder;
         }
         else {
             exb_assert_h(remainder == 0, "");
-            eloop->tail += at_tail;
-            if (eloop->tail >= eloop->cap)
-                eloop->tail = 0;
+            evloop->tail += at_tail;
+            if (evloop->tail >= evloop->cap)
+                evloop->tail = 0;
         }
     }
     #if defined(EXB_ASSERTS) && 0 
         //TODO: MOVE TO A TEST SUITE
-        int i = eloop->tail;
+        int i = evloop->tail;
         for (int idx = nevents; idx > 0;) {
-            exb_assert_h(i != eloop->head, "");
+            exb_assert_h(i != evloop->head, "");
             idx--;
-            i = i == 0 ? eloop->cap - 1 : i - 1;
-            exb_assert_h(memcmp(events + idx, eloop->events + i, sizeof(struct exb_event)) == 0, "");
+            i = i == 0 ? evloop->cap - 1 : i - 1;
+            exb_assert_h(memcmp(events + idx, evloop->events + i, sizeof(struct exb_event)) == 0, "");
         }
     #endif
     return EXB_OK;
 }
 
-static int exb_eloop_append_delayed(struct exb_eloop *eloop, struct exb_event ev, int ms, int tolerate_preexec);
+static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event ev, int ms, int tolerate_preexec);
 
-static int exb_eloop_flush_tasks(struct exb_eloop *eloop) {
+static int exb_evloop_flush_tasks(struct exb_evloop *evloop) {
     int err = EXB_OK;
-    if (eloop->ntasks > 0)
-        err = exb_threadpool_push_tasks_many(eloop->threadpool, eloop->task_buffer, eloop->ntasks);
+    if (evloop->ntasks > 0)
+        err = exb_threadpool_push_tasks_many(evloop->threadpool, evloop->task_buffer, evloop->ntasks);
     if (err != EXB_OK)
         return err;
-    eloop->ntasks = 0;
-    eloop->tasks_flush_min_delay_ms = 1000;
+    evloop->ntasks = 0;
+    evloop->tasks_flush_min_delay_ms = 1000;
     return EXB_OK;
 }
 
 //untested
-static int exb_eloop_push_task(struct exb_eloop *eloop, struct exb_task task, int acceptable_delay_ms) {
+static int exb_evloop_push_task(struct exb_evloop *evloop, struct exb_task task, int acceptable_delay_ms) {
     int err;
-    if (  eloop->ntasks >= EXB_ELOOP_TASK_BUFFER_COUNT && 
-        ((err = exb_eloop_flush_tasks(eloop)) != EXB_OK))
+    if (  evloop->ntasks >= EXB_EVLOOP_TASK_BUFFER_COUNT && 
+        ((err = exb_evloop_flush_tasks(evloop)) != EXB_OK))
     {
         return err;
     }
-    eloop->task_buffer[eloop->ntasks] = task;
-    if (eloop->ntasks == 0                           || 
-        acceptable_delay_ms < eloop->tasks_flush_min_delay_ms) 
+    evloop->task_buffer[evloop->ntasks] = task;
+    if (evloop->ntasks == 0                           || 
+        acceptable_delay_ms < evloop->tasks_flush_min_delay_ms) 
     {
-        eloop->tasks_flush_min_delay_ms = acceptable_delay_ms;
-        struct exb_event flush_ev = exb_eloop_make_eloop_event(eloop, EXB_ELOOP_FLUSH);
-        exb_eloop_append_delayed(eloop, flush_ev, acceptable_delay_ms, 1);
+        evloop->tasks_flush_min_delay_ms = acceptable_delay_ms;
+        struct exb_event flush_ev = exb_evloop_make_evloop_event(evloop, EXB_EVLOOP_FLUSH);
+        exb_evloop_append_delayed(evloop, flush_ev, acceptable_delay_ms, 1);
     }
-    eloop->ntasks++;
+    evloop->ntasks++;
         
     return EXB_OK;
 }
 
 
 /*Threadsafe append event*/
-static int exb_eloop_ts_append(struct exb_eloop *eloop, struct exb_event event) {
-    int rv = exb_ts_event_queue_append(&eloop->tsq, event);
+static int exb_evloop_ts_append(struct exb_evloop *evloop, struct exb_event event) {
+    int rv = exb_ts_event_queue_append(&evloop->tsq, event);
     return rv;
 }
 /*Threadsafe pop event*/
-static int exb_eloop_ts_pop(struct exb_eloop *eloop, struct exb_event *event_out) {
-    int rv = exb_ts_event_queue_pop_next(&eloop->tsq, event_out);
+static int exb_evloop_ts_pop(struct exb_evloop *evloop, struct exb_event *event_out) {
+    int rv = exb_ts_event_queue_pop_next(&evloop->tsq, event_out);
     return rv;
 }
-static int exb_eloop_ts_pop_many(struct exb_eloop *eloop, struct exb_event *events_out, int *nevents, int max_events) {
-    int rv = exb_ts_event_queue_pop_many(&eloop->tsq, events_out, nevents, max_events);
+static int exb_evloop_ts_pop_many(struct exb_evloop *evloop, struct exb_event *events_out, int *nevents, int max_events) {
+    int rv = exb_ts_event_queue_pop_many(&evloop->tsq, events_out, nevents, max_events);
     return rv;
 }
 
 //copies event, [eventually calls ev->destroy()]
-static int exb_eloop_append_delayed(struct exb_eloop *eloop, struct exb_event ev, int ms, int tolerate_preexec) {
-    return exb_eloop_d_push(eloop, ev, exb_timestamp_add_usec(eloop->current_timestamp, ms * 1000), tolerate_preexec);
+static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event ev, int ms, int tolerate_preexec) {
+    return exb_evloop_d_push(evloop, ev, exb_timestamp_add_usec(evloop->current_timestamp, ms * 1000), tolerate_preexec);
 }
 
-static int exb_eloop_fatal(struct exb_eloop *eloop, struct exb_error err) {
+static int exb_evloop_fatal(struct exb_evloop *evloop, struct exb_error err) {
     abort();
 }
 //thread safe
-static int exb_eloop_stop(struct exb_eloop *eloop) {
+static int exb_evloop_stop(struct exb_evloop *evloop) {
     struct exb_event ev;
-    eloop->do_stop = 1;
+    evloop->do_stop = 1;
     return EXB_OK;
 }
 
 //recieves events from other threads
-static int exb_eloop_receive(struct exb_eloop *eloop) {
-    struct exb_event events[EXB_ELOOP_TMP_EVENTS_SZ];
+static int exb_evloop_receive(struct exb_evloop *evloop) {
+    struct exb_event events[EXB_EVLOOP_TMP_EVENTS_SZ];
     int nevents = 0;
     #define MAX_BATCHES 3
     int rv = EXB_OK;
     for (int i=0;
-         (i == 0 || nevents == EXB_ELOOP_TMP_EVENTS_SZ) && i<MAX_BATCHES;
+         (i == 0 || nevents == EXB_EVLOOP_TMP_EVENTS_SZ) && i<MAX_BATCHES;
           i++) 
     {
-        int rv = exb_eloop_ts_pop_many(eloop, events, &nevents, EXB_ELOOP_TMP_EVENTS_SZ);
+        int rv = exb_evloop_ts_pop_many(evloop, events, &nevents, EXB_EVLOOP_TMP_EVENTS_SZ);
         if (rv != EXB_OK) {
             if (rv == EXB_OUT_OF_RANGE_ERR) {
                 return EXB_OK;
             }
             return rv;
         }
-        rv = exb_eloop_append_many(eloop, events, nevents);
+        rv = exb_evloop_append_many(evloop, events, nevents);
         if (rv != EXB_OK) {
             exb_assert_h(0, ""); //this 'll ruin order
             for (int i=0; i<nevents; i++) {
                 struct exb_event *ev = events + i;
-                int err = exb_eloop_ts_append(eloop, *ev);
+                int err = exb_evloop_ts_append(evloop, *ev);
                 if (err != EXB_OK) {
-                    exb_eloop_fatal(eloop, exb_make_error(err));
+                    exb_evloop_fatal(evloop, exb_make_error(err));
                 }
             }
             return rv;
@@ -447,19 +447,19 @@ static int exb_eloop_receive(struct exb_eloop *eloop) {
     return EXB_OK;
 }
 
-static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
-    #define EXB_ELOOP_NPROCESS_OFFLOAD 64
+static struct exb_error exb_evloop_run(struct exb_evloop *evloop) {
+    #define EXB_EVLOOP_NPROCESS_OFFLOAD 64
     int nprocessed = 0;
 
-    eloop->current_timestamp = exb_timestamp_now();
-    while (!eloop->do_stop) {
+    evloop->current_timestamp = exb_timestamp_now();
+    while (!evloop->do_stop) {
         struct exb_event ev;
         
          //TODO: [scheduling] sometimes ignore timed events and pop from array anyways to ensure progress
 
         int rv = EXB_OUT_OF_RANGE_ERR;
         for (int i = 0; i < 16; i++) {
-            rv = exb_eloop_q_pop_next(eloop, &ev);
+            rv = exb_evloop_q_pop_next(evloop, &ev);
             if (rv != EXB_OK)
                 break;
             exb_assert_s(!!ev.handle, "ev.handle == NULL");
@@ -471,9 +471,9 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
             return err;
         }
         
-        int dlen = exb_eloop_d_len(eloop);
+        int dlen = exb_evloop_d_len(evloop);
         for (int i = 0; i < dlen; i++) {
-            rv = exb_eloop_d_pop_next(eloop, &ev);
+            rv = exb_evloop_d_pop_next(evloop, &ev);
             if (rv != EXB_OK)
                 break;
             exb_assert_s(!!ev.handle, "ev.handle == NULL");
@@ -485,34 +485,34 @@ static struct exb_error exb_eloop_run(struct exb_eloop *eloop) {
             struct exb_error err = exb_make_error(rv);
             return err;
         }
-        exb_eloop_receive(eloop);
-        if (exb_eloop_q_len(eloop) == 0) {
-            exb_sleep_until_timestamp_ex(eloop->current_timestamp, exb_eloop_next_delayed_event_timestamp(eloop));
+        exb_evloop_receive(evloop);
+        if (exb_evloop_q_len(evloop) == 0) {
+            exb_sleep_until_timestamp_ex(evloop->current_timestamp, exb_evloop_next_delayed_event_timestamp(evloop));
         }
-        eloop->current_timestamp = exb_timestamp_now();
+        evloop->current_timestamp = exb_timestamp_now();
     }
     
     return exb_make_error(EXB_OK);
 }
 
 //TODO: optimize to recycle or use custom allocator
-static struct exb_error exb_eloop_alloc_buffer(struct exb_eloop *eloop, size_t size, char **buff_out, size_t *cap_out) {
+static struct exb_error exb_evloop_alloc_buffer(struct exb_evloop *evloop, size_t size, char **buff_out, size_t *cap_out) {
     void *p;
     size_t cap;
-    if (exb_buffer_recycle_list_pop(eloop->exb, &eloop->buff_cyc, size, &p, &cap) == EXB_OK) {
+    if (exb_buffer_recycle_list_pop(evloop->exb, &evloop->buff_cyc, size, &p, &cap) == EXB_OK) {
         *buff_out = p;
         *cap_out = cap;
         return exb_make_error(EXB_OK);
     }
-    *buff_out = exb_malloc(eloop->exb, size);
+    *buff_out = exb_malloc(evloop->exb, size);
     if (!*buff_out) {
         return exb_make_error(EXB_NOMEM_ERR);
     }
     *cap_out = size;
     return exb_make_error(EXB_OK);
 }
-static struct exb_error exb_eloop_realloc_buffer(struct exb_eloop *eloop, char *buff, size_t new_size, char **buff_out, int *cap_out) {
-    char *new_buff = exb_realloc(eloop->exb, buff, new_size);
+static struct exb_error exb_evloop_realloc_buffer(struct exb_evloop *evloop, char *buff, size_t new_size, char **buff_out, int *cap_out) {
+    char *new_buff = exb_realloc(evloop->exb, buff, new_size);
     if (!new_buff) {
         return exb_make_error(EXB_NOMEM_ERR);
     }
@@ -520,10 +520,10 @@ static struct exb_error exb_eloop_realloc_buffer(struct exb_eloop *eloop, char *
     *cap_out = new_size;
     return exb_make_error(EXB_OK);
 }
-static void exb_eloop_release_buffer(struct exb_eloop *eloop, char *buff, size_t capacity) {
-    if (exb_buffer_recycle_list_push(eloop->exb, &eloop->buff_cyc, buff, capacity) == EXB_OK)
+static void exb_evloop_release_buffer(struct exb_evloop *evloop, char *buff, size_t capacity) {
+    if (exb_buffer_recycle_list_push(evloop->exb, &evloop->buff_cyc, buff, capacity) == EXB_OK)
         return;
-    exb_free(eloop->exb, buff);
+    exb_free(evloop->exb, buff);
 }
 
-#endif// ELOOP_H
+#endif// EVLOOP_H

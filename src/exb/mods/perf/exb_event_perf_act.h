@@ -1,9 +1,9 @@
 #ifndef EXB_PERF_ACT_H
 #define EXB_PERF_ACT_H
-#include "../../exb_eloop.h"
+#include "../../exb_evloop.h"
 
 struct exb_perf_act_state {
-    struct exb_eloop *eloop; //not owned, must outlive
+    struct exb_evloop *evloop; //not owned, must outlive
 };
 
 enum exb_event_perf_act_cmd {
@@ -24,7 +24,7 @@ struct exb_request_state;
 
 void exb_perf_handle_perf_act_event(struct exb_event ev);
 
-//doesnt add itself to eloop
+//doesnt add itself to evloop
 static int exb_event_act_init(struct exb_event *ev, int cmd, void *object, int arg) {
     ev->handle = exb_perf_handle_perf_act_event;
     ev->msg.u.iip.arg1 = arg;

@@ -10,7 +10,7 @@
 struct exb_server_listener_select {
     struct exb_server_listener head;
     struct exb_server *server; //not owned, must outlive
-    struct exb_eloop *eloop;   //not owned, must outlive
+    struct exb_evloop *evloop;   //not owned, must outlive
 
     fd_set active_fd_set;
     fd_set read_fd_set;
@@ -25,7 +25,7 @@ static int exb_server_listener_select_get_fds(struct exb_server_listener *lis, s
 
 /*Possible optimization: keep a bitmask of fds that we dont care about because they're not ready, making this edge triggered*/
 
-int exb_server_listener_select_new(struct exb_server *s, struct exb_eloop *eloop, struct exb_server_listener **listener) {
+int exb_server_listener_select_new(struct exb_server *s, struct exb_evloop *evloop, struct exb_server_listener **listener) {
     struct exb_server_listener_select *lis = exb_malloc(s->exb, sizeof(struct exb_server_listener_select));
     if (!lis)
         return EXB_NOMEM_ERR;
@@ -35,7 +35,7 @@ int exb_server_listener_select_new(struct exb_server *s, struct exb_eloop *eloop
     lis->head.new_connection    = exb_server_listener_select_new_connection;
     lis->head.get_fds           = exb_server_listener_select_get_fds;
     lis->server = s;
-    lis->eloop = eloop;
+    lis->evloop = evloop;
     
     /* Initialize the set of active sockets. */
     FD_ZERO(&lis->active_fd_set);
@@ -62,14 +62,14 @@ static int exb_server_listener_select_listen(struct exb_server_listener *listene
     /* Service Connection requests. */
     for (int i=0; i<s->n_listen_sockets; i++) {
         if (FD_ISSET(s->listen_sockets[i].socket_fd, &lis->read_fd_set)) {
-            exb_server_accept_new_connections(s, lis->eloop);
+            exb_server_accept_new_connections(s, lis->evloop);
             break;
         }
     }
     /* Service all the sockets with input pending. */
     for (int i = 0; i < FD_SETSIZE; ++i) {
         struct exb_http_multiplexer *m = exb_server_get_multiplexer_i(s, i);
-        if (m->state == EXB_MP_EMPTY || m->eloop != lis->eloop)
+        if (m->state == EXB_MP_EMPTY || m->evloop != lis->evloop)
             continue; //can be stdin or whatever, or owned by another thread
         exb_assert_h(m->wants_read || (!m->currently_reading /*destroyed*/) || m->currently_reading->is_read_scheduled, "");
         if ( FD_ISSET(i, &lis->read_fd_set) &&

@@ -242,7 +242,7 @@ static int exb_taskqueue_append(struct exb_taskqueue *tq, struct exb_task task) 
     return EXB_OK;
 }
 
-//see also exb_eloop_append_many()
+//see also exb_evloop_append_many()
 static int exb_taskqueue_append_many(struct exb_taskqueue *tq, struct exb_task *tasks, int ntasks) {
     if ((exb_taskqueue_len(tq) + ntasks) >= tq->cap - 1) {
         int nsz = tq->cap ? tq->cap * 2 : 4;
@@ -296,12 +296,12 @@ static int exb_taskqueue_append_many(struct exb_taskqueue *tq, struct exb_task *
     }
     #if defined(EXB_ASSERTS) && 0 
         //TODO: MOVE TO A TEST SUITE
-        int i = eloop->tail;
+        int i = evloop->tail;
         for (int idx = nevents; idx > 0;) {
-            exb_assert_h(i != eloop->head, "");
+            exb_assert_h(i != evloop->head, "");
             idx--;
-            i = i == 0 ? eloop->cap - 1 : i - 1;
-            exb_assert_h(memcmp(events + idx, eloop->events + i, sizeof(struct exb_event)) == 0, "");
+            i = i == 0 ? evloop->cap - 1 : i - 1;
+            exb_assert_h(memcmp(events + idx, evloop->events + i, sizeof(struct exb_event)) == 0, "");
         }
     #endif
     return EXB_OK;
@@ -315,7 +315,7 @@ static int exb_taskqueue_resize(struct exb_taskqueue *tq, int sz) {
     if (!p) {
         return EXB_NOMEM_ERR;
     }
-    //this can be optimized, see also eloop
+    //this can be optimized, see also evloop
     struct exb_task *tasks = p;
     int idx = 0;
     for (int i=tq->head; ; i++) {

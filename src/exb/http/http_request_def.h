@@ -65,7 +65,7 @@ struct exb_request_state {
     struct exb_msg userdata;
 
     struct exb_server *server; //not owned, must outlive
-    struct exb_eloop *eloop;  //not owned, must outlive
+    struct exb_evloop *evloop;  //not owned, must outlive
     int socket_fd;
     int input_buffer_len;
     int input_buffer_cap;

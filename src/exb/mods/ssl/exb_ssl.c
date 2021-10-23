@@ -313,7 +313,7 @@ void exb_ssl_connection_deinit(struct exb_http_server_module *mod, struct exb_ht
     struct exb_ssl_module *ssl_mod = (struct exb_ssl_module *) mod;
     
     if (ssl_state->keep_buff) {
-        exb_eloop_release_buffer(mp->eloop, ssl_state->keep_buff, ssl_state->keep_buff_size);
+        exb_evloop_release_buffer(mp->evloop, ssl_state->keep_buff, ssl_state->keep_buff_size);
     }
 
     if (ssl_state->ssl_obj)
@@ -387,8 +387,8 @@ static struct exb_io_result send_from_wbio_or_keep(struct exb_ssl_module *ssl_mo
     if (EXB_UNLIKELY(sres.nbytes < nread)) {
         if (!mp->ssl_state.keep_buff) {
             size_t keep_buff_sz = 0;
-            exb_assert_h(!!mp->eloop, "");
-            struct exb_error error = exb_eloop_alloc_buffer(mp->eloop, EXB_SSL_RW_BUFFER_SIZE, &mp->ssl_state.keep_buff, &keep_buff_sz);
+            exb_assert_h(!!mp->evloop, "");
+            struct exb_error error = exb_evloop_alloc_buffer(mp->evloop, EXB_SSL_RW_BUFFER_SIZE, &mp->ssl_state.keep_buff, &keep_buff_sz);
             if (error.error_code) {
                 return exb_make_io_result(0, EXB_IO_FLAG_CONN_FATAL);
             }

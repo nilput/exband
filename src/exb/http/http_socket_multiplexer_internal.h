@@ -28,8 +28,8 @@ static void exb_http_multiplexer_init_clear(struct exb_http_multiplexer *mp, int
 
 static int exb_http_multiplexer_init(struct exb_http_multiplexer *mp,
                                      struct exb_server *s,
-                                     struct exb_eloop *eloop,
-                                     int eloop_idx,
+                                     struct exb_evloop *evloop,
+                                     int evloop_idx,
                                      int socket_fd,
                                      bool is_ssl,
                                      bool is_async) 
@@ -40,8 +40,8 @@ static int exb_http_multiplexer_init(struct exb_http_multiplexer *mp,
     #endif
 
     mp->state = EXB_MP_EMPTY;
-    mp->eloop_idx = eloop_idx;
-    mp->eloop = eloop;
+    mp->evloop_idx = evloop_idx;
+    mp->evloop = evloop;
     mp->socket_fd = socket_fd;
     mp->currently_reading = NULL;
     mp->next_response = NULL;
@@ -85,8 +85,8 @@ static void exb_http_multiplexer_deinit(struct exb_server *s, struct exb_http_mu
     }
 #endif
     mp->state = EXB_MP_DEAD;
-    mp->eloop = NULL;
-    mp->eloop_idx = -1;
+    mp->evloop = NULL;
+    mp->evloop_idx = -1;
     mp->socket_fd = -1;
     mp->currently_reading = NULL;
     mp->next_response = NULL;

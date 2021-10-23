@@ -46,21 +46,21 @@ static int lua_instance_init(struct exb *exb_ref, struct lua_instance *li) {
 
 int exb_lua_handle_request(void *rqh_state, struct exb_request_state *rqstate, int reason) {
     struct lua_module *mod = (struct lua_module *) rqh_state;
-    int eloop_idx = exb_request_get_eloop_index(rqstate);
-    if (eloop_idx > MAX_CPU_COUNT) {
-        exb_log_error(mod->exb_ref, "Failed to initialize lua instance for eloop_idx: %d,"
-                                    " cause: eloop_idx > MAX_CPU_COUNT\n", eloop_idx);
+    int evloop_idx = exb_request_get_evloop_index(rqstate);
+    if (evloop_idx > MAX_CPU_COUNT) {
+        exb_log_error(mod->exb_ref, "Failed to initialize lua instance for evloop_idx: %d,"
+                                    " cause: evloop_idx > MAX_CPU_COUNT\n", evloop_idx);
         return EXB_INIT_ERROR;
     }
     int rv = 0;
-    if (!mod->lua_instances[eloop_idx].L) {
-        rv = lua_instance_init(mod->exb_ref, mod->lua_instances + eloop_idx);
+    if (!mod->lua_instances[evloop_idx].L) {
+        rv = lua_instance_init(mod->exb_ref, mod->lua_instances + evloop_idx);
         if (rv != EXB_OK) {
-            exb_log_error(mod->exb_ref, "Failed to initialize lua instance for eloop_idx: %d\n", eloop_idx);
+            exb_log_error(mod->exb_ref, "Failed to initialize lua instance for evloop_idx: %d\n", evloop_idx);
             return rv;
         }
     }
-    lua_State *L = mod->lua_instances[eloop_idx].L;
+    lua_State *L = mod->lua_instances[evloop_idx].L;
     int lua_index = lua_gettop(L);
     lua_getglobal(L, "exb_handle_request");
     lua_pushlightuserdata(L, rqstate);

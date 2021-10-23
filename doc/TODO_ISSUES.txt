@@ -19,5 +19,5 @@ This file is for listing bugs in the codebase, including ones not discovered yet
 
 
 * Real bug: threadpool / aio are broken
-* Real bug: there is a case where multiplexer is destroyed before pending requests, then mp->eloop is null, resulting in a segfault during rqstate destruction event
+* Real bug: there is a case where multiplexer is destroyed before pending requests, then mp->evloop is null, resulting in a segfault during rqstate destruction event
 

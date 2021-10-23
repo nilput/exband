@@ -61,7 +61,7 @@ static int exb_ts_event_queue_resize_u(struct exb_ts_event_queue *tq, int sz) {
     if (!p) {
         return EXB_NOMEM_ERR;
     }
-    //this can be optimized, see also eloop
+    //this can be optimized, see also evloop
     struct exb_event *events = p;
     int idx = 0;
     for (int i=tq->head; ; i++) {

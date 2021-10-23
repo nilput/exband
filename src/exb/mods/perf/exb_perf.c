@@ -68,7 +68,7 @@ int read_samples() {
 }
 
 static void parse_test(struct perf_module *mod) {
-    struct exb_eloop *eloop = exb_server_get_any_eloop(mod->server);
+    struct exb_evloop *evloop = exb_server_get_any_evloop(mod->server);
     read_samples();
     if (nsamples == 0) {
         printf("Found no request samples\n");
@@ -76,7 +76,7 @@ static void parse_test(struct perf_module *mod) {
     }
     int max = 4000000;
     for (int i=0; i<max; i++) {
-        struct exb_request_state *rqstate = exb_server_new_rqstate(mod->server, eloop, 0);
+        struct exb_request_state *rqstate = exb_server_new_rqstate(mod->server, evloop, 0);
         rqstate->istate = EXB_HTTP_I_ST_WAITING_FOR_HEADERS;
         int idx = i / (max / nsamples);
         memcpy(rqstate->input_buffer, samples[idx].buff, samples[idx].len);
@@ -93,7 +93,7 @@ static void parse_test(struct perf_module *mod) {
             if (i % (max / 10) == 0)
                 printf("request method: %d\n", rqstate->method);
         }
-        exb_server_destroy_rqstate(mod->server, eloop, rqstate);
+        exb_server_destroy_rqstate(mod->server, evloop, rqstate);
     }
 }
 
@@ -121,8 +121,8 @@ static void handle_args(struct perf_module *mod, char *module_args) {
     while (split(buff, 64, &tok)) {
         printf("'%s'\n", buff);
         if (strcmp(buff, "--events") == 0) {
-            exb_perf_gen_init(&mod->gen, exb_server_get_any_eloop(mod->server), 4000000);
-            exb_assert_h(mod->gen.eloop, "");
+            exb_perf_gen_init(&mod->gen, exb_server_get_any_evloop(mod->server), 4000000);
+            exb_assert_h(mod->gen.evloop, "");
             exb_perf_gen_begin(&mod->gen);
         }
         else if (strcmp(buff, "--parse") == 0) {

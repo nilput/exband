@@ -17,8 +17,8 @@
 struct exb_request_state;
 static struct exb_response_state *exb_request_get_response(struct exb_request_state *rqstate);
 
-static int exb_response_state_init(struct exb_response_state *resp_state, struct exb_request_state *req, struct exb_eloop *eloop) {
-    exb_assert_h(!!eloop, "");
+static int exb_response_state_init(struct exb_response_state *resp_state, struct exb_request_state *req, struct exb_evloop *evloop) {
+    exb_assert_h(!!evloop, "");
     resp_state->state = EXB_HTTP_R_ST_INIT;
     //resp_state->is_chunked = 0;
     resp_state->status_code = 200;
@@ -37,7 +37,7 @@ static int exb_response_state_init(struct exb_response_state *resp_state, struct
     resp_state->body_len = 0;
 
     size_t buff_sz = 0;
-    struct exb_error err = exb_eloop_alloc_buffer(eloop,
+    struct exb_error err = exb_evloop_alloc_buffer(evloop,
                                 HTTP_OUTPUT_BUFFER_INIT_SIZE + HTTP_HEADERS_BUFFER_INIT_SIZE,
                                 &resp_state->output_buffer,
                                 &buff_sz);
@@ -50,13 +50,13 @@ static int exb_response_state_init(struct exb_response_state *resp_state, struct
     return EXB_OK;
 }
 
-static int exb_response_state_deinit(struct exb_response_state *resp_state, struct exb *exb, struct exb_eloop *eloop) {
+static int exb_response_state_deinit(struct exb_response_state *resp_state, struct exb *exb, struct exb_evloop *evloop) {
     resp_state->state = EXB_HTTP_R_ST_DEAD;
     for (int i=0; i<resp_state->headers.len; i++) {
         exb_str_deinit(exb, &resp_state->headers.headers[i].key);
         exb_str_deinit(exb, &resp_state->headers.headers[i].value);
     }
-    exb_eloop_release_buffer(eloop, resp_state->output_buffer, resp_state->output_buffer_cap);
+    exb_evloop_release_buffer(evloop, resp_state->output_buffer, resp_state->output_buffer_cap);
     return EXB_OK;
 }
 
@@ -142,7 +142,7 @@ int exb_response_append_body(struct exb_request_state *rqstate, char *s, int len
 int exb_response_append_body_cstr(struct exb_request_state *rqstate, char *s);
 
 
-static int exb_response_prepare_headers(struct exb_request_state *rqstate, struct exb_eloop *eloop) {
+static int exb_response_prepare_headers(struct exb_request_state *rqstate, struct exb_evloop *evloop) {
     struct exb_response_state *rsp = exb_request_get_response(rqstate);
 
     if (rsp->state != EXB_HTTP_R_ST_INIT) {
@@ -154,13 +154,13 @@ static int exb_response_prepare_headers(struct exb_request_state *rqstate, struc
         //this is unlikely to happen
         char *new_buff;
         size_t new_buff_cap;
-        struct exb_error err = exb_eloop_alloc_buffer(eloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
+        struct exb_error err = exb_evloop_alloc_buffer(evloop, rsp->output_buffer_cap + rsp->headers_bytes + HTTP_STATUS_MAX_SZ, &new_buff, &new_buff_cap);
         if (err.error_code) {
             return err.error_code;
         }
         int new_body_index = rsp->headers_bytes + HTTP_STATUS_MAX_SZ;
         memcpy(new_buff + new_body_index, rsp->output_buffer + rsp->body_begin_index, rsp->body_len);
-        exb_eloop_release_buffer(eloop, rsp->output_buffer, rsp->output_buffer_cap);
+        exb_evloop_release_buffer(evloop, rsp->output_buffer, rsp->output_buffer_cap);
         rsp->output_buffer = new_buff;
         rsp->output_buffer_cap = new_buff_cap;
         rsp->body_begin_index = new_body_index;

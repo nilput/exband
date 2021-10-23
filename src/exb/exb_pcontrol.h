@@ -33,8 +33,8 @@ int exb_pcontrol_child_maintain(struct exb_pcontrol *st);
 int exb_pcontrol_add_postfork_hook(struct exb_pcontrol *st,    void (*hook)(void *data), void *data);
 int exb_pcontrol_remove_postfork_hook(struct exb_pcontrol *st, void (*hook)(void *data), void *data);
 int exb_pcontrol_stop(struct exb_pcontrol *st);
-struct exb_eloop_pool;
-int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_eloop_pool *elist);
+struct exb_evloop_pool;
+int exb_pcontrol_child_setup(struct exb_pcontrol *st, struct exb_evloop_pool *elist);
 //boolean
 int exb_pcontrol_running(struct exb_pcontrol *st);
 

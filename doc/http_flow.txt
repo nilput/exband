@@ -1,7 +1,7 @@
 Our current way of handling requests:
     Server listens on port using 1 socket
     Server accepts connections and creates an http multiplexer, which manages 1 reading request_state, and multiple queued response request_states
-    Server creates events for respective eloops when socket can read/write
+    Server creates events for respective evloops when socket can read/write
     Server manages terminiation of socket
 
 To handle pipelined GET requests, and keep-alive connections, we do the following:

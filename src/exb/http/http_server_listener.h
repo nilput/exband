@@ -3,7 +3,7 @@
 #include "../exb.h"
 
 struct exb_server;
-struct exb_eloop;
+struct exb_evloop;
 struct exb_server_listener_fdlist;
 /* an interface for a concrete implementation, be for example: select or epoll */
 /*

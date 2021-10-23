@@ -10,18 +10,18 @@ processes:
         worker processes:
             handle http events,
             spawn event loops threads
-eloops:
+evloops:
     1 per cpu core
     its internal event queues will not be threadsafe
     but it will have a seperate threadsafe queue for receiving communication from other threads
-    one task per eloop queue iteration will be taking all receive events from the threadsafe queue to the non threadsafe queue
+    one task per evloop queue iteration will be taking all receive events from the threadsafe queue to the non threadsafe queue
 threadpool:
     1 per exb, should have nthreads way more than n cpu cores
-threadpool -> eloop communication:
-    eloop recieve writes and reads to the threadpool as tasks
-    threadpool knows which eloop handles events on the task
+threadpool -> evloop communication:
+    evloop recieve writes and reads to the threadpool as tasks
+    threadpool knows which evloop handles events on the task
     and submits results to its threadsafe queue on completion
 
 Todo list:
     Have a fast Multiwrite Mulitread  TS queue implementation for threadpool    [ ]
-    Have a fast Multiwrite Singleread TS queue implementation for eloop         [ ]
+    Have a fast Multiwrite Singleread TS queue implementation for evloop         [ ]

@@ -4,7 +4,7 @@
 #define EXBAND_VERSION_STR "v0.1.1"
 
 /*Eloop env config*/
-#define EXB_MAX_ELOOPS 128
+#define EXB_MAX_EVLOOPS 128
 /*End Eloop env config*/
 
 /*Server configuration*/
@@ -48,7 +48,7 @@
     1: somewhat accurate
     2: accurate
 */
-#define EXB_ELOOP_TIME_ACCUARCY 1
+#define EXB_EVLOOP_TIME_ACCUARCY 1
 
 #define EXB_HTTP_ADD_DATE_HEADER
 //#undef  EXB_ADD_DATE_HEADER

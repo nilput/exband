@@ -16,13 +16,13 @@
 
 /*
 TODO: Optimization: Switch to edge triggered
-this requires tweaking how the eloop handles http events
+this requires tweaking how the evloop handles http events
 */
 
 struct exb_server_listener_epoll {
     struct exb_server_listener head;
     struct exb_server *server; //not owned, must outlive
-    struct exb_eloop *eloop;   //not owned, must outlive
+    struct exb_evloop *evloop;   //not owned, must outlive
 
     int efd;
     struct epoll_event events[MAX_EVENTS];
@@ -35,7 +35,7 @@ static int exb_server_listener_epoll_close_connection(struct exb_server_listener
 static int exb_server_listener_epoll_new_connection(struct exb_server_listener *listener, int socket_fd);
 static int exb_server_listener_epoll_get_fds(struct exb_server_listener *lis, struct exb_server_listener_fdlist **fdlist_out);
 
-int exb_server_listener_epoll_new(struct exb_server *s, struct exb_eloop *eloop, struct exb_server_listener **listener) {
+int exb_server_listener_epoll_new(struct exb_server *s, struct exb_evloop *evloop, struct exb_server_listener **listener) {
     struct exb_server_listener_epoll *lis = exb_malloc(s->exb, sizeof(struct exb_server_listener_epoll));
     int err = EXB_OK;
     if (!lis)
@@ -46,7 +46,7 @@ int exb_server_listener_epoll_new(struct exb_server *s, struct exb_eloop *eloop,
     lis->head.new_connection   = exb_server_listener_epoll_new_connection;
     lis->head.get_fds          = exb_server_listener_epoll_get_fds;
     lis->server     = s;
-    lis->eloop      = eloop;
+    lis->evloop      = evloop;
     lis->highest_fd = 0;
     
     lis->efd = epoll_create1(0);
@@ -104,7 +104,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
             }
             continue; //can be a listening socket
         }
-        exb_assert_h(m->eloop == lis->eloop, "");
+        exb_assert_h(m->evloop == lis->evloop, "");
         exb_assert_h(m->wants_read || (!m->currently_reading /*destroyed*/) || m->currently_reading->is_read_scheduled, "");
         if ( (ev->events & EPOLLIN) &&
               m->wants_read           )
@@ -123,7 +123,7 @@ static int exb_server_listener_epoll_listen(struct exb_server_listener *listener
 
     /* Service Connection requests. */
     if (incoming_connections) {
-        exb_server_accept_new_connections(s, lis->eloop);
+        exb_server_accept_new_connections(s, lis->evloop);
     }
 
 

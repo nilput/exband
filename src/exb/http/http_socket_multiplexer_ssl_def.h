@@ -10,7 +10,7 @@ struct exb_http_ssl_state {
     void *wbio;
 
     //a buffer that is used when we get bytes out of wbio and we have no where to store them
-    //this buffer should be recycled to the current eloop, also it can be NULL
+    //this buffer should be recycled to the current evloop, also it can be NULL
     char *keep_buff; 
     int keep_buff_len;
     int keep_buff_size;

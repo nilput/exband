@@ -13,7 +13,7 @@ int exb_response_body_buffer_ensure(struct exb_request_state *rqstate, size_t ca
         struct exb_error err;
         char *new_buff;
         int new_sz;
-        err = exb_eloop_realloc_buffer(rqstate->eloop, rsp->output_buffer, cap, &new_buff, &new_sz);
+        err = exb_evloop_realloc_buffer(rqstate->evloop, rsp->output_buffer, cap, &new_buff, &new_sz);
         if (err.error_code)
             return err.error_code;
         rsp->output_buffer = new_buff;

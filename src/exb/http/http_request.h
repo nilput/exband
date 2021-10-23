@@ -24,25 +24,25 @@ static struct exb_msg *exb_request_get_userdata(struct exb_request_state *rqstat
     return &rqstate->userdata;
 }
 
-static int exb_request_get_eloop_index(struct exb_request_state *rqstate) {
-    return exb_server_eloop_id(rqstate->server, rqstate->eloop);
+static int exb_request_get_evloop_index(struct exb_request_state *rqstate) {
+    return exb_server_evloop_id(rqstate->server, rqstate->evloop);
 }
 
 
 
 static int exb_request_input_buffer_ensure_cap(struct exb_request_state *rqstate, size_t capacity) {
     if (capacity > rqstate->input_buffer_cap) {
-        struct exb_error err = exb_eloop_realloc_buffer(rqstate->eloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
+        struct exb_error err = exb_evloop_realloc_buffer(rqstate->evloop, rqstate->input_buffer, capacity, &rqstate->input_buffer, &rqstate->input_buffer_cap);
         return err.error_code;
     }
     return EXB_OK;
 }
 
-static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_eloop *eloop, struct exb *exb, struct exb_server *s, int socket_fd) {
+static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_evloop *evloop, struct exb *exb, struct exb_server *s, int socket_fd) {
     rqstate->request_handler = s->request_handler;
     rqstate->rqh_state       = s->request_handler_state;
     rqstate->is_chunked = 0;
-    rqstate->eloop = eloop;
+    rqstate->evloop = evloop;
     rqstate->is_persistent = 0;
     rqstate->is_read_scheduled = 0;
     rqstate->is_send_scheduled = 0;
@@ -68,14 +68,14 @@ static int exb_request_state_init(struct exb_request_state *rqstate, struct exb_
     rqstate->headers.len = 0;
     rqstate->next_rqstate = NULL;
     size_t buff_cap = 0;
-    struct exb_error err = exb_eloop_alloc_buffer(eloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &buff_cap);
+    struct exb_error err = exb_evloop_alloc_buffer(evloop, HTTP_INPUT_BUFFER_INITIAL_SIZE, &rqstate->input_buffer, &buff_cap);
     rqstate->input_buffer_cap = buff_cap;
     if (err.error_code) {
         return err.error_code;
     }
 
     exb_str_init_empty(&rqstate->body_decoded);
-    return exb_response_state_init(&rqstate->resp, rqstate, eloop);
+    return exb_response_state_init(&rqstate->resp, rqstate, evloop);
 }
 
 static int exb_request_state_change_handler(struct exb_request_state *rqstate, exb_request_handler_func func, void *rqh_state) {
@@ -106,8 +106,8 @@ static int exb_request_get_path_copy(struct exb_request_state *rqstate, struct e
 }
 
 static void exb_request_state_deinit(struct exb_request_state *rqstate, struct exb *exb) {
-    exb_response_state_deinit(&rqstate->resp, exb, rqstate->eloop);
-    exb_eloop_release_buffer(rqstate->eloop, rqstate->input_buffer, rqstate->input_buffer_cap);
+    exb_response_state_deinit(&rqstate->resp, exb, rqstate->evloop);
+    exb_evloop_release_buffer(rqstate->evloop, rqstate->input_buffer, rqstate->input_buffer_cap);
     exb_str_deinit(exb, &rqstate->body_decoded);
     rqstate->istate = EXB_HTTP_I_ST_DEAD;
 }
