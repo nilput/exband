@@ -1,12 +1,20 @@
 LDLIBS = -pthread -ldl
-CFLAGS = -I othersrc/ -I third_party/ -fPIC 
-EXB_SRC = src/exb/exb_utils.c src/exb/http/http_server.c \
-                     src/exb/http/http_server_events.c src/exb/http/http_request.c \
-                     src/exb/http/http_response.c src/exb/http/listener/http_server_listener_select.c \
-                     src/exb/http/listener/http_server_listener_epoll.c src/exb/http/http_server_module.c \
-                     src/exb/http/handlers/exb_fileserv.c \
-                     src/exb/exb_threadpool.c src/exb/exb_pcontrol.c \
-                     src/exb/exb_main_config.c
+CFLAGS = -I othersrc/ -I third_party/ -fPIC -Wall -Wno-unused-but-set-variable \
+											-Wno-unused-function -Wno-unused-label \
+											-Wno-unused-variable -Wno-unused-but-set-variable
+EXB_SRC = src/exb/exb_utils.c \
+			src/exb/http/http_server.c \
+			src/exb/http/http_server_events.c \
+			src/exb/http/http_request.c \
+			src/exb/http/http_response.c \
+			src/exb/http/listener/http_server_listener_select.c \
+			src/exb/http/listener/http_server_listener_epoll.c \
+			src/exb/http/http_server_module.c \
+			src/exb/http/handlers/exb_fileserv.c \
+			src/exb/exb_threadpool.c \
+			src/exb/exb_pcontrol.c \
+			src/exb/exb_main_config.c
+
 LDFLAGS := -Wl,-rpath=\$$ORIGIN/:\$$ORIGIN/obj/
 EXB_OBJ = $(patsubst %.c,%.o, $(patsubst src/%,obj/%, $(EXB_SRC)))
 EXB_LINK = 
@@ -29,7 +37,7 @@ main_targets: $(OPTIONAL) exb exb_static obj/libexb.so
 test:
 	./tests/run_all
 
-debug: CFLAGS += -g3 -O0 -Wall -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label -Wno-unused-variable -DTRACK_RQSTATE_EVENTS -DEXB_DEBUG
+debug: CFLAGS += -g3 -O0 -DTRACK_RQSTATE_EVENTS -DEXB_DEBUG
 debug: main_targets
 
 trace: CFLAGS += -Wl,-export-dynamic -ldl -DEXB_TRACE -DEXB_DEBUG -g3 -O0 -finstrument-functions -Wall -Wno-unused-function -Wno-unused-label -Wno-unused-variable 

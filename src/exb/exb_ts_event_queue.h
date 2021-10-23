@@ -152,7 +152,6 @@ static int exb_ts_event_queue_pop_many(struct exb_ts_event_queue *tq, struct exb
         }
     #endif
 
-bnret:
     pthread_mutex_unlock(&tq->mtx);
     return err;
 }
