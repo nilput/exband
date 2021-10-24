@@ -1,6 +1,7 @@
 #ifndef EXB_THREAD_H
 #define EXB_THREAD_H
 #include <pthread.h>
+#include <string.h>
 #include "exb.h"
 struct exb_threadpool;
 
