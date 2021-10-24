@@ -5,8 +5,10 @@
 struct exb_threadpool;
 
 int exb_hw_cpu_count();
-void exb_hw_bind_to_core(int cpu_id);
-void exb_hw_thread_sched_important();
+int exb_hw_bind_to_core(int core_id);
+int exb_hw_bind_not_to_core(int core_id);
+int exb_hw_thread_sched_important();
+int exb_hw_thread_sched_background();
 
 
 struct exb_thread {
