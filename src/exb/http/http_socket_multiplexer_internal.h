@@ -31,8 +31,7 @@ static int exb_http_multiplexer_init(struct exb_http_multiplexer *mp,
                                      struct exb_evloop *evloop,
                                      int evloop_idx,
                                      int socket_fd,
-                                     bool is_ssl,
-                                     bool is_async) 
+                                     bool is_ssl) 
 {
     #ifndef EXB_WITH_SSL
         if (is_ssl)
@@ -49,27 +48,16 @@ static int exb_http_multiplexer_init(struct exb_http_multiplexer *mp,
     mp->wants_write = false;
 
     mp->is_ssl = is_ssl;
-
-    if (EXB_UNLIKELY(is_async)) {
-        if (EXB_UNLIKELY(is_ssl)) {
-            mp->on_read = on_http_ssl_read_async;
-            mp->on_send = on_http_ssl_send_async;
-        }
-        else {
-            mp->on_read = on_http_read_async;
-            mp->on_send = on_http_send_async;
-        }
+    
+    if (EXB_UNLIKELY(is_ssl)) {
+        mp->on_read = on_http_ssl_read_sync;
+        mp->on_send = on_http_ssl_send_sync;
     }
     else {
-        if (EXB_UNLIKELY(is_ssl)) {
-            mp->on_read = on_http_ssl_read_sync;
-            mp->on_send = on_http_ssl_send_sync;
-        }
-        else {
-            mp->on_read = on_http_read_sync;
-            mp->on_send = on_http_send_sync;
-        }
+        mp->on_read = on_http_read_sync;
+        mp->on_send = on_http_send_sync;
     }
+
 #ifdef EXB_WITH_SSL
     if (is_ssl) {
         return exb_http_multiplexer_ssl_init(s, mp);

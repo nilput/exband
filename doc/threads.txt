@@ -17,7 +17,7 @@ evloops:
     one task per evloop queue iteration will be taking all receive events from the threadsafe queue to the non threadsafe queue
 threadpool:
     1 per exb, should have nthreads way more than n cpu cores
-threadpool -> evloop communication:
+threadpool -> evloop communication: (deprecated)
     evloop recieve writes and reads to the threadpool as tasks
     threadpool knows which evloop handles events on the task
     and submits results to its threadsafe queue on completion

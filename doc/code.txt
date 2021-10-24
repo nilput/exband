@@ -1,7 +1,7 @@
 Coding conventions:
     Semi global state:
         No global state is ever used, but in many functions we pass a pointer to exb_ref which is the instance
-        of all state that is almost global, this includes things like custom allocators
+        of all state that is almost global, this will include things like custom allocators in the future
     Memory usage:
         - we use exb_new and exb_free/exb_realloc, exb_realloc_f, this allows custom allocators
         - We use these conventions for naming initialization/destruction functions:

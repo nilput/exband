@@ -321,7 +321,7 @@ int exb_server_init_multiplexer(struct exb_server *s, struct exb_evloop *evloop,
     exb_assert_h(evloop_idx < s->elist->nloops, "");
     exb_evloop_pool_get_any(s->elist);
     exb_assert_h(!!evloop, "");
-    int rv = exb_http_multiplexer_init(mp, s, evloop, evloop_idx, socket_fd, is_ssl, s->config.http_use_aio);
+    int rv = exb_http_multiplexer_init(mp, s, evloop, evloop_idx, socket_fd, is_ssl);
     if (rv != EXB_OK) {
         return rv;
     }

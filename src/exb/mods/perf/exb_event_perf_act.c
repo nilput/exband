@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "../../exb_evloop.h"
-#include "../../exb_threadpool.h"
 #include "../../exb_errors.h"
 #include "../../http/http_server.h"
 #include "../../http/http_server_internal.h"
@@ -30,50 +29,7 @@ void exb_perf_act_async_read_from_client_runner(struct exb_thread *thread, struc
     
     return;
 }
-struct exb_error exb_perf_act_async_read_from_client(struct exb_perf_act_state *rqstate) {
-    
-    struct exb_threadpool *tp = rqstate->evloop->threadpool;
-    struct exb_task task;
-    task.err = exb_make_error(EXB_OK);
-    task.run = exb_perf_act_async_read_from_client_runner;
-    task.msg.u.iip.arg1 = 0;
-    task.msg.u.iip.arg2 = 0;
-    task.msg.u.iip.argp = rqstate;
-    int rv = exb_evloop_push_task(rqstate->evloop, task, 10);
-    return exb_make_error(rv);
-}
-void exb_perf_act_async_write_runner(struct exb_thread *thread, struct exb_task *task) {
-    
-    struct exb_perf_act_state *rqstate = task->msg.u.iip.argp;
-    
-    struct exb_event ev;
 
-    exb_event_act_init(&ev, EXB_PERF_ACT_DID_WRITE, rqstate, 0);
-    
-    int err = exb_evloop_ts_append(rqstate->evloop, ev);
-    if (err != EXB_OK) {
-        /*we cannot afford to have this fail*/
-        exb_perf_act_handle_fatal_error(rqstate);
-    }
-    return;
-}
-struct exb_error exb_perf_act_async_write(struct exb_perf_act_state *rqstate) {
-
-    int rv = EXB_OK;
-
-    struct exb_threadpool *tp = rqstate->evloop->threadpool;
-    struct exb_task task;
-    task.err = exb_make_error(EXB_OK);
-    task.run = exb_perf_act_async_write_runner;
-    task.msg.u.iip.arg1 = 0;
-    task.msg.u.iip.arg2 = 0;
-    task.msg.u.iip.argp = rqstate;
-    rv = exb_threadpool_push_task(tp, task);
-    ret:
-    
-    return exb_make_error(rv);
-
-}
 
 
 int exb_perf_act_write(struct exb_perf_act_state *rqstate) {

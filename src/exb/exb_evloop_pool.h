@@ -4,7 +4,6 @@
 #include "exb_build_config.h"
 #include "exb_evloop.h"
 #include "exb_thread.h"
-#include "exb_threadpool.h"
 
 //unsafe to move in memory, members hold references to &tp
 struct exb_evloop_pool {
@@ -15,7 +14,6 @@ struct exb_evloop_pool {
     int nloops;
     int rr; //round robin counter for distributing load
 
-    struct exb_threadpool tp;
     struct exb *exb_ref;
 };
 
@@ -27,17 +25,13 @@ static int exb_evloop_pool_init(struct exb_evloop_pool *elist, struct exb *exb_r
     elist->nloops = 0;
     elist->exb_ref = exb_ref;
 
-    err = exb_threadpool_init(&elist->tp, exb_ref);
-    if (err != EXB_OK) {
-        goto err0;
-    }
 
     for (int i=0; i<nloops; i++) {
         void *p = exb_malloc(exb_ref, sizeof(struct exb_evloop));
         if (!p)
             goto err1;
         elist->loops[i].loop = p;
-        err = exb_evloop_init(elist->loops[i].loop, i, exb_ref, &elist->tp, 256);
+        err = exb_evloop_init(elist->loops[i].loop, i, exb_ref, 256);
         if (err != EXB_OK) {
             exb_free(exb_ref, p);
             goto err1;
@@ -90,7 +84,7 @@ static void *exb_evloop_pool_thread_runner(void *p) {
 //cpu offset is used for cpu affinity, it's not important (can be -1)
 static int exb_evloop_pool_run(struct exb_evloop_pool *elist, int cpu_offset) {
     for (int i=0; i<elist->nloops; i++) {
-        exb_thread_new(elist->exb_ref, i, &elist->tp, exb_evloop_pool_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
+        exb_thread_new(elist->exb_ref, i, exb_evloop_pool_thread_runner, elist->loops[i].loop, &elist->loops[i].thread);
         elist->loops[i].thread->bind_cpu = cpu_offset + i;
     }
     return EXB_OK;
@@ -114,7 +108,6 @@ static int exb_evloop_pool_deinit(struct exb_evloop_pool *elist) {
         exb_evloop_deinit(elist->loops[i].loop);
         exb_free(elist->exb_ref, elist->loops[i].loop);
     }
-    exb_threadpool_deinit(&elist->tp);
     return EXB_OK;
 }
 

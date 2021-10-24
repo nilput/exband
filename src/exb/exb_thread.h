@@ -3,9 +3,13 @@
 #include <pthread.h>
 #include "exb.h"
 struct exb_threadpool;
+
+int exb_hw_cpu_count();
+void exb_hw_bind_to_core(int cpu_id);
+void exb_hw_thread_sched_important();
+
+
 struct exb_thread {
-    //can be null if thread is not part of a threadpool
-    struct exb_threadpool *tp; //not owned, must outlive
     int bind_cpu;
     int tid;
     void *data;
@@ -19,16 +23,13 @@ static int exb_thread_join(struct exb_thread *thread) {
     return rv == 0 ? EXB_OK : EXB_THREAD_ERROR;
 }
 
-int exb_hw_cpu_count();
-
-static int exb_thread_new(struct exb *exb_ref, int tid, struct exb_threadpool *tp, void *(*run)(void *), void *data, struct exb_thread **new_thread) {
+static int exb_thread_new(struct exb *exb_ref, int tid, void *(*run)(void *), void *data, struct exb_thread **new_thread) {
     void *p = exb_malloc(exb_ref, sizeof(struct exb_thread));
     if (!p)
         return EXB_NOMEM_ERR;
     struct exb_thread *t = p;
     memset(t, 0, sizeof(*t));
     t->tid = tid;
-    t->tp = tp;
     t->data = data;
     t->bind_cpu = tid % exb_hw_cpu_count();
     exb_assert_h(t->bind_cpu >= 0, "invalid thread id");

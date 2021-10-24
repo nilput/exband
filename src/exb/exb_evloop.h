@@ -9,7 +9,6 @@ Event loop
 #include "exb_task.h"
 #include "exb_ts_event_queue.h"
 #include "exb_event.h"
-#include "exb_threadpool.h"
 #include "exb_time.h"
 #include "exb_buffer_recycle_list.h"
 #define EVLOOP_SLEEP_TIME_MS 1
@@ -18,7 +17,6 @@ Event loop
 //a small storage for delayed events to reduce calls to malloc, must be <= 255
 #define EXB_EVLOOP_DEVENT_BUFFER_COUNT 32
 struct exb_event; //fwd
-struct exb_threadpool;
 
 struct exb_delayed_event {
     struct exb_timestamp due; //unix time + delay
@@ -37,33 +35,11 @@ enum exb_evloop_event_cmd {
 };
 
 struct exb_evloop;
-static int exb_evloop_flush_tasks(struct exb_evloop *evloop);
 static int exb_evloop_resize(struct exb_evloop *evloop, int sz);
 static int exb_evloop_append_delayed(struct exb_evloop *evloop, struct exb_event ev, int ms, int tolerate_preexec);
 
-static void exb_evloop_handle_evloop_event(struct exb_event ev) {
-    struct exb_evloop *evloop = ev.msg.u.iip.argp;
-    int cmd = ev.msg.u.iip.arg1;
-    if (cmd == EXB_EVLOOP_FLUSH) {
-        exb_evloop_flush_tasks(evloop);
-    }
-    else {
-        exb_assert_h(0, "unknown cmd");
-    }
-}
-
-static struct exb_event exb_evloop_make_evloop_event(struct exb_evloop *evloop, enum exb_evloop_event_cmd cmd) {
-    struct exb_event ev;
-    ev.handle = exb_evloop_handle_evloop_event;
-    ev.msg.u.iip.arg1 = cmd;
-    ev.msg.u.iip.argp = evloop;
-    ev.msg.u.iip.arg2 = 0;
-    return ev;
-}
-
 struct exb_evloop {
     struct exb *exb; //not owned, must outlive
-    struct exb_threadpool *threadpool; //not owned, must outlive
     struct exb_ts_event_queue tsq;
     
     int evloop_id;
@@ -82,9 +58,6 @@ struct exb_evloop {
     int cap;
 
     struct exb_buffer_recycle_list buff_cyc;
-
-    //this is done to collect a number of tasks before sending them to the threadpool
-    struct exb_task task_buffer[EXB_EVLOOP_TASK_BUFFER_COUNT];
 
     struct exb_delayed_event_node devents_buffer[EXB_EVLOOP_DEVENT_BUFFER_COUNT];
 };
@@ -195,9 +168,8 @@ static int exb_evloop_len(struct exb_evloop *evloop) {
     return exb_evloop_q_len(evloop) + exb_evloop_d_len(evloop);
 }
 
-static int exb_evloop_init(struct exb_evloop *evloop, int evloop_id, struct exb* exb_ref, struct exb_threadpool *tp, int sz) {
+static int exb_evloop_init(struct exb_evloop *evloop, int evloop_id, struct exb* exb_ref, int sz) {
     memset(evloop, 0, sizeof *evloop);
-    evloop->threadpool = tp;
     evloop->devents_len = 0;
     evloop->exb = exb_ref;
     evloop->evloop_id = evloop_id;
@@ -351,38 +323,6 @@ static int exb_evloop_append_many(struct exb_evloop *evloop, struct exb_event *e
             exb_assert_h(memcmp(events + idx, evloop->events + i, sizeof(struct exb_event)) == 0, "");
         }
     #endif
-    return EXB_OK;
-}
-
-static int exb_evloop_flush_tasks(struct exb_evloop *evloop) {
-    int err = EXB_OK;
-    if (evloop->ntasks > 0)
-        err = exb_threadpool_push_tasks_many(evloop->threadpool, evloop->task_buffer, evloop->ntasks);
-    if (err != EXB_OK)
-        return err;
-    evloop->ntasks = 0;
-    evloop->tasks_flush_min_delay_ms = 1000;
-    return EXB_OK;
-}
-
-//untested
-static int exb_evloop_push_task(struct exb_evloop *evloop, struct exb_task task, int acceptable_delay_ms) {
-    int err;
-    if (  evloop->ntasks >= EXB_EVLOOP_TASK_BUFFER_COUNT && 
-        ((err = exb_evloop_flush_tasks(evloop)) != EXB_OK))
-    {
-        return err;
-    }
-    evloop->task_buffer[evloop->ntasks] = task;
-    if (evloop->ntasks == 0                           || 
-        acceptable_delay_ms < evloop->tasks_flush_min_delay_ms) 
-    {
-        evloop->tasks_flush_min_delay_ms = acceptable_delay_ms;
-        struct exb_event flush_ev = exb_evloop_make_evloop_event(evloop, EXB_EVLOOP_FLUSH);
-        exb_evloop_append_delayed(evloop, flush_ev, acceptable_delay_ms, 1);
-    }
-    evloop->ntasks++;
-        
     return EXB_OK;
 }
 

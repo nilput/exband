@@ -74,10 +74,6 @@ int main(int argc, char *argv[]) {
     check_or_die(rv);
     fprintf(stderr, "Starting Exband %s\n", EXBAND_VERSION_STR);
     fprintf(stderr, "Spawning %d event loop%c\n", exb_config.nloops, exb_config.nloops != 1 ? 's' : ' ');
-    
-    rv = exb_threadpool_set_nthreads(&elist.tp, exb_config.tp_threads);
-    fprintf(stderr, "Spawning %d IO thread%c\n", exb_config.tp_threads, exb_config.tp_threads != 1 ? 's' : ' ');
-    check_or_die(rv);
 
     rv = exb_server_init_with_config(&server, &exb_state, &pcontrol, &elist, exb_http_server_config);
     check_or_die(rv);

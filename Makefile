@@ -3,11 +3,11 @@ CFLAGS = -I othersrc/ -I third_party/ -fPIC -Wall -Wno-unused-but-set-variable \
 											-Wno-unused-function -Wno-unused-label \
 											-Wno-unused-variable -Wno-unused-but-set-variable
 EXB_SRC = src/exb/exb_utils.c \
+			src/exb/exb_thread.c \
 			src/exb/http/http_server.c \
 			src/exb/http/http_server_events.c \
 			src/exb/http/http_request.c \
 			src/exb/http/http_response.c \
-			src/exb/exb_threadpool.c \
 			src/exb/exb_pcontrol.c \
 			src/exb/exb_main_config.c \
 			src/exb/http/http_server_module.c \

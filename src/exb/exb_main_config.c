@@ -446,7 +446,7 @@ static int load_json_config(const char *config_path, struct exb *exb_ref, struct
     }
     obj = json_get(ep.full_file, ep.tokens, "event.aio");
     if (obj && (json_get_as_boolean(ep.full_file, obj, &integer) == 0)) {
-        http_server_config_out->http_use_aio = !!integer;
+        //TODO: Warn that this is no longer supported
     }
     rv = load_json_modules(exb_ref, &ep, config_out, http_server_config_out);
     if (rv != EXB_OK) {

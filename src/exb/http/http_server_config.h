@@ -23,7 +23,6 @@ struct exb_http_domain_config {
 
 struct exb_http_server_config {
     int z_http_listen_port;
-    int http_use_aio;
 
     struct exb_request_rule request_rules[EXB_SERVER_MAX_RULES];
     int n_rules;
@@ -52,7 +51,6 @@ static struct exb_http_server_config exb_http_server_config_default(struct exb *
     (void) exb_ref;
     struct exb_http_server_config conf = {0};
     conf.n_domains = 0;
-    conf.http_use_aio = 0;
     conf.n_modules = 0;
     conf.n_named_handlers = 0;
     conf.n_rule_sinks = 0;

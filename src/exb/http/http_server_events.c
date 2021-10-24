@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "../exb_evloop.h"
-#include "../exb_threadpool.h"
 #include "../exb_errors.h"
 #include "http_server.h"
 #include "http_server_internal.h"

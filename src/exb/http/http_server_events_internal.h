@@ -33,8 +33,6 @@ static int exb_event_http_init(struct exb_server *s, struct exb_http_multiplexer
 
 static void exb_request_on_request_done(struct exb_request_state *rqstate);
 
-static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
-
 static void mark_read_scheduled(struct exb_request_state *rqstate, int mark) {
     if (mark)
         exb_assert_h(!rqstate->is_read_scheduled, "");
@@ -320,81 +318,6 @@ static int exb_response_on_bytes_written(struct exb_request_state *rqstate, int 
     return EXB_OK;
 }
 
-static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task);
-
-
-static void exb_request_async_write_runner(struct exb_thread *thread, struct exb_task *task) {
-
-    struct exb_request_state *rqstate = task->msg.u.iip.argp;
-    struct exb_response_state *rsp = &rqstate->resp;
-    struct exb_http_multiplexer *mp = exb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
-    int rv = EXB_OK;
-    int details = 0;
-    int total_bytes  = rsp->status_len + rsp->headers_len + rsp->body_len;
-
-    int current_written_bytes = rsp->written_bytes;
-    
-
-    if (current_written_bytes < total_bytes) {
-        size_t offset =  rqstate->resp.status_begin_index + current_written_bytes;
-        int sum = 0;
-        dp_useless(sum);
-
-#ifdef EXB_USE_READ_WRITE_FOR_TCP
-        ssize_t written = write(rqstate->socket_fd,
-                                rqstate->resp.output_buffer + offset,
-                                total_bytes - current_written_bytes);
-#else
-        ssize_t written = send(rqstate->socket_fd,
-                                            rsp->output_buffer + offset,
-                                            total_bytes - current_written_bytes,
-                                            MSG_DONTWAIT);
-#endif
-    
-        if (written == -1) {
-            if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                rv =  EXB_WRITE_ERR;
-                details = errno;
-                goto ret;
-            }
-        }
-        else {
-            //TODO: handle 0 case
-            current_written_bytes += written;
-        }
-    }
-ret:
-    {
-        struct exb_event ev;
-        if (rv != EXB_OK) {
-            exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_WRITE_IO_ERROR, rqstate, current_written_bytes - rsp->written_bytes);
-        }
-        else {
-            exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_DID_WRITE, rqstate, current_written_bytes - rsp->written_bytes);
-        }
-        int err = exb_evloop_ts_append(rqstate->evloop, ev);
-        if (err != EXB_OK) {
-            /*we cannot afford to have this fail*/
-            exb_request_handle_fatal_error(rqstate);
-        }
-    }
-
-    return;
-}
-
-static int exb_request_async_read_from_client(struct exb_request_state *rqstate) {
-    struct exb_threadpool *tp = rqstate->evloop->threadpool;
-    struct exb_task task;
-    task.err = exb_make_error(EXB_OK);
-    task.run = exb_request_async_read_from_client_runner;
-    task.msg.u.iip.arg1 = 0;
-    task.msg.u.iip.arg2 = 0;
-    task.msg.u.iip.argp = rqstate;
-    int rv = exb_threadpool_push_task(tp, task);
-
-    return rv;
-}
-
 
 
 static int exb_response_end_i(struct exb_request_state *rqstate) {
@@ -500,13 +423,9 @@ static int exb_response_end_i(struct exb_request_state *rqstate) {
 */
 static void on_http_send_sync(struct exb_event ev);
 static void on_http_read_sync(struct exb_event ev);
-static void on_http_send_async(struct exb_event ev);
-static void on_http_read_async(struct exb_event ev);
 
 static void on_http_ssl_send_sync(struct exb_event ev);
 static void on_http_ssl_read_sync(struct exb_event ev);
-static void on_http_ssl_send_async(struct exb_event ev);
-static void on_http_ssl_read_async(struct exb_event ev);
 
 /*This is not the only source of bytes the request has, see also exb_request_fork*/
 static int exb_request_read_from_client(struct exb_request_state *rqstate) {
@@ -555,97 +474,6 @@ ret:
     return EXB_OK;
 }
 
-static void exb_request_async_read_from_client_runner(struct exb_thread *thread, struct exb_task *task) {
-    struct exb_request_state *rqstate = task->msg.u.iip.argp;
-    struct exb_http_multiplexer *mp = exb_server_get_multiplexer(rqstate->server, rqstate->socket_fd);
-    int socket = rqstate->socket_fd;
-    int avbytes = exb_request_input_buffer_size(rqstate) - rqstate->input_buffer_len - 1;
-    int nbytes;
-    
-    int err = EXB_OK;
-    int client_closed = 0;
-
-    int buffer_current_bytes = rqstate->bytes_read;
-
-    struct exb_event ev;
-    int read_bytes;
-
-#ifdef EXB_USE_READ_WRITE_FOR_TCP
-    nbytes = read(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes);
-#else
-    nbytes = recv(socket, rqstate->input_buffer + rqstate->input_buffer_len, avbytes, MSG_DONTWAIT);
-#endif
-
-    if (nbytes < 0) {
-        if (errno == EWOULDBLOCK || errno == EAGAIN) {
-            err = EXB_OK;
-            RQSTATE_EVENT(stderr, "async read to rqstate %p, would block\n", rqstate, rqstate->socket_fd);
-        }
-        else {
-            err = EXB_READ_ERR;
-        }
-    }
-    else if (nbytes == 0) {
-        if (avbytes == 0) {
-            err = EXB_BUFFER_FULL_ERR;
-        }
-        else {
-            client_closed = 1;
-        }
-    }
-    else {
-        avbytes -= nbytes;
-        buffer_current_bytes += nbytes;
-    }
-
-    /*TODO: handle error*/
-    /*TODO: provide more details than what can fit in an event*/
-    
-    read_bytes = buffer_current_bytes - rqstate->bytes_read;
-
-    if (err != EXB_OK) {
-        if (err == EXB_BUFFER_FULL_ERR) {
-            //we cannot do reallocation here, evloop_* functions are not thread safe
-            exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_INPUT_BUFFER_FULL, rqstate, read_bytes);
-            RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes, added buffer full event\n", rqstate, rqstate->socket_fd, read_bytes);
-        }
-        else {
-            exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_READ_IO_ERROR, rqstate, read_bytes);
-            RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes, added io error event\n", rqstate, rqstate->socket_fd, read_bytes);
-        }
-        
-        int perr = exb_evloop_ts_append(rqstate->evloop, ev);
-        if (perr != EXB_OK) {
-            /*we cannot afford to have this fail*/
-            exb_request_handle_fatal_error(rqstate);
-        }
-    }
-    else {
-        //even if it's zero we need to send this to mark it as not scheduled
-        exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_DID_READ, rqstate, read_bytes);
-        int perr = exb_evloop_ts_append(rqstate->evloop, ev);
-        if (perr != EXB_OK) {
-            /*we cannot afford to have this fail*/
-            exb_request_handle_fatal_error(rqstate);
-        }
-        RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes, added read event\n", rqstate, rqstate->socket_fd, read_bytes);
-        
-        if (client_closed) {
-            exb_event_http_init(rqstate->server, mp, &ev, EXB_HTTP_CLIENT_CLOSED, rqstate, read_bytes);
-            perr = exb_evloop_ts_append(rqstate->evloop, ev);
-            if (err != EXB_OK) {
-                /*we cannot afford to have this fail*/
-                exb_request_handle_fatal_error(rqstate);
-            }
-            RQSTATE_EVENT(stderr, "async read to rqstate %p, socket %d, with %d bytes client closed\n", rqstate, rqstate->socket_fd, read_bytes);
-        }
-    }
-    RQSTATE_EVENT(stderr, "Did async read to rqstate %p, socket %d, with %d bytes\n", rqstate, rqstate->socket_fd, read_bytes);
-ret:    
-
-    return;
-}
-
 static void on_http_read_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     mark_read_scheduled(rqstate, 0);
@@ -654,14 +482,6 @@ static void on_http_read_sync(struct exb_event ev) {
     if (rv != EXB_OK) {
         exb_request_handle_http_error(rqstate);
     }
-    
-}
-
-static void on_http_read_async(struct exb_event ev) {
-    struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    exb_assert_h(rqstate->is_read_scheduled, "");
-    RQSTATE_EVENT(stderr, "Handling EXB_HTTP_READ for rqstate %p\n", rqstate);
-    exb_request_async_read_from_client(rqstate);
     
 }
 
@@ -714,32 +534,6 @@ static void on_http_send_sync(struct exb_event ev) {
     }
 }
 
-static void on_http_send_async(struct exb_event ev) {
-    struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    exb_assert_h(rqstate->is_send_scheduled, "");
-    exb_assert_h(rqstate->resp.state == EXB_HTTP_R_ST_DONE, "HTTP_SEND scheduled on an unready response");
-    RQSTATE_EVENT(stderr, "Handling EXB_HTTP_SEND for rqstate %p\n", rqstate);
-    
-    exb_assert_h(rqstate->resp.state != EXB_HTTP_R_ST_DEAD, "");
-
-    struct exb_response_state *rsp = &rqstate->resp;
-    int rv = EXB_OK;
-    if (rsp->state != EXB_HTTP_R_ST_SENDING) {
-        rv = EXB_INVALID_STATE_ERR;
-        goto ret;
-    }
-    struct exb_threadpool *tp = rqstate->evloop->threadpool;
-    struct exb_task task;
-    task.err = exb_make_error(EXB_OK);
-    task.run = exb_request_async_write_runner;
-    task.msg.u.iip.arg1 = 0;
-    task.msg.u.iip.arg2 = 0;
-    task.msg.u.iip.argp = rqstate;
-    rv = exb_threadpool_push_task(tp, task);
-    ret:
-
-    return;
-}
 
 static void on_http_ssl_send_sync(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
@@ -835,20 +629,6 @@ static void on_http_ssl_read_sync(struct exb_event ev) {
     }
 }
 
-static void on_http_ssl_send_async(struct exb_event ev) {
-    //TODO:
-    struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    exb_log_error(rqstate->server->exb, "on_http_ssl_send_async not supported");
-    abort();
-}
-
-static void on_http_ssl_read_async(struct exb_event ev) {
-    //TODO:
-    struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    exb_log_error(rqstate->server->exb, "on_http_ssl_read_async not supported");
-    abort();
-}
-
 static void on_http_input_buffer_full(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
     RQSTATE_EVENT(stderr, "INPUT BUFFER FULL For rqstate %p, sz: %d\n", rqstate, rqstate->input_buffer_cap);
@@ -862,7 +642,7 @@ static void on_http_input_buffer_full(struct exb_event ev) {
 
 static void on_http_did_read(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    RQSTATE_EVENT(stderr, "Handling async read notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
+    RQSTATE_EVENT(stderr, "Handling read notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
     mark_read_scheduled(rqstate, 0);
     exb_assert_h(rqstate->istate != EXB_HTTP_I_ST_DEAD, ""); 
     int len  = ev.msg.u.iip.arg1;
@@ -872,7 +652,7 @@ static void on_http_did_read(struct exb_event ev) {
 
 static void on_http_did_write(struct exb_event ev) {
     struct exb_request_state *rqstate = ev.msg.u.iip.argp;
-    RQSTATE_EVENT(stderr, "Handling async write notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
+    RQSTATE_EVENT(stderr, "Handling write notification of rqstate %p, %d bytes\n", rqstate, ev.msg.u.iip.arg1);
     mark_send_scheduled(rqstate, 0);
     exb_assert_h(rqstate->resp.state != EXB_HTTP_R_ST_DEAD, "");
     int len  = ev.msg.u.iip.arg1;
