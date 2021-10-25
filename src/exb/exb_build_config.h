@@ -1,11 +1,16 @@
 #ifndef EXB_BUILD_CONFIG_H
 #define EXB_BUILD_CONFIG_H
 
-#define EXBAND_VERSION_STR "v0.1.1"
+#define EXBAND_VERSION_STR "v0.1.2"
 
-/*Eloop env config*/
+/*Event loop configuration*/
 #define EXB_MAX_EVLOOPS 128
-/*End Eloop env config*/
+#define EXB_EVLOOP_QUEUE_BATCH_SIZE 32
+#define EXB_EVLOOP_TMP_EVENTS_SZ 512
+#define EXB_EVLOOP_TASK_BUFFER_COUNT 256
+//a small storage for delayed events to reduce calls to malloc, must be <= 255
+#define EXB_EVLOOP_DEVENT_BUFFER_COUNT 32
+/*End of Event loop configuration*/
 
 /*Server configuration*/
 #define LISTEN_BACKLOG 2000
@@ -27,8 +32,7 @@
 // and we have nowhere to store them
 #define EXB_SSL_RW_BUFFER_SIZE 8192
 
-
-#define EXB_MAX_DOMAINS     8
+#define EXB_MAX_DOMAINS 8
 
 #define EXB_USE_READ_WRITE_FOR_TCP
 #undef  EXB_USE_READ_WRITE_FOR_TCP
@@ -42,13 +46,6 @@
 //Number of digits to represent an int
 #define EXB_INT_DIGITS 14
 #define EXB_LONG_LONG_DIGITS 24
-
-/*
-    0: not accurate at all
-    1: somewhat accurate
-    2: accurate
-*/
-#define EXB_EVLOOP_TIME_ACCUARCY 1
 
 #define EXB_HTTP_ADD_DATE_HEADER
 //#undef  EXB_ADD_DATE_HEADER

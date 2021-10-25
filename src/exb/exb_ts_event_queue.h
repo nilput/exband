@@ -1,6 +1,7 @@
 #ifndef EXB_TS_EVENT_QUEUE_H
 #define EXB_TS_EVENT_QUEUE_H
 #include <string.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include "exb_errors.h"
 #include "exb_event.h"
@@ -28,6 +29,12 @@ static int exb_ts_event_queue_len_u(struct exb_ts_event_queue *tq) {
         return tq->tail - tq->head;
     }
     return tq->cap - tq->head + tq->tail;
+}
+
+static bool exb_ts_event_queue_is_empty(struct exb_ts_event_queue *tq) {
+    //FIXME: make sure this is correct, we're not locking the mutex.
+    __sync_synchronize();
+    return tq->head == tq->tail;
 }
 
 static int exb_ts_event_queue_len(struct exb_ts_event_queue *tq) {

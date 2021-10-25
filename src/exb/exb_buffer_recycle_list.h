@@ -8,11 +8,13 @@ struct exb_buffer {
     char *buff;
     size_t size;
 };
+
 struct exb_buffer_list {
     struct exb_buffer *buffers;
     int len;
     int cap;
 };
+
 struct exb_buffer_recycle_list {
     struct exb_buffer_list blist[EXB_BUFFER_LIST_NBITS];
 };
@@ -25,6 +27,7 @@ static int exb_buffer_recycle_list_init(struct exb *exb_ref, struct exb_buffer_r
     }
     return EXB_OK;
 }
+
 static int exb_buffer_list_resize(struct exb *exb_ref, struct exb_buffer_list *buff_list, int size) {
     for (; buff_list->len > size; buff_list->len--) {
         exb_free(exb_ref, buff_list->buffers[buff_list->len - 1].buff);
@@ -37,6 +40,7 @@ static int exb_buffer_list_resize(struct exb *exb_ref, struct exb_buffer_list *b
     buff_list->cap = size;
     return EXB_OK;
 }
+
 //can be made faster
 static int buffer_size_bits(size_t buffer_size) {
 #ifdef __GNUC__
@@ -67,6 +71,7 @@ static int exb_buffer_recycle_list_push(struct exb *exb_ref, struct exb_buffer_r
     
     return EXB_OK;
 }
+
 static int exb_buffer_recycle_list_pop(struct exb *exb_ref, struct exb_buffer_recycle_list *buff_cyc,  size_t needed_size, void **buffer_out, size_t *buffer_size_out) {
     (void) exb_ref;
     int index = buffer_size_bits(needed_size);
@@ -85,6 +90,7 @@ static int exb_buffer_recycle_list_pop(struct exb *exb_ref, struct exb_buffer_re
     }
     return EXB_NOT_FOUND;
 }
+
 static int exb_buffer_recycle_list_pop_eager(struct exb *exb_ref, struct exb_buffer_recycle_list *buff_cyc,  size_t needed_size, void **buffer_out, size_t *buffer_size_out) {
     int index = buffer_size_bits(needed_size);
     while (index < EXB_BUFFER_LIST_NBITS - 1) {
@@ -99,6 +105,7 @@ static int exb_buffer_recycle_list_pop_eager(struct exb *exb_ref, struct exb_buf
     }
     return EXB_NOT_FOUND;
 }
+
 static void exb_buffer_recycle_list_deinit(struct exb *exb_ref, struct exb_buffer_recycle_list *buff_cyc) {
     for (int i=0; i<EXB_BUFFER_LIST_NBITS; i++) {
         for (int j=0; j<buff_cyc->blist[i].len; j++) {

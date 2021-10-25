@@ -44,11 +44,13 @@ static int exb_thread_new(struct exb *exb_ref, int tid, void *(*run)(void *), vo
     *new_thread = t;
     return EXB_OK;
 }
+
 static void exb_thread_destroy(struct exb_thread *thread, struct exb *exb_ref) {
     /*this doesn't attempt to cancel the thread*/
     /*it is assumed that it is no longer executing*/
     exb_free(exb_ref, thread);
 }
+
 static int exb_thread_cancel_and_destroy(struct exb_thread *thread, struct exb *exb_ref) {
     pthread_cancel(thread->thread);
     exb_thread_destroy(thread, exb_ref);
